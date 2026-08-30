@@ -1,0 +1,35 @@
+<Window x:Class="ScreenTimeGuardian.DashboardForm" x:ClassModifier="internal"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Screen Time Guardian" Width="940" Height="700" MinWidth="740" MinHeight="480" WindowStartupLocation="CenterScreen">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" PanningMode="VerticalOnly" CanContentScroll="False">
+        <Grid Margin="28,24,24,26">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <Grid Grid.Row="0" Margin="0,0,0,18"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <StackPanel><TextBlock Text="Screen Time Guardian" Style="{StaticResource PageTitle}"/><TextBlock x:Name="DateLabel" Foreground="{StaticResource MutedBrush}" FontSize="17" Margin="1,5,0,0"/></StackPanel>
+                <Button Grid.Column="1" Content="Close window" Click="CloseWindow_Click" VerticalAlignment="Top" Margin="18,0,0,0"/>
+            </Grid>
+            <UniformGrid Grid.Row="1" Columns="3" Margin="0,0,-12,2">
+                <Border Style="{StaticResource Card}"><StackPanel><TextBlock Text="ALL DEVICES TODAY" Style="{StaticResource SectionTitle}" Margin="0"/><TextBlock x:Name="AllValue" FontSize="32" FontWeight="SemiBold" Margin="0,12,0,6"/><TextBlock Text="Combined, deduplicated" Foreground="{StaticResource MutedBrush}"/></StackPanel></Border>
+                <Border Style="{StaticResource Card}"><StackPanel><TextBlock Text="THIS PC" Style="{StaticResource SectionTitle}" Margin="0"/><TextBlock x:Name="LocalValue" FontSize="32" FontWeight="SemiBold" Margin="0,12,0,6"/><TextBlock Text="Automatically named by Windows" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/></StackPanel></Border>
+                <Border Style="{StaticResource Card}"><StackPanel><TextBlock Text="DAILY PLAN" Style="{StaticResource SectionTitle}" Margin="0"/><TextBlock x:Name="PlanValue" FontSize="32" FontWeight="SemiBold" Margin="0,12,0,6"/><TextBlock Text="Your current target" Foreground="{StaticResource MutedBrush}"/></StackPanel></Border>
+            </UniformGrid>
+            <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,0,0,16">
+                <StackPanel><DockPanel Margin="0,0,0,12"><TextBlock Text="Today’s progress" FontSize="17" FontWeight="SemiBold"/><TextBlock x:Name="ProgressLabel" DockPanel.Dock="Right" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Right"/></DockPanel><ProgressBar x:Name="PlanProgress" Height="11" Foreground="{StaticResource AccentBrush}" Background="#E7EDF2"/></StackPanel>
+            </Border>
+            <StackPanel Grid.Row="3">
+                <TextBlock Text="EXPLORE" Style="{StaticResource SectionTitle}"/>
+                <UniformGrid Columns="2" Rows="2" Margin="0,0,-12,8">
+                    <Button Click="Report_Click" Margin="0,0,12,12" Padding="18,13" HorizontalContentAlignment="Left"><StackPanel><TextBlock Text="Today’s report" FontWeight="SemiBold" FontSize="16"/><TextBlock Text="Minute-by-minute activity map" Foreground="{StaticResource MutedBrush}" Margin="0,3,0,0"/></StackPanel></Button>
+                    <Button Click="Tracking_Click" Margin="0,0,12,12" Padding="18,13" HorizontalContentAlignment="Left"><StackPanel><TextBlock Text="OpenRouter tracking" FontWeight="SemiBold" FontSize="16"/><TextBlock Text="Week, previous month and custom ranges" Foreground="{StaticResource MutedBrush}" Margin="0,3,0,0" TextWrapping="Wrap"/></StackPanel></Button>
+                    <Button Click="Settings_Click" Margin="0,0,12,12" Padding="18,13" HorizontalContentAlignment="Left"><StackPanel><TextBlock Text="Settings" FontWeight="SemiBold" FontSize="16"/><TextBlock Text="Plan, reminders and private cloud" Foreground="{StaticResource MutedBrush}" Margin="0,3,0,0"/></StackPanel></Button>
+                    <Button Click="About_Click" Margin="0,0,12,12" Padding="18,13" HorizontalContentAlignment="Left"><StackPanel><TextBlock Text="About" FontWeight="SemiBold" FontSize="16"/><TextBlock Text="Privacy, usage and open-source notices" Foreground="{StaticResource MutedBrush}" Margin="0,3,0,0" TextWrapping="Wrap"/></StackPanel></Button>
+                </UniformGrid>
+            </StackPanel>
+            <Border Grid.Row="4" Style="{StaticResource Card}" Margin="0">
+                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><StackPanel VerticalAlignment="Center"><TextBlock Text="PRIVATE CLOUD" Style="{StaticResource SectionTitle}" Margin="0,0,0,4"/><TextBlock x:Name="SyncStatusLabel" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/></StackPanel><Button Grid.Column="1" Content="Sync now" Style="{StaticResource PrimaryButton}" Click="Sync_Click" Margin="18,0,0,0"/></Grid>
+            </Border>
+            <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0"><Button Content="Close window" Click="CloseWindow_Click"/></StackPanel>
+        </Grid>
+    </ScrollViewer>
+</Window>

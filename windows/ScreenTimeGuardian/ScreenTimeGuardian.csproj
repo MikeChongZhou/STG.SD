@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>ScreenTimeGuardian</AssemblyName>
+    <RootNamespace>ScreenTimeGuardian</RootNamespace>
+    <Version>1.1.6</Version>
+    <AssemblyVersion>1.1.6.0</AssemblyVersion>
+    <FileVersion>1.1.6.0</FileVersion>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\stg.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.22" />
+    <EmbeddedResource Include="..\..\shared\openrouter\openrouter-weekly-seed-v1.json">
+      <Link>Assets\openrouter-weekly-seed-v1.json</Link>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup Condition="'$(STG_GOOGLE_CLIENT_SECRET)' != ''">
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>STGGoogleClientSecret</_Parameter1>
+      <_Parameter2>$(STG_GOOGLE_CLIENT_SECRET)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+</Project>

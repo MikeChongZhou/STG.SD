@@ -1,0 +1,9 @@
+{
+  "device_id": "test-device",
+  "utc_date": "2026-08-22",
+  "set_minutes": [0, 1, 7, 8, 719, 1439],
+  "expected_count": 6,
+  "expected_first_bytes_hex": "8301",
+  "expected_last_byte_hex": "80"
+}
+

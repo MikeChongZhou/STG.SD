@@ -1,0 +1,13 @@
+<Window x:Class="ScreenTimeGuardian.ReminderForm" x:ClassModifier="internal"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Screen Time Guardian" Width="560" Height="380" MinWidth="500" MinHeight="350" WindowStartupLocation="CenterScreen" ResizeMode="NoResize" Topmost="True" ShowInTaskbar="True">
+    <Grid Margin="34,30,34,30">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <TextBlock Text="SCREEN TIME GUARDIAN" Style="{StaticResource SectionTitle}" Margin="0"/>
+        <TextBlock x:Name="TitleLabel" Grid.Row="1" Style="{StaticResource PageTitle}" FontSize="30" Margin="0,18,0,12"/>
+        <TextBlock x:Name="MessageLabel" Grid.Row="2" TextWrapping="Wrap" FontSize="18" LineHeight="28"/>
+        <TextBlock x:Name="CountdownLabel" Grid.Row="3" VerticalAlignment="Center" FontSize="17" Foreground="{StaticResource MutedBrush}"/>
+        <Button x:Name="CloseButton" Grid.Row="4" Content="Close" Style="{StaticResource PrimaryButton}" Width="130" HorizontalAlignment="Left" Click="Close_Click"/>
+    </Grid>
+</Window>
