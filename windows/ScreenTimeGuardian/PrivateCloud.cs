@@ -129,6 +129,13 @@ internal sealed class ICloudDriveClient : IPrivateCloudDrive
     public static bool IsAvailable => LocateExistingSyncFolder() is not null;
     public static string AccountLabel => IsAvailable ? "Apple-created Screen Time Guardian App Library" : "Shared STG iCloud folder not found";
 
+    public static string DiscoverySummary()
+    {
+        var roots = LocateDriveRoots();
+        var folder = LocateExistingSyncFolder(roots);
+        return $"roots=[{string.Join("|", roots)}]; selected_sync_folder={folder ?? "none"}";
+    }
+
     public static ICloudDriveClient Connect()
     {
         var roots = LocateDriveRoots();
@@ -181,13 +188,15 @@ internal sealed class ICloudDriveClient : IPrivateCloudDrive
         var globalRoots = roots.Where(root => !IsContainerRoot(root)).ToList();
         var candidates = containerRoots.SelectMany(root => new[]
         {
+            Path.Combine(root, "sync"),
             Path.Combine(root, "ScreenTimeGuardian", "sync"),
             Path.Combine(root, "Documents", "ScreenTimeGuardian", "sync")
         }).Concat(globalRoots.SelectMany(root => new[]
         {
             Path.Combine(root, ContainerName, "ScreenTimeGuardian", "sync"),
             Path.Combine(root, ContainerName, "Documents", "ScreenTimeGuardian", "sync")
-        })).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        })).Concat(globalRoots.SelectMany(AppLibraryCandidates))
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
         // Use only the App Library and sync directory created by iOS/macOS.
         // Windows must never create a similarly named ordinary folder because
@@ -205,6 +214,24 @@ internal sealed class ICloudDriveClient : IPrivateCloudDrive
         if (name.Contains("screentimeguardian", StringComparison.OrdinalIgnoreCase) ||
             name.Contains("timbertrail", StringComparison.OrdinalIgnoreCase)) return true;
         return Directory.Exists(Path.Combine(root, "Documents", "ScreenTimeGuardian"));
+    }
+
+    private static IEnumerable<string> AppLibraryCandidates(string driveRoot)
+    {
+        IEnumerable<string> children;
+        try { children = Directory.EnumerateDirectories(driveRoot, "*", SearchOption.TopDirectoryOnly).ToList(); }
+        catch { yield break; }
+
+        foreach (var child in children)
+        {
+            var normalized = new string(Path.GetFileName(child).Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+            if (!normalized.Contains("screentimeguardian") &&
+                !normalized.Contains("timbertrail") &&
+                !normalized.Contains("icloudcomtimbertrailscreentimeguardian")) continue;
+            yield return Path.Combine(child, "sync");
+            yield return Path.Combine(child, "ScreenTimeGuardian", "sync");
+            yield return Path.Combine(child, "Documents", "ScreenTimeGuardian", "sync");
+        }
     }
 
     private static IReadOnlyList<string> LocateDriveRoots()
@@ -230,19 +257,45 @@ internal sealed class ICloudDriveClient : IPrivateCloudDrive
 
     private static IEnumerable<string> SyncRootCandidates()
     {
-        using var manager = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\SyncRootManager");
-        if (manager is null) yield break;
-        foreach (var name in manager.GetSubKeyNames().Where(value => value.Contains("icloud", StringComparison.OrdinalIgnoreCase)))
+        var result = new List<string>();
+        foreach (var hive in new[] { RegistryHive.CurrentUser, RegistryHive.LocalMachine })
         {
-            using var provider = manager.OpenSubKey(name);
-            if (provider is null) continue;
-            foreach (var valueName in new[] { "Path", "RootPath" })
-                if (provider.GetValue(valueName) is string path) yield return Environment.ExpandEnvironmentVariables(path);
-            using var roots = provider.OpenSubKey("UserSyncRoots");
-            if (roots is null) continue;
-            foreach (var valueName in roots.GetValueNames())
-                if (roots.GetValue(valueName) is string path) yield return Environment.ExpandEnvironmentVariables(path);
+            foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
+            {
+                try
+                {
+                    using var baseKey = RegistryKey.OpenBaseKey(hive, view);
+                    using var manager = baseKey.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\SyncRootManager");
+                    if (manager is null) continue;
+                    foreach (var name in manager.GetSubKeyNames())
+                    {
+                        using var provider = manager.OpenSubKey(name);
+                        if (provider is null || !IsICloudProvider(name, provider)) continue;
+                        foreach (var valueName in new[] { "Path", "RootPath" })
+                            if (provider.GetValue(valueName) is string path) result.Add(Environment.ExpandEnvironmentVariables(path));
+                        using var roots = provider.OpenSubKey("UserSyncRoots");
+                        if (roots is null) continue;
+                        foreach (var valueName in roots.GetValueNames())
+                            if (roots.GetValue(valueName) is string path) result.Add(Environment.ExpandEnvironmentVariables(path));
+                    }
+                }
+                catch { }
+            }
         }
+        return result;
+    }
+
+    private static bool IsICloudProvider(string keyName, RegistryKey provider)
+    {
+        var identity = string.Join(" ", new[]
+        {
+            keyName,
+            provider.GetValue("DisplayNameResource") as string,
+            provider.GetValue("IconResource") as string,
+            provider.GetValue("ProviderName") as string
+        }.Where(value => !string.IsNullOrWhiteSpace(value)));
+        return identity.Contains("icloud", StringComparison.OrdinalIgnoreCase) ||
+               identity.Contains("apple", StringComparison.OrdinalIgnoreCase);
     }
 }
 

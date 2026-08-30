@@ -73,7 +73,11 @@ internal sealed class TrayAppContext : IDisposable
         log.Record("sync", $"sign-in begin; provider={provider}"); Changed();
         try
         {
-            if (provider == SyncProvider.ICloudDrive) _ = ICloudDriveClient.Connect();
+            if (provider == SyncProvider.ICloudDrive)
+            {
+                log.Record("sync", $"iCloud discovery; {ICloudDriveClient.DiscoverySummary()}");
+                _ = ICloudDriveClient.Connect();
+            }
             else if (provider == SyncProvider.OneDrive) await OneDriveClient.SignInAsync(owner);
             else await GoogleDriveClient.SignInAsync();
             SyncStatus = $"{ProviderName(provider)} connected as {ProviderAccountLabel(provider)}";
