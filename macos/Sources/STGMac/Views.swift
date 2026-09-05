@@ -59,7 +59,13 @@ struct SettingsView: View {
                             GridRow { Text("Daily limit").foregroundStyle(.secondary); Stepper("\(draft.dailyCloseCountdownMinutes) minutes", value: $draft.dailyCloseCountdownMinutes, in: 0...10).fixedSize() }
                         }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
                     }
-                    GroupBox("General") { VStack(alignment: .leading, spacing: 12) { Toggle("Manual meeting-mode override", isOn: $draft.meetingMode); Toggle("Launch automatically at login", isOn: $draft.launchAtLogin) }.frame(maxWidth: .infinity, alignment: .leading).padding(8) }
+                    GroupBox("General") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Toggle("Manual meeting-mode override", isOn: $draft.meetingMode)
+                            Toggle("Launch automatically at login", isOn: $draft.launchAtLogin)
+                            Text(model.launchAtLoginStatus).font(.caption).foregroundStyle(.secondary)
+                        }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
+                    }
                     GroupBox("Private cloud") {
                         HStack {
                             VStack(alignment: .leading, spacing: 5) {
@@ -183,7 +189,7 @@ struct ReportView: View {
                                         .font(.callout).textSelection(.enabled)
                                     MinuteBitmapView(minutes: bitmap.minutes, rowHeight: bitmapRowHeight(cardHeight: cardHeight))
                                 }
-                                .frame(minHeight: max(96, cardHeight - 20), alignment: .topLeading)
+                                .frame(minHeight: max(92, cardHeight - 20), alignment: .topLeading)
                                 .padding(.horizontal, 12).padding(.vertical, 10)
                                 .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 11))
                             }
@@ -224,15 +230,17 @@ struct ReportView: View {
 
     private func dailyCardHeight(availableHeight: CGFloat) -> CGFloat {
         let count = CGFloat(max(dailyBitmaps.count, 1))
-        return min(180, max(116, (availableHeight - max(0, count - 1) * 12) / count))
+        return min(168, max(108, (availableHeight - max(0, count - 1) * 12) / count))
     }
 
-    private func bitmapRowHeight(cardHeight: CGFloat) -> CGFloat { min(28, max(19, (cardHeight - 50) / 4)) }
+    private func bitmapRowHeight(cardHeight: CGFloat) -> CGFloat { min(22, max(18, (cardHeight - 48) / 4)) }
 }
 
 struct MinuteBitmapView: View {
     let minutes: [Bool]
-    var rowHeight: CGFloat = 19
+    var rowHeight: CGFloat = 18
+    @State private var hoveredMinute: Int?
+
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             ForEach(0..<4, id: \.self) { row in
@@ -240,16 +248,85 @@ struct MinuteBitmapView: View {
                     Text(String(format: "%02d–%02d", row * 6, (row + 1) * 6)).font(.system(size: 9)).frame(width: 38, alignment: .leading)
                     GeometryReader { proxy in
                         ZStack(alignment: .topLeading) {
-                            ForEach(0..<6, id: \.self) { hour in Text(String(format: "%02d", row * 6 + hour)).font(.system(size: 7)).position(x: CGFloat(hour) * proxy.size.width / 6 + 7, y: 4) }
+                            ForEach(0..<6, id: \.self) { hour in
+                                Text(String(format: "%02d", row * 6 + hour))
+                                    .font(.system(size: 7, weight: .medium, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                                    .position(x: CGFloat(hour) * proxy.size.width / 6 + 7, y: 4)
+                            }
                             Canvas { context, size in
-                                let cellWidth = size.width / 360
+                                let minuteWidth = size.width / 360
+                                let baselineY = size.height * 0.68
+
+                                var baseline = Path()
+                                baseline.move(to: CGPoint(x: 0, y: baselineY))
+                                baseline.addLine(to: CGPoint(x: size.width, y: baselineY))
+                                context.stroke(baseline, with: .color(.secondary.opacity(0.13)), lineWidth: 0.5)
+
+                                for offset in stride(from: 0, through: 360, by: 5) {
+                                    let x = CGFloat(offset) * minuteWidth
+                                    let isHour = offset.isMultiple(of: 60)
+                                    let isHalfHour = offset.isMultiple(of: 30)
+                                    let length: CGFloat = isHour ? size.height : (isHalfHour ? size.height * 0.58 : size.height * 0.32)
+                                    var tick = Path()
+                                    tick.move(to: CGPoint(x: x, y: baselineY - length / 2))
+                                    tick.addLine(to: CGPoint(x: x, y: baselineY + length / 2))
+                                    context.stroke(
+                                        tick,
+                                        with: .color(.secondary.opacity(isHour ? 0.42 : (isHalfHour ? 0.28 : 0.17))),
+                                        lineWidth: isHour ? 0.8 : 0.5
+                                    )
+                                }
+
+                                var runStart: Int?
+                                for offset in 0...360 {
+                                    let index = row * 360 + offset
+                                    let active = offset < 360 && index < minutes.count && minutes[index]
+                                    if active, runStart == nil { runStart = offset }
+                                    if !active, let start = runStart {
+                                        let end = offset - 1
+                                        if end > start {
+                                            var run = Path()
+                                            run.move(to: CGPoint(x: (CGFloat(start) + 0.5) * minuteWidth, y: baselineY))
+                                            run.addLine(to: CGPoint(x: (CGFloat(end) + 0.5) * minuteWidth, y: baselineY))
+                                            context.stroke(run, with: .color(.accentColor.opacity(0.82)), style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
+                                        }
+                                        runStart = nil
+                                    }
+                                }
+
                                 for offset in 0..<360 {
                                     let index = row * 360 + offset
-                                    let rect = CGRect(x: CGFloat(offset) * cellWidth, y: 0, width: max(1, cellWidth - 0.25), height: size.height)
-                                    context.fill(Path(rect), with: .color(index < minutes.count && minutes[index] ? .accentColor : Color.secondary.opacity(0.14)))
+                                    let active = index < minutes.count && minutes[index]
+                                    let radius: CGFloat = active ? 1.25 : 0.62
+                                    let center = CGPoint(x: (CGFloat(offset) + 0.5) * minuteWidth, y: baselineY)
+                                    let dot = Path(ellipseIn: CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2))
+                                    context.fill(dot, with: .color(active ? .accentColor : .secondary.opacity(0.22)))
                                 }
-                                for hour in 0...6 { let x = CGFloat(hour) * size.width / 6; var path = Path(); path.move(to: .init(x: x, y: 0)); path.addLine(to: .init(x: x, y: size.height)); context.stroke(path, with: .color(.secondary.opacity(0.45)), lineWidth: 0.5) }
-                            }.frame(height: 10).offset(y: 8)
+                            }
+                            .frame(height: 10)
+                            .offset(y: 7)
+
+                            if let hoveredMinute, hoveredMinute / 360 == row {
+                                let active = hoveredMinute < minutes.count && minutes[hoveredMinute]
+                                Text("\(STGTime.localClockLabel(minute: hoveredMinute)) · \(active ? "Active" : "Inactive")")
+                                    .font(.system(size: 8, weight: .medium, design: .rounded))
+                                    .padding(.horizontal, 5).padding(.vertical, 2)
+                                    .background(.regularMaterial, in: Capsule())
+                                    .frame(maxWidth: .infinity, alignment: .trailing)
+                                    .offset(y: -2)
+                                    .allowsHitTesting(false)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                        .onContinuousHover { phase in
+                            switch phase {
+                            case .active(let point):
+                                let offset = min(359, max(0, Int(point.x / max(proxy.size.width, 1) * 360)))
+                                hoveredMinute = row * 360 + offset
+                            case .ended:
+                                if hoveredMinute.map({ $0 / 360 == row }) == true { hoveredMinute = nil }
+                            }
                         }
                     }.frame(height: rowHeight)
                 }
