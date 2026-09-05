@@ -277,112 +277,118 @@ private func reportDateString(_ date: Date, timeZoneID: String) -> String { let 
 
 struct MinuteBitmapView: View {
     let minutes: [Bool]
-    @State private var inspectedMinute: Int?
-    private let chartWidth: CGFloat = 640
+
+    private struct Segment: Identifiable {
+        let startMinute: Int
+        let endMinute: Int
+        var id: Int { startMinute }
+        var minuteCount: Int { endMinute - startMinute }
+        var hourBoundaries: [Int] { Array(stride(from: startMinute, through: endMinute, by: 60)) }
+    }
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: true) {
-            VStack(alignment: .leading, spacing: 3) {
-                ForEach(0..<4, id: \.self) { row in
-                    HStack(spacing: 6) {
-                        Text(String(format: "%02d–%02d", row * 6, (row + 1) * 6))
-                            .font(.system(size: 9, weight: .medium, design: .rounded))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 38, alignment: .leading)
-                        ZStack(alignment: .topLeading) {
-                            ForEach(0..<6, id: \.self) { hour in
-                                Text(String(format: "%02d", row * 6 + hour))
-                                    .font(.system(size: 7, weight: .medium, design: .rounded))
-                                    .foregroundStyle(.secondary)
-                                    .position(x: CGFloat(hour) * chartWidth / 6 + 7, y: 4)
-                            }
-                            Canvas { context, size in
-                                let minuteWidth = size.width / 360
-                                let baselineY = size.height * 0.58
-
-                                var baseline = Path()
-                                baseline.move(to: CGPoint(x: 0, y: baselineY))
-                                baseline.addLine(to: CGPoint(x: size.width, y: baselineY))
-                                context.stroke(baseline, with: .color(.secondary.opacity(0.13)), lineWidth: 0.5)
-
-                                for offset in stride(from: 0, through: 360, by: 5) {
-                                    let x = CGFloat(offset) * minuteWidth
-                                    let isHour = offset.isMultiple(of: 60)
-                                    let isHalfHour = offset.isMultiple(of: 30)
-                                    let length: CGFloat = isHour ? size.height : (isHalfHour ? size.height * 0.58 : size.height * 0.32)
-                                    var tick = Path()
-                                    tick.move(to: CGPoint(x: x, y: baselineY - length / 2))
-                                    tick.addLine(to: CGPoint(x: x, y: baselineY + length / 2))
-                                    context.stroke(
-                                        tick,
-                                        with: .color(.secondary.opacity(isHour ? 0.42 : (isHalfHour ? 0.28 : 0.17))),
-                                        lineWidth: isHour ? 0.8 : 0.5
-                                    )
+        let segments = visibleSegments
+        Group {
+            if segments.isEmpty {
+                Text("No activity")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(segments) { segment in
+                        GeometryReader { proxy in
+                            ZStack(alignment: .topLeading) {
+                                ForEach(segment.hourBoundaries, id: \.self) { boundary in
+                                    let progress = CGFloat(boundary - segment.startMinute) / CGFloat(segment.minuteCount)
+                                    Text(String(format: "%02d", boundary / 60))
+                                        .font(.system(size: 7, weight: .medium, design: .rounded))
+                                        .foregroundStyle(.secondary)
+                                        .position(x: min(proxy.size.width - 7, max(7, progress * proxy.size.width)), y: 4)
                                 }
+                                Canvas { context, size in
+                                    let minuteWidth = size.width / CGFloat(segment.minuteCount)
+                                    let baselineY = size.height * 0.58
 
-                                var runStart: Int?
-                                for offset in 0...360 {
-                                    let index = row * 360 + offset
-                                    let active = offset < 360 && index < minutes.count && minutes[index]
-                                    if active, runStart == nil { runStart = offset }
-                                    if !active, let start = runStart {
-                                        let end = offset - 1
-                                        if end > start {
-                                            var run = Path()
-                                            run.move(to: CGPoint(x: (CGFloat(start) + 0.5) * minuteWidth, y: baselineY))
-                                            run.addLine(to: CGPoint(x: (CGFloat(end) + 0.5) * minuteWidth, y: baselineY))
-                                            context.stroke(run, with: .color(.accentColor.opacity(0.82)), style: StrokeStyle(lineWidth: 2.1, lineCap: .round))
+                                    var baseline = Path()
+                                    baseline.move(to: CGPoint(x: 0, y: baselineY))
+                                    baseline.addLine(to: CGPoint(x: size.width, y: baselineY))
+                                    context.stroke(baseline, with: .color(.secondary.opacity(0.13)), lineWidth: 0.5)
+
+                                    for offset in stride(from: 0, through: segment.minuteCount, by: 5) {
+                                        let absoluteMinute = segment.startMinute + offset
+                                        let x = CGFloat(offset) * minuteWidth
+                                        let isHour = absoluteMinute.isMultiple(of: 60)
+                                        let isHalfHour = absoluteMinute.isMultiple(of: 30)
+                                        let length: CGFloat = isHour ? size.height : (isHalfHour ? size.height * 0.58 : size.height * 0.32)
+                                        var tick = Path()
+                                        tick.move(to: CGPoint(x: x, y: baselineY - length / 2))
+                                        tick.addLine(to: CGPoint(x: x, y: baselineY + length / 2))
+                                        context.stroke(
+                                            tick,
+                                            with: .color(.secondary.opacity(isHour ? 0.42 : (isHalfHour ? 0.28 : 0.17))),
+                                            lineWidth: isHour ? 0.8 : 0.5
+                                        )
+                                    }
+
+                                    var runStart: Int?
+                                    for offset in 0...segment.minuteCount {
+                                        let index = segment.startMinute + offset
+                                        let active = offset < segment.minuteCount && index < minutes.count && minutes[index]
+                                        if active, runStart == nil { runStart = offset }
+                                        if !active, let start = runStart {
+                                            let end = offset - 1
+                                            if end > start {
+                                                var run = Path()
+                                                run.move(to: CGPoint(x: (CGFloat(start) + 0.5) * minuteWidth, y: baselineY))
+                                                run.addLine(to: CGPoint(x: (CGFloat(end) + 0.5) * minuteWidth, y: baselineY))
+                                                context.stroke(run, with: .color(.accentColor.opacity(0.82)), style: StrokeStyle(lineWidth: 1.4, lineCap: .round))
+                                            }
+                                            runStart = nil
                                         }
-                                        runStart = nil
+                                    }
+
+                                    for offset in 0..<segment.minuteCount {
+                                        let index = segment.startMinute + offset
+                                        let active = index < minutes.count && minutes[index]
+                                        let radius: CGFloat = active ? 0.72 : 0.42
+                                        let center = CGPoint(x: (CGFloat(offset) + 0.5) * minuteWidth, y: baselineY)
+                                        let dot = Path(ellipseIn: CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2))
+                                        context.fill(dot, with: .color(active ? .accentColor : .secondary.opacity(0.22)))
                                     }
                                 }
-
-                                for offset in 0..<360 {
-                                    let index = row * 360 + offset
-                                    let active = index < minutes.count && minutes[index]
-                                    let radius: CGFloat = active ? 1.15 : 0.58
-                                    let center = CGPoint(x: (CGFloat(offset) + 0.5) * minuteWidth, y: baselineY)
-                                    let dot = Path(ellipseIn: CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2))
-                                    context.fill(dot, with: .color(active ? .accentColor : .secondary.opacity(0.22)))
-                                }
-
-                                if let inspectedMinute, inspectedMinute / 360 == row {
-                                    let offset = inspectedMinute % 360
-                                    let x = (CGFloat(offset) + 0.5) * minuteWidth
-                                    var marker = Path()
-                                    marker.move(to: CGPoint(x: x, y: 0))
-                                    marker.addLine(to: CGPoint(x: x, y: size.height))
-                                    context.stroke(marker, with: .color(.primary.opacity(0.55)), lineWidth: 0.8)
-                                }
-                            }
-                            .frame(width: chartWidth, height: 12)
-                            .offset(y: 8)
-
-                            if let inspectedMinute, inspectedMinute / 360 == row {
-                                let active = inspectedMinute < minutes.count && minutes[inspectedMinute]
-                                let minuteX = (CGFloat(inspectedMinute % 360) + 0.5) * chartWidth / 360
-                                Text("\(STGTime.localClockLabel(minute: inspectedMinute)) · \(active ? "Active" : "Inactive")")
-                                    .font(.system(size: 8, weight: .medium, design: .rounded))
-                                    .padding(.horizontal, 5).padding(.vertical, 2)
-                                    .background(.regularMaterial, in: Capsule())
-                                    .position(x: min(chartWidth - 54, max(54, minuteX)), y: 1)
-                                    .allowsHitTesting(false)
+                                .frame(height: 12)
+                                .offset(y: 8)
                             }
                         }
-                        .frame(width: chartWidth, height: 21)
-                        .contentShape(Rectangle())
-                        .simultaneousGesture(
-                            DragGesture(minimumDistance: 0)
-                                .onChanged { value in
-                                    let offset = min(359, max(0, Int(value.location.x / chartWidth * 360)))
-                                    inspectedMinute = row * 360 + offset
-                                }
-                                .onEnded { _ in inspectedMinute = nil }
-                        )
+                        .frame(height: 21)
+                        .accessibilityLabel(segmentAccessibilityLabel(segment))
                     }
                 }
             }
-        }.accessibilityLabel("\(minutes.filter { $0 }.count) used minutes out of \(minutes.count)")
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private var visibleSegments: [Segment] {
+        let dayMinuteCount = min(minutes.count, 1_440)
+        var segments: [Segment] = []
+        var cursor = 0
+        while cursor < dayMinuteCount {
+            guard let firstActive = (cursor..<dayMinuteCount).first(where: { minutes[$0] }) else { break }
+            let start = (firstActive / 60) * 60
+            let end = min(start + 180, 1_440)
+            segments.append(Segment(startMinute: start, endMinute: end))
+            cursor = end
+        }
+        return segments
+    }
+
+    private func segmentAccessibilityLabel(_ segment: Segment) -> String {
+        let used = (segment.startMinute..<min(segment.endMinute, minutes.count)).reduce(into: 0) { count, index in
+            if minutes[index] { count += 1 }
+        }
+        return "\(STGTime.localClockLabel(minute: segment.startMinute)) to \(STGTime.localClockLabel(minute: segment.endMinute)), \(used) used minutes"
     }
 }
 
