@@ -4,11 +4,14 @@ import STGCore
 
 @main
 @MainActor
-final class STGApplication: NSObject, NSApplicationDelegate {
+final class STGApplication: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let model = AppModel()
     private var statusItem: NSStatusItem!
+    private var statusMenu: NSMenu!
+    private var pendingStatusClick: DispatchWorkItem?
     private var windows: [String: NSWindow] = [:]
     private var reminderWindow: NSWindow?
+    private var userRequestedQuit = false
 
     static func main() {
         let app = NSApplication.shared
@@ -17,6 +20,8 @@ final class STGApplication: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        ProcessInfo.processInfo.disableAutomaticTermination("Screen Time Guardian is recording screen availability")
+        ProcessInfo.processInfo.disableSuddenTermination()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.title = "🛡 STG"
         let menu = NSMenu()
@@ -25,13 +30,15 @@ final class STGApplication: NSObject, NSApplicationDelegate {
         add("Settings", #selector(showSettings), to: menu)
         add("Tracking", #selector(showTracking), to: menu)
         add("About", #selector(showAbout), to: menu)
-        add("Export Test Log…", #selector(exportTestLog), to: menu)
         menu.addItem(.separator()); add("Quit", #selector(quit), to: menu)
-        statusItem.menu = menu
+        statusMenu = menu
+        statusItem.button?.target = self; statusItem.button?.action = #selector(statusItemClicked)
+        statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
         NotificationCenter.default.addObserver(forName: .stgReminder, object: nil, queue: .main) { [weak self] note in
             if let decision = note.object as? ReminderDecision { Task { @MainActor in self?.showReminder(decision) } }
         }
-        model.start(); showMain()
+        model.reconcileLaunchAtLogin(trigger: "application_launch")
+        model.start()
     }
 
     private func add(_ title: String, _ action: Selector, to menu: NSMenu) { let item = NSMenuItem(title: title, action: action, keyEquivalent: ""); item.target = self; menu.addItem(item) }
@@ -48,15 +55,58 @@ final class STGApplication: NSObject, NSApplicationDelegate {
     }
     @objc private func showReport() { show("report", title: "STG Report", root: ReportView(model: model)) }
     @objc private func showSettings() { show("settings", title: "STG Settings", root: SettingsView(model: model) { [weak self] in self?.windows["settings"]?.close() }) }
-    @objc private func showAbout() { show("about", title: "About STG", root: AboutView { [weak self] in self?.model.exportTestLog() }) }
+    @objc private func showAbout() { show("about", title: "About STG", root: AboutView()) }
     @objc private func showTracking() { show("tracking", title: "STG Tracking", root: TrackingView(model: model)) }
-    @objc private func exportTestLog() { model.exportTestLog() }
-    @objc private func quit() { model.stop(); NSApp.terminate(nil) }
+    @objc private func quit() { userRequestedQuit = true; NSApp.terminate(nil) }
+
+    @objc private func statusItemClicked() {
+        guard let event = NSApp.currentEvent else { return }
+        if event.type == .leftMouseUp && event.clickCount >= 2 {
+            pendingStatusClick?.cancel(); pendingStatusClick = nil; showMain(); return
+        }
+        if event.type == .rightMouseUp { showStatusMenu(); return }
+        pendingStatusClick?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.showStatusMenu() }
+        pendingStatusClick = work; DispatchQueue.main.asyncAfter(deadline: .now() + NSEvent.doubleClickInterval, execute: work)
+    }
+
+    private func showStatusMenu() {
+        pendingStatusClick = nil
+        guard let button = statusItem.button else { return }
+        statusMenu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height + 3), in: button)
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { if !flag { showMain() }; return true }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        model.stop(reason: userRequestedQuit ? "menu_quit" : "application_will_terminate")
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        DispatchQueue.main.async { [weak self] in self?.returnToMenuBarIfNoVisibleWindows() }
+    }
 
     private func show<V: View>(_ key: String, title: String, root: V) {
-        let window = windows[key] ?? NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 500), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-        window.title = title; window.contentView = NSHostingView(rootView: root); window.center(); window.isReleasedWhenClosed = false
-        windows[key] = window; NSApp.activate(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil)
+        let requestedSize: NSSize = key == "report" ? .init(width: 1_180, height: 760) : key == "tracking" ? .init(width: 1_120, height: 720) : key == "settings" ? .init(width: 860, height: 700) : .init(width: 720, height: 500)
+        let isNewWindow = windows[key] == nil
+        let window = windows[key] ?? NSWindow(contentRect: NSRect(origin: .zero, size: requestedSize), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+        window.title = title; window.contentView = NSHostingView(rootView: root); window.isReleasedWhenClosed = false; window.delegate = self
+        if isNewWindow {
+            if let visible = NSScreen.main?.visibleFrame {
+                window.setContentSize(.init(width: min(requestedSize.width, visible.width - 32), height: min(requestedSize.height, visible.height - 32)))
+            }
+            window.center()
+        }
+        windows[key] = window
+        if NSApp.activationPolicy() != .regular { NSApp.setActivationPolicy(.regular) }
+        NSApp.activate(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil)
+    }
+
+    private func returnToMenuBarIfNoVisibleWindows() {
+        let hasVisibleWindow = windows.values.contains { $0.isVisible || $0.isMiniaturized }
+        guard !hasVisibleWindow, NSApp.activationPolicy() != .accessory else { return }
+        NSApp.setActivationPolicy(.accessory)
     }
 
     private func showReminder(_ originalDecision: ReminderDecision) {

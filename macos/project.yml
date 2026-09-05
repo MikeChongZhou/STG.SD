@@ -42,6 +42,7 @@ targets:
       - sdk: AuthenticationServices.framework
       - sdk: IOKit.framework
       - sdk: Security.framework
+      - sdk: ServiceManagement.framework
       - sdk: UniformTypeIdentifiers.framework
 schemes:
   STGMac:

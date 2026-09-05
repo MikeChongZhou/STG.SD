@@ -9,7 +9,7 @@ let package = Package(
         .executableTarget(
             name: "STGMac",
             dependencies: [.product(name: "STGCore", package: "STGCore")],
-            linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("CoreAudio"), .linkedFramework("IOKit"), .linkedFramework("Security")]
+            linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("CoreAudio"), .linkedFramework("IOKit"), .linkedFramework("Security"), .linkedFramework("ServiceManagement")]
         )
     ],
     swiftLanguageModes: [.v5]

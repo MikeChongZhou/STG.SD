@@ -1,6 +1,7 @@
 import AppKit
 import AuthenticationServices
 import Combine
+import ServiceManagement
 import STGCore
 
 @MainActor
@@ -16,6 +17,7 @@ final class AppModel: ObservableObject {
     @Published var oneDriveUserCode: String?
     @Published var googleDriveAccountLabel = UserDefaults.standard.string(forKey: "googleDriveAccountLabel") ?? "Not signed in"
     @Published var iCloudAccountLabel = FileManager.default.ubiquityIdentityToken == nil ? "Not signed in" : "System Apple Account"
+    @Published var launchAtLoginStatus = "Checking login-item status…"
 
     let repository: BitmapRepository?
     let diagnosticLog: DiagnosticLog
@@ -29,11 +31,23 @@ final class AppModel: ObservableObject {
     private let reminderEngine = ReminderEngine()
     private var timer: Timer?
     private var observers: [NSObjectProtocol] = []
+    private let sessionID: String
+    private var terminationRecorded = false
+    var currentReportTimeZone: String { TimeZone.current.identifier }
+
+    private static let sessionIDKey = "runtime_session_id"
+    private static let sessionStartedAtKey = "runtime_session_started_at"
+    private static let sessionHeartbeatAtKey = "runtime_session_heartbeat_at"
+    private static let sessionCleanShutdownKey = "runtime_session_clean_shutdown"
+    private static let sessionTerminationReasonKey = "runtime_session_termination_reason"
 
     init() {
+        sessionID = UUID().uuidString.lowercased()
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("ScreenTimeGuardian", isDirectory: true)
         settingsStore = SettingsStore(applicationSupport: support)
-        settings = settingsStore.load()
+        var loadedSettings = settingsStore.load()
+        loadedSettings.reportTimeZone = TimeZone.current.identifier
+        settings = loadedSettings
         diagnosticLog = DiagnosticLog(directory: support.appendingPathComponent("Diagnostics", isDirectory: true))
         repository = try? BitmapRepository(url: support.appendingPathComponent("stg.sqlite"))
         if let repository, let storedState = try? repository.reminderState(deviceID: settings.deviceID) {
@@ -42,7 +56,26 @@ final class AppModel: ObservableObject {
         }
         let provider = settings.syncProvider ?? .none
         if provider != .none { syncStatus = isConnected(provider) ? "\(provider.displayName) connected" : "\(provider.displayName) account sign-in required" }
-        diagnosticLog.record("launch; repository=\(repository == nil ? "unavailable" : "ready"); provider=\(provider.rawValue); device=\(settings.deviceID.prefix(8))", category: "lifecycle")
+        let runtimeDefaults = UserDefaults.standard
+        let previousSessionID = runtimeDefaults.string(forKey: Self.sessionIDKey)
+        let previousStartedAt = runtimeDefaults.object(forKey: Self.sessionStartedAtKey) as? Date
+        let previousHeartbeatAt = runtimeDefaults.object(forKey: Self.sessionHeartbeatAtKey) as? Date
+        let previousCleanShutdown = runtimeDefaults.object(forKey: Self.sessionCleanShutdownKey) as? Bool
+        let previousTerminationReason = runtimeDefaults.string(forKey: Self.sessionTerminationReasonKey)
+        if let previousSessionID, previousCleanShutdown == false {
+            diagnosticLog.record(
+                "previous session ended without clean shutdown; previous_session=\(previousSessionID); previous_started_at=\(previousStartedAt?.ISO8601Format() ?? "unknown"); previous_heartbeat_at=\(previousHeartbeatAt?.ISO8601Format() ?? "unknown"); previous_termination_reason=\(previousTerminationReason ?? "none"); previous_session_unclean=true",
+                category: "lifecycle"
+            )
+        }
+        let launchedAt = Date()
+        runtimeDefaults.set(sessionID, forKey: Self.sessionIDKey)
+        runtimeDefaults.set(launchedAt, forKey: Self.sessionStartedAtKey)
+        runtimeDefaults.set(launchedAt, forKey: Self.sessionHeartbeatAtKey)
+        runtimeDefaults.set(false, forKey: Self.sessionCleanShutdownKey)
+        runtimeDefaults.removeObject(forKey: Self.sessionTerminationReasonKey)
+        runtimeDefaults.synchronize()
+        diagnosticLog.record("launch; session=\(sessionID); repository=\(repository == nil ? "unavailable" : "ready"); provider=\(provider.rawValue); device=\(settings.deviceID.prefix(8))", category: "lifecycle")
         if repository == nil { syncStatus = "Database unavailable; export the test log" }
         configureWorkspaceObservers()
         Task {
@@ -55,20 +88,48 @@ final class AppModel: ObservableObject {
     }
 
     func start() {
-        diagnosticLog.record("minute recorder started; screen_available=\(isScreenAvailable)", category: "lifecycle")
-        timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in Task { @MainActor in await self?.tick() } }
+        diagnosticLog.record("minute recorder started; session=\(sessionID); screen_available=\(isScreenAvailable)", category: "lifecycle")
+        installMinuteTimer()
         Task { await tick() }
     }
 
-    func stop() { diagnosticLog.record("minute recorder stopped", category: "lifecycle"); timer?.invalidate(); timer = nil }
+    func stop(reason: String) {
+        guard !terminationRecorded else { return }
+        terminationRecorded = true
+        timer?.invalidate(); timer = nil
+        let stoppedAt = Date()
+        diagnosticLog.record("minute recorder stopped; session=\(sessionID); reason=\(reason); clean_shutdown=true", category: "lifecycle")
+        let runtimeDefaults = UserDefaults.standard
+        runtimeDefaults.set(stoppedAt, forKey: Self.sessionHeartbeatAtKey)
+        runtimeDefaults.set(true, forKey: Self.sessionCleanShutdownKey)
+        runtimeDefaults.set(reason, forKey: Self.sessionTerminationReasonKey)
+        runtimeDefaults.synchronize()
+    }
+
+    func reconcileLaunchAtLogin(trigger: String) {
+        let service = SMAppService.mainApp
+        do {
+            if settings.launchAtLogin {
+                if service.status == .notRegistered || service.status == .notFound { try service.register() }
+            } else if service.status == .enabled || service.status == .requiresApproval {
+                try service.unregister()
+            }
+            launchAtLoginStatus = Self.loginItemDescription(service.status, requested: settings.launchAtLogin)
+            diagnosticLog.record("login item reconciled; trigger=\(trigger); requested=\(settings.launchAtLogin); status=\(service.status.rawValue)", category: "lifecycle")
+        } catch {
+            launchAtLoginStatus = "Login-item update failed: \(error.localizedDescription)"
+            diagnosticLog.record("login item reconciliation failed; trigger=\(trigger); requested=\(settings.launchAtLogin); status=\(service.status.rawValue); error_type=\(String(reflecting: type(of: error))); error=\(error.localizedDescription)", category: "lifecycle")
+        }
+    }
 
     func saveSettings() {
+        settings.reportTimeZone = currentReportTimeZone
         settings.updatedAt = .now
         do {
             try settingsStore.save(settings)
             try repository?.upsertDevice(DeviceRecord(deviceID: settings.deviceID, name: settings.deviceName, kind: settings.deviceKind, updatedAt: settings.updatedAt))
             diagnosticLog.record("settings saved; plan=\(settings.dailyPlanMinutes)m; timezone=\(settings.reportTimeZone); provider=\((settings.syncProvider ?? .none).rawValue); meeting=\(settings.meetingMode)")
+            reconcileLaunchAtLogin(trigger: "settings_save")
         }
         catch { syncStatus = "Settings save failed: \(error.localizedDescription)"; diagnosticLog.record(syncStatus, category: "error") }
     }
@@ -128,7 +189,7 @@ final class AppModel: ObservableObject {
         let deviceID = settings.deviceID
         let deviceName = settings.deviceName
         let deviceUpdatedAt = settings.updatedAt
-        let timeZoneID = settings.reportTimeZone
+        let timeZoneID = currentReportTimeZone
         let provider = settings.syncProvider ?? .none
         let syncEnabled = isConnected(provider)
         diagnosticLog.record("refresh begin; timezone=\(timeZoneID); sync_enabled=\(syncEnabled)", category: "report")
@@ -167,7 +228,7 @@ final class AppModel: ObservableObject {
 
     func reportDay(at instant: Date) async -> [DeviceDayBitmap] {
         guard let repository else { return [] }
-        let deviceID = settings.deviceID, deviceName = settings.deviceName, kind = settings.deviceKind, zone = settings.reportTimeZone
+        let deviceID = settings.deviceID, deviceName = settings.deviceName, kind = settings.deviceKind, zone = currentReportTimeZone
         let includeSynced = isConnected(settings.syncProvider ?? .none)
         do {
             let result = try await Task.detached(priority: .userInitiated) {
@@ -180,7 +241,7 @@ final class AppModel: ObservableObject {
 
     func multiDayReport(from start: Date, through end: Date) async -> [DailyUsagePoint] {
         guard let repository else { return [] }
-        let deviceID = settings.deviceID, deviceName = settings.deviceName, kind = settings.deviceKind, zone = settings.reportTimeZone
+        let deviceID = settings.deviceID, deviceName = settings.deviceName, kind = settings.deviceKind, zone = currentReportTimeZone
         let includeSynced = isConnected(settings.syncProvider ?? .none)
         do {
             let points = try await Task.detached(priority: .userInitiated) {
@@ -221,8 +282,8 @@ final class AppModel: ObservableObject {
         (try? repository?.openRouterWeeks(models: models)) ?? []
     }
 
-    func latestOpenRouterTopModels() -> [String] {
-        (try? repository?.latestOpenRouterTopModels(limit: 10)) ?? []
+    func latestOpenRouterTopModels(metric: OpenRouterWeeklyMetric) -> [String] {
+        (try? repository?.latestOpenRouterTopModels(metric: metric, limit: 10)) ?? []
     }
 
     private static func dateLabel(_ date: Date, zone: String) -> String { let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX"); formatter.timeZone = TimeZone(identifier: zone) ?? .current; formatter.dateFormat = "yyyy-MM-dd"; return formatter.string(from: date) }
@@ -230,6 +291,7 @@ final class AppModel: ObservableObject {
     private func tick() async {
         guard let repository else { return }
         let now = Date()
+        markSessionHeartbeat(at: now)
         let previousWasUsed: Bool
         do {
             let previous = now.addingTimeInterval(-60)
@@ -259,8 +321,52 @@ final class AppModel: ObservableObject {
         let center = NSWorkspace.shared.notificationCenter
         let unavailable: [NSNotification.Name] = [NSWorkspace.screensDidSleepNotification, NSWorkspace.sessionDidResignActiveNotification, NSWorkspace.willSleepNotification]
         let available: [NSNotification.Name] = [NSWorkspace.screensDidWakeNotification, NSWorkspace.sessionDidBecomeActiveNotification, NSWorkspace.didWakeNotification]
-        for name in unavailable { observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in Task { @MainActor in self?.diagnosticLog.record("screen unavailable: \(note.name.rawValue)", category: "lifecycle"); self?.isScreenAvailable = false } }) }
-        for name in available { observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in Task { @MainActor in self?.diagnosticLog.record("screen available: \(note.name.rawValue)", category: "lifecycle"); self?.isScreenAvailable = true; await self?.synchronize() } }) }
+        for name in unavailable { observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in Task { @MainActor in self?.handleScreenUnavailable(note.name.rawValue) } }) }
+        for name in available { observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in Task { @MainActor in self?.handleScreenAvailable(note.name.rawValue) } }) }
+    }
+
+    private func installMinuteTimer() {
+        guard timer == nil else { return }
+        timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in Task { @MainActor in await self?.tick() } }
+    }
+
+    private func handleScreenUnavailable(_ notificationName: String) {
+        let wasRunning = timer != nil
+        isScreenAvailable = false
+        timer?.invalidate(); timer = nil
+        markSessionHeartbeat(at: Date(), flush: true)
+        diagnosticLog.record("screen unavailable; notification=\(notificationName); minute_timer_paused=\(wasRunning)", category: "lifecycle")
+    }
+
+    private func handleScreenAvailable(_ notificationName: String) {
+        let requiresResume = !isScreenAvailable || timer == nil
+        isScreenAvailable = true
+        guard requiresResume else {
+            diagnosticLog.record("screen available callback coalesced; notification=\(notificationName); minute_timer_running=true", category: "lifecycle")
+            return
+        }
+        installMinuteTimer()
+        diagnosticLog.record("screen available; notification=\(notificationName); minute_timer_resumed=true; immediate_tick=true; immediate_sync=true", category: "lifecycle")
+        Task {
+            await tick()
+            await synchronize()
+        }
+    }
+
+    private func markSessionHeartbeat(at date: Date, flush: Bool = false) {
+        let runtimeDefaults = UserDefaults.standard
+        runtimeDefaults.set(date, forKey: Self.sessionHeartbeatAtKey)
+        if flush { runtimeDefaults.synchronize() }
+    }
+
+    private static func loginItemDescription(_ status: SMAppService.Status, requested: Bool) -> String {
+        switch status {
+        case .enabled: return "Starts automatically at login"
+        case .requiresApproval: return "Allow Screen Time Guardian in System Settings › General › Login Items"
+        case .notRegistered: return requested ? "Login item is not registered" : "Does not start automatically"
+        case .notFound: return "Install Screen Time Guardian in Applications before enabling login startup"
+        @unknown default: return "Login-item status is unavailable"
+        }
     }
 
     func exportTestLog() {
