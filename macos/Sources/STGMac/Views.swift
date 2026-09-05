@@ -15,8 +15,8 @@ struct DashboardView: View {
                 LazyVGrid(columns: [.init(.flexible()), .init(.flexible())], spacing: 14) {
                     card("Report", "All devices today: \(duration(model.allMinutes))\nThis Mac: \(duration(model.localMinutes))\nPlan: \(duration(model.settings.dailyPlanMinutes))", "chart.bar.fill") { open(.report) }
                     card("Tracking", "OpenRouter public model rankings\nNo API key needed", "waveform.path.ecg") { open(.tracking) }
-                    card("Settings", "Report timezone: \(model.settings.reportTimeZone)\nMeeting mode: \(model.settings.meetingMode ? "On" : "Off")", "gearshape.fill") { open(.settings) }
-                    card("About", "Version 1.1.6\nLocal + private cloud", "info.circle.fill") { open(.about) }
+                    card("Settings", "Daily plan: \(duration(model.settings.dailyPlanMinutes))\nMeeting mode: \(model.settings.meetingMode ? "On" : "Off")", "gearshape.fill") { open(.settings) }
+                    card("About", "Version 1.1.7\nLocal + private cloud", "info.circle.fill") { open(.about) }
                 }
                 HStack {
                     Circle().fill(model.isScreenAvailable ? .green : .gray).frame(width: 8)
@@ -47,10 +47,9 @@ struct SettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     Text("Settings").font(.largeTitle.bold())
-                    GroupBox("Plan and report") {
+                    GroupBox("Plan") {
                         Grid(alignment: .leading, horizontalSpacing: 22, verticalSpacing: 14) {
                             GridRow { Text("Daily plan").foregroundStyle(.secondary); HStack { Stepper("Hours: \(draft.dailyPlanMinutes / 60)", value: planHours, in: 0...24); Stepper("Minutes: \(draft.dailyPlanMinutes % 60)", value: planMinutes, in: 0...59, step: 5) }.fixedSize() }
-                            GridRow { Text("Report timezone").foregroundStyle(.secondary); TextField("IANA timezone", text: $draft.reportTimeZone).frame(minWidth: 360) }
                         }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
                     }
                     GroupBox("Reminder close countdowns") {
@@ -69,6 +68,12 @@ struct SettingsView: View {
                                 Text(model.syncStatus).font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer(); Button("Configure…") { showCloudSetup = true }
+                        }.padding(8)
+                    }
+                    GroupBox("Diagnostics") {
+                        HStack {
+                            Text("Export lifecycle, screen-use, reminder, database, and synchronization events without cloud credentials.").foregroundStyle(.secondary)
+                            Spacer(); Button("Export Test Log…") { model.exportTestLog() }
                         }.padding(8)
                     }
                 }.padding(28)
@@ -138,45 +143,66 @@ struct ReportView: View {
     @State private var dailyBitmaps: [DeviceDayBitmap] = []
     @State private var multiDayPoints: [DailyUsagePoint] = []
     @State private var loading = false
+    @State private var showDailyCalendar = false
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack { Text("Screen Time Report").font(.largeTitle.bold()); Spacer(); Picker("Report type", selection: $mode) { Text("Daily").tag(0); Text("Multiple days").tag(1) }.pickerStyle(.segmented).frame(width: 300) }
-            Text("Report timezone: \(model.settings.reportTimeZone)").foregroundStyle(.secondary)
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 20) {
-                    if mode == 0 {
-                        DatePicker("Report date", selection: $selectedDate, displayedComponents: .date).frame(maxWidth: 260)
-                        HStack(spacing: 12) {
-                            summaryMetric("All devices", dailyBitmaps.first(where: { $0.isAggregate })?.usedMinutes ?? 0)
-                            summaryMetric("This Mac", dailyBitmaps.first(where: { $0.deviceID == model.settings.deviceID })?.usedMinutes ?? 0)
-                            summaryMetric("Daily plan", model.settings.dailyPlanMinutes)
-                        }
-                        ForEach(dailyBitmaps) { bitmap in
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack { Text(bitmap.displayName).font(.headline); Spacer(); Text(duration(bitmap.usedMinutes)).monospacedDigit() }
-                                MinuteBitmapView(minutes: bitmap.minutes)
-                                Text("Active intervals: \(usageIntervals(bitmap.minutes, timeZoneID: model.settings.reportTimeZone))").font(.caption).textSelection(.enabled)
-                            }.padding(14).background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
-                        }
-                    } else {
-                        HStack { DatePicker("Start", selection: $rangeStart, displayedComponents: .date); DatePicker("End", selection: $rangeEnd, displayedComponents: .date); Spacer() }
-                        Text("One line per device; All devices is the deduplicated device-set line.").font(.caption).foregroundStyle(.secondary)
-                        Chart(multiDayPoints) { point in
-                            LineMark(x: .value("Date", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName)).symbol(by: .value("Device", point.displayName))
-                            PointMark(x: .value("Date", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName))
-                        }.chartYAxis { AxisMarks(position: .leading) { value in AxisGridLine(); AxisTick(); AxisValueLabel { if let minutes = value.as(Int.self) { Text(duration(minutes)) } } } }.chartLegend(position: .bottom, alignment: .leading).frame(height: 360).padding().background(.quaternary.opacity(0.25), in: RoundedRectangle(cornerRadius: 12))
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 10) {
+                Text("Screen Time Report").font(.title.bold())
+                if mode == 0 {
+                    summaryMetric("All devices", dailyBitmaps.first(where: { $0.isAggregate })?.usedMinutes ?? 0)
+                    summaryMetric("This Mac", dailyBitmaps.first(where: { $0.deviceID == model.settings.deviceID })?.usedMinutes ?? 0)
+                    summaryMetric("Plan", model.settings.dailyPlanMinutes)
+                }
+                Spacer()
+                Button("Sync now") { Task { await model.synchronize(); await reload() } }
+                Button("Export CSV…") { exportReportCSV(text: reportCSV) }
+            }
+            HStack(spacing: 12) {
+                Picker("Report type", selection: $mode) { Text("Daily").tag(0); Text("Multiple days").tag(1) }.pickerStyle(.segmented).frame(width: 250)
+                if mode == 0 {
+                    Button { showDailyCalendar.toggle() } label: {
+                        HStack(spacing: 7) { Image(systemName: "calendar"); Text(selectedDate.formatted(date: .numeric, time: .omitted)).monospacedDigit() }
+                    }.popover(isPresented: $showDailyCalendar, arrowEdge: .bottom) {
+                        DatePicker("Report date", selection: $selectedDate, displayedComponents: .date).datePickerStyle(.graphical).labelsHidden().padding(14)
+                            .onChange(of: selectedDate) { _, _ in showDailyCalendar = false }
                     }
+                } else {
+                    DatePicker("Start", selection: $rangeStart, displayedComponents: .date)
+                    DatePicker("End", selection: $rangeEnd, displayedComponents: .date)
+                }
+                Spacer()
+            }
+            GeometryReader { viewport in
+                ScrollView([.horizontal, .vertical]) {
+                    LazyVStack(alignment: .leading, spacing: 12) {
+                        if mode == 0 {
+                            ForEach(dailyBitmaps) { bitmap in
+                                let cardHeight = dailyCardHeight(availableHeight: viewport.size.height)
+                                VStack(alignment: .leading, spacing: 7) {
+                                    (Text("\(bitmap.displayName), \(duration(bitmap.usedMinutes)).  ").fontWeight(.semibold) + Text("Active intervals: \(usageIntervals(bitmap.minutes, timeZoneID: model.currentReportTimeZone))"))
+                                        .font(.callout).textSelection(.enabled)
+                                    MinuteBitmapView(minutes: bitmap.minutes, rowHeight: bitmapRowHeight(cardHeight: cardHeight))
+                                }
+                                .frame(minHeight: max(96, cardHeight - 20), alignment: .topLeading)
+                                .padding(.horizontal, 12).padding(.vertical, 10)
+                                .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 11))
+                            }
+                        } else {
+                            Chart(multiDayPoints) { point in
+                                LineMark(x: .value("Date", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName)).symbol(by: .value("Device", point.displayName))
+                                PointMark(x: .value("Date", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName))
+                            }.chartYAxis { AxisMarks(position: .leading) { value in AxisGridLine(); AxisTick(); AxisValueLabel { if let minutes = value.as(Int.self) { Text(duration(minutes)) } } } }.chartLegend(position: .bottom, alignment: .leading)
+                                .frame(height: max(390, viewport.size.height - 4)).padding().background(.quaternary.opacity(0.25), in: RoundedRectangle(cornerRadius: 12))
+                        }
+                    }
+                    .frame(width: max(940, viewport.size.width - 1), alignment: .topLeading)
                 }
             }
             HStack {
                 Text(model.syncStatus).font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                Button("Sync now") { Task { await model.synchronize() } }
-                Button("Refresh") { Task { await reload() } }
-                Button("Copy") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(reportCSV, forType: .string) }
-                Button("Export CSV") { exportReportCSV(text: reportCSV) }
+                Spacer(); if loading { ProgressView().controlSize(.small) }
             }
-        }.padding(28).frame(minWidth: 900, minHeight: 650).task { await reload() }
+        }.padding(18).frame(minWidth: 980, minHeight: 620).task { await reload() }
             .onChange(of: mode) { _, _ in Task { await reload() } }
             .onChange(of: selectedDate) { _, _ in if mode == 0 { Task { await reloadDaily() } } }
             .onChange(of: rangeStart) { _, _ in if mode == 1 { Task { await reloadMultiple() } } }
@@ -184,45 +210,48 @@ struct ReportView: View {
     }
 
     private func summaryMetric(_ title: String, _ minutes: Int) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(title).font(.caption).foregroundStyle(.secondary)
-            Text(duration(minutes)).font(.title2.bold()).monospacedDigit()
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 10))
+        HStack(spacing: 5) { Text(title.uppercased()).font(.caption2).foregroundStyle(.secondary); Text(duration(minutes)).font(.headline).monospacedDigit() }
+            .padding(.horizontal, 9).padding(.vertical, 6).background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 9))
     }
     private func reload() async { if mode == 0 { await reloadDaily() } else { await reloadMultiple() } }
-    private func reloadDaily() async { loading = true; dailyBitmaps = await model.reportDay(at: macReportInstant(selectedDate, zone: model.settings.reportTimeZone)); loading = false }
-    private func reloadMultiple() async { loading = true; multiDayPoints = await model.multiDayReport(from: macReportInstant(rangeStart, zone: model.settings.reportTimeZone), through: macReportInstant(rangeEnd, zone: model.settings.reportTimeZone)); loading = false }
+    private func reloadDaily() async { loading = true; dailyBitmaps = await model.reportDay(at: macReportInstant(selectedDate, zone: model.currentReportTimeZone)); loading = false }
+    private func reloadMultiple() async { loading = true; multiDayPoints = await model.multiDayReport(from: macReportInstant(rangeStart, zone: model.currentReportTimeZone), through: macReportInstant(rangeEnd, zone: model.currentReportTimeZone)); loading = false }
     private var reportCSV: String {
-        if mode == 1 { return (["date,device_id,device_name,minutes,report_timezone,estimated"] + multiDayPoints.map { "\($0.dateLabel),\($0.deviceID),\($0.displayName.replacingOccurrences(of: ",", with: " ")),\($0.minutes),\(model.settings.reportTimeZone),true" }).joined(separator: "\n") + "\n" }
-        let date = macReportDateString(selectedDate, zone: model.settings.reportTimeZone)
-        return (["date,device_id,device_name,minutes,report_timezone,estimated,bitmap"] + dailyBitmaps.map { bitmap in "\(date),\(bitmap.deviceID),\(bitmap.displayName.replacingOccurrences(of: ",", with: " ")),\(bitmap.usedMinutes),\(model.settings.reportTimeZone),true,\(bitmap.minutes.map { $0 ? "1" : "0" }.joined())" }).joined(separator: "\n") + "\n"
+        if mode == 1 { return (["date,device_id,device_name,minutes,report_timezone,estimated"] + multiDayPoints.map { "\($0.dateLabel),\($0.deviceID),\($0.displayName.replacingOccurrences(of: ",", with: " ")),\($0.minutes),\(model.currentReportTimeZone),true" }).joined(separator: "\n") + "\n" }
+        let date = macReportDateString(selectedDate, zone: model.currentReportTimeZone)
+        return (["date,device_id,device_name,minutes,report_timezone,estimated,bitmap"] + dailyBitmaps.map { bitmap in "\(date),\(bitmap.deviceID),\(bitmap.displayName.replacingOccurrences(of: ",", with: " ")),\(bitmap.usedMinutes),\(model.currentReportTimeZone),true,\(bitmap.minutes.map { $0 ? "1" : "0" }.joined())" }).joined(separator: "\n") + "\n"
     }
+
+    private func dailyCardHeight(availableHeight: CGFloat) -> CGFloat {
+        let count = CGFloat(max(dailyBitmaps.count, 1))
+        return min(180, max(116, (availableHeight - max(0, count - 1) * 12) / count))
+    }
+
+    private func bitmapRowHeight(cardHeight: CGFloat) -> CGFloat { min(28, max(19, (cardHeight - 50) / 4)) }
 }
 
 struct MinuteBitmapView: View {
     let minutes: [Bool]
+    var rowHeight: CGFloat = 19
     var body: some View {
-        ScrollView(.horizontal) {
-            VStack(alignment: .leading, spacing: 5) {
-                ForEach(0..<4, id: \.self) { row in
-                    HStack(spacing: 7) {
-                        Text(String(format: "%02d–%02d", row * 6, (row + 1) * 6)).font(.caption2).frame(width: 42, alignment: .leading)
-                        VStack(spacing: 1) {
-                            HStack(spacing: 0) { ForEach(0..<6, id: \.self) { hour in Text(String(format: "%02d:00", row * 6 + hour)).font(.system(size: 8)).frame(width: 150, alignment: .leading) } }
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(0..<4, id: \.self) { row in
+                HStack(spacing: 7) {
+                    Text(String(format: "%02d–%02d", row * 6, (row + 1) * 6)).font(.system(size: 9)).frame(width: 38, alignment: .leading)
+                    GeometryReader { proxy in
+                        ZStack(alignment: .topLeading) {
+                            ForEach(0..<6, id: \.self) { hour in Text(String(format: "%02d", row * 6 + hour)).font(.system(size: 7)).position(x: CGFloat(hour) * proxy.size.width / 6 + 7, y: 4) }
                             Canvas { context, size in
                                 let cellWidth = size.width / 360
                                 for offset in 0..<360 {
                                     let index = row * 360 + offset
-                                    let rect = CGRect(x: CGFloat(offset) * cellWidth, y: 0, width: max(1, cellWidth - 0.35), height: size.height)
+                                    let rect = CGRect(x: CGFloat(offset) * cellWidth, y: 0, width: max(1, cellWidth - 0.25), height: size.height)
                                     context.fill(Path(rect), with: .color(index < minutes.count && minutes[index] ? .accentColor : Color.secondary.opacity(0.14)))
                                 }
                                 for hour in 0...6 { let x = CGFloat(hour) * size.width / 6; var path = Path(); path.move(to: .init(x: x, y: 0)); path.addLine(to: .init(x: x, y: size.height)); context.stroke(path, with: .color(.secondary.opacity(0.45)), lineWidth: 0.5) }
-                            }.frame(width: 900, height: 12)
+                            }.frame(height: 10).offset(y: 8)
                         }
-                    }
+                    }.frame(height: rowHeight)
                 }
             }
         }.accessibilityLabel("\(minutes.filter { $0 }.count) used minutes out of \(minutes.count)")
@@ -230,18 +259,17 @@ struct MinuteBitmapView: View {
 }
 
 struct AboutView: View {
-    let exportLog: () -> Void
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 HStack { Spacer(); Image(systemName: "shield.lefthalf.filled").font(.system(size: 56)).foregroundStyle(.blue); Spacer() }
                 Text("Screen Time Guardian").font(.title.bold()).frame(maxWidth: .infinity)
-                Text("Version 1.1.6 · Developer: TimberTrail\nCopyright © 2026 TimberTrail.")
+                Text("Version 1.1.7 · Developer: TimberTrail\nCopyright © 2026 TimberTrail.")
                 Text("Screen Time Guardian records minute-level screen-use estimates, reminds you to rest, and can combine data from your own devices.")
                 Text("Privacy: screen-use data remains on this device and in the private-cloud account you explicitly authorize. It is not uploaded to the app developer.")
                 Text("Accuracy: iOS minute maps and cross-device deduplication are estimates. Daily reminder calculations reset at local midnight.")
                 Text("Open-source claim: this application includes SQLite (public domain) and Apple Swift open-source runtime components. Their copyright notices and license terms are preserved in THIRD_PARTY_NOTICES.md. STG does not claim ownership of those components.")
-                HStack { Button("Export Test Log…", action: exportLog); Link("Open-source licenses", destination: URL(string: "https://www.swift.org/LICENSE.txt")!) }
+                Link("Open-source licenses", destination: URL(string: "https://www.swift.org/LICENSE.txt")!)
             }.padding(30)
         }.frame(width: 580, height: 500)
     }
@@ -254,7 +282,7 @@ struct TrackingView: View {
     @State private var status = "Public data; no OpenRouter account or API key is needed."
     @State private var viewIndex = 1
     @State private var customStart = Calendar.current.date(byAdding: .day, value: -7, to: .now) ?? .now
-    @State private var metric: WeeklyTrackingMetric = .totalTokens
+    @State private var metric: OpenRouterWeeklyMetric = .totalTokens
     @State private var sortField: TrackingSortField = .rank
     @State private var sortDirection: TrackingSortDirection = .ascending
     @State private var startDate = ""
@@ -276,7 +304,7 @@ struct TrackingView: View {
                 Text("Prices are OpenRouter's observed effective weighted prices (including cache and provider discounts). Revenue is an estimate, not OpenRouter financial reporting.").font(.caption).foregroundStyle(.secondary)
             } else {
                 HStack {
-                    Picker("Value", selection: $metric) { ForEach(WeeklyTrackingMetric.allCases) { Text($0.label).tag($0) } }.frame(width: 260)
+                    Picker("Value", selection: $metric) { ForEach(OpenRouterWeeklyMetric.allCases) { Text($0.label).tag($0) } }.frame(width: 260)
                     Spacer(); Button("Export CSV…") { exportWeeklyTrackingCSV(rows: weeklyRows) }.disabled(weeklyRows.isEmpty)
                     Text("Updated by the weekly action in incremental sync").font(.caption).foregroundStyle(.secondary)
                 }
@@ -298,6 +326,7 @@ struct TrackingView: View {
                 if value == 0 && rows.isEmpty { Task { await refresh() } }
                 else if value == 1 { loadWeeks() }
             }
+            .onChange(of: metric) { _, _ in if viewIndex == 1 { loadWeeks() } }
     }
     private var sortedRows: [OpenRouterRankingRow] { sortedOpenRouterRows(rows, by: sortField, direction: sortDirection) }
     private var trackingHeader: some View {
@@ -326,22 +355,14 @@ struct TrackingView: View {
             let end = Calendar.current.date(byAdding: .day, value: -1, to: .now) ?? .now
             let snapshot = try await OpenRouterTrackingService.shared.top20(startDate: trackingDateString(customStart), endDate: trackingDateString(end))
             rows = snapshot.rows; startDate = snapshot.startDate; endDate = snapshot.endDate; status = "\(snapshot.startDate) – \(snapshot.endDate) UTC · \(snapshot.citation)"; model.diagnosticLog.record("OpenRouter refresh complete; window=\(snapshot.startDate)...\(snapshot.endDate); rows=\(snapshot.rows.count)", category: "tracking")
-            loadWeeks()
         }
         catch { status = error.localizedDescription; model.diagnosticLog.record("OpenRouter refresh failed: \(error.localizedDescription)", category: "tracking") }
     }
     private func loadWeeks() {
-        let models = rows.isEmpty ? model.latestOpenRouterTopModels() : Array(rows.sorted { $0.rank < $1.rank }.prefix(10).map(\.modelPermaslug))
+        let models = model.latestOpenRouterTopModels(metric: metric)
         weeklyRows = model.openRouterWeeks(models: models)
-        status = weeklyRows.isEmpty ? "Weekly data will be collected by the weekly action during incremental sync." : "Showing saved weekly data for the latest Top 10 models. Historical seed data contains Rank and Total tokens; OpenRouter does not publish its historical input/output split and returned no rows for 2025-06-15 or 2025-07-15."
+        status = weeklyRows.isEmpty ? "No saved weekly data contains \(metric.label). The weekly action will add it when OpenRouter publishes that field." : "Showing all saved weeks for the latest completed week's \(metric.label) Top \(models.count)."
     }
-}
-
-private enum WeeklyTrackingMetric: String, CaseIterable, Identifiable {
-    case rank, promptTokens, completionTokens, totalTokens, promptPrice, completionPrice, revenue
-    var id: String { rawValue }
-    var label: String { switch self { case .rank: "Rank"; case .promptTokens: "Input tokens"; case .completionTokens: "Output tokens"; case .totalTokens: "Total tokens"; case .promptPrice: "Input price / M"; case .completionPrice: "Output price / M"; case .revenue: "Revenue" } }
-    func value(_ row: OpenRouterWeeklyRankingRow) -> Double? { switch self { case .rank: Double(row.rank); case .promptTokens: row.hasTokenBreakdown ? Double(row.promptTokens) : nil; case .completionTokens: row.hasTokenBreakdown ? Double(row.completionTokens) : nil; case .totalTokens: Double(row.totalTokens); case .promptPrice: row.promptPricePerToken.map { $0 * 1_000_000 }; case .completionPrice: row.completionPricePerToken.map { $0 * 1_000_000 }; case .revenue: row.revenueUSD } }
 }
 
 struct ReminderView: View {
@@ -408,7 +429,7 @@ func usageIntervals(_ minutes: [Bool], timeZoneID: String) -> String {
     var lines = ["device_id,device_name,minutes,report_timezone,estimated,bitmap"]
     lines += model.dayBitmaps.map { bitmap in
         let bits = bitmap.minutes.map { $0 ? "1" : "0" }.joined()
-        return "\(bitmap.deviceID),\(bitmap.displayName.replacingOccurrences(of: ",", with: " ")),\(bitmap.usedMinutes),\(model.settings.reportTimeZone),\(bitmap.isAggregate),\(bits)"
+        return "\(bitmap.deviceID),\(bitmap.displayName.replacingOccurrences(of: ",", with: " ")),\(bitmap.usedMinutes),\(model.currentReportTimeZone),\(bitmap.isAggregate),\(bits)"
     }
     let text = lines.joined(separator: "\n") + "\n"
     try? text.write(to: url, atomically: true, encoding: .utf8)
