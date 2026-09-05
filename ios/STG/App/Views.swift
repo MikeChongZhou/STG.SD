@@ -216,7 +216,7 @@ struct ReportView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack { Text(bitmap.displayName).bold(); Spacer(); Text(duration(bitmap.usedMinutes)).monospacedDigit() }
                             MinuteBitmapView(minutes: bitmap.minutes)
-                            Text("Active intervals: \(usageIntervals(bitmap.minutes, timeZoneID: model.settings.reportTimeZone))").font(.caption).textSelection(.enabled)
+                            Text("Active intervals: \(usageIntervals(bitmap.minutes, timeZoneID: model.currentReportTimeZone))").font(.caption).textSelection(.enabled)
                         }.padding().background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
                     }
                 } else {
@@ -235,7 +235,6 @@ struct ReportView: View {
                     .frame(minHeight: 320)
                     if multiDayPoints.isEmpty && !loading { ContentUnavailableView("No report data", systemImage: "chart.xyaxis.line") }
                 }
-                Text("Report timezone: \(model.settings.reportTimeZone)")
                 Text("iOS observations and cross-device deduplication are estimates.").font(.caption).foregroundStyle(.secondary)
                 if loading { ProgressView().frame(maxWidth: .infinity) }
             }.padding()
@@ -253,17 +252,17 @@ struct ReportView: View {
     }
     private func reportMetric(_ title: String, _ minutes: Int) -> some View { VStack(alignment: .leading, spacing: 4) { Text(title).font(.caption).foregroundStyle(.secondary); Text(duration(minutes)).font(.headline).monospacedDigit() }.frame(maxWidth: .infinity, alignment: .leading).padding(10).background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10)) }
     private func reload() async { if mode == 0 { await reloadDaily() } else { await reloadMultiple() } }
-    private func reloadDaily() async { loading = true; dailyBitmaps = await model.reportDay(at: reportInstant(selectedDate, timeZoneID: model.settings.reportTimeZone)); loading = false }
-    private func reloadMultiple() async { loading = true; multiDayPoints = await model.multiDayReport(from: reportInstant(rangeStart, timeZoneID: model.settings.reportTimeZone), through: reportInstant(rangeEnd, timeZoneID: model.settings.reportTimeZone)); loading = false }
+    private func reloadDaily() async { loading = true; dailyBitmaps = await model.reportDay(at: reportInstant(selectedDate, timeZoneID: model.currentReportTimeZone)); loading = false }
+    private func reloadMultiple() async { loading = true; multiDayPoints = await model.multiDayReport(from: reportInstant(rangeStart, timeZoneID: model.currentReportTimeZone), through: reportInstant(rangeEnd, timeZoneID: model.currentReportTimeZone)); loading = false }
     private var csv: String {
         if mode == 1 {
             var lines = ["date,device_id,device_name,minutes,report_timezone,estimated"]
-            lines += multiDayPoints.map { "\($0.dateLabel),\($0.deviceID),\($0.displayName.replacingOccurrences(of: ",", with: " ")),\($0.minutes),\(model.settings.reportTimeZone),true" }
+            lines += multiDayPoints.map { "\($0.dateLabel),\($0.deviceID),\($0.displayName.replacingOccurrences(of: ",", with: " ")),\($0.minutes),\(model.currentReportTimeZone),true" }
             return lines.joined(separator: "\n") + "\n"
         }
         var lines = ["date,device_id,device_name,minutes,report_timezone,estimated,bitmap"]
-        let date = reportDateString(selectedDate, timeZoneID: model.settings.reportTimeZone)
-        lines += dailyBitmaps.map { bitmap in let bits = bitmap.minutes.map { $0 ? "1" : "0" }.joined(); return "\(date),\(bitmap.deviceID),\(bitmap.displayName.replacingOccurrences(of: ",", with: " ")),\(bitmap.usedMinutes),\(model.settings.reportTimeZone),true,\(bits)" }
+        let date = reportDateString(selectedDate, timeZoneID: model.currentReportTimeZone)
+        lines += dailyBitmaps.map { bitmap in let bits = bitmap.minutes.map { $0 ? "1" : "0" }.joined(); return "\(date),\(bitmap.deviceID),\(bitmap.displayName.replacingOccurrences(of: ",", with: " ")),\(bitmap.usedMinutes),\(model.currentReportTimeZone),true,\(bits)" }
         return lines.joined(separator: "\n") + "\n"
     }
 }
@@ -307,14 +306,12 @@ struct SettingsView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var activity: DeviceActivityController
     @State private var logShare: LogShareItem?
-    @State private var confirmClearEstimate = false
-    @State private var confirmClearDevices = false
     @State private var showActivityPicker = false
     @State private var showCloudSetup = false
     @State private var showCategoryWarning = false
     var body: some View {
         Form {
-            Section("Plan") { Stepper("Daily plan: \(duration(model.settings.dailyPlanMinutes))", value: $model.settings.dailyPlanMinutes, in: 20...1440, step: 10); TextField("Report timezone", text: $model.settings.reportTimeZone); Toggle("Meeting mode", isOn: $model.settings.meetingMode) }
+            Section("Plan") { Stepper("Daily plan: \(duration(model.settings.dailyPlanMinutes))", value: $model.settings.dailyPlanMinutes, in: 20...1440, step: 10); Toggle("Meeting mode", isOn: $model.settings.meetingMode) }
             Section("Private cloud sync") {
                 LabeledContent("Provider", value: syncProviderName(model.settings.syncProvider ?? .none))
                 LabeledContent("Account", value: iosCloudAccount(provider: model.settings.syncProvider ?? .none, model: model))
@@ -335,8 +332,6 @@ struct SettingsView: View {
             Section("Diagnostics") {
                 Button { if let url = model.prepareTestLogExport() { logShare = LogShareItem(url: url) } } label: { Label("Export test log", systemImage: "square.and.arrow.up") }
                 Text("Exports lifecycle, Screen Time, database, and sync diagnostics. It does not include private-cloud contents or credentials.").font(.footnote).foregroundStyle(.secondary)
-                Button("Reset today's STG estimate", role: .destructive) { confirmClearEstimate = true }
-                Button("Remove imported device data", role: .destructive) { confirmClearDevices = true }
             }
             Section { Button("Save") { model.save() }.frame(maxWidth: .infinity) }
         }.navigationTitle("Settings")
@@ -354,8 +349,6 @@ struct SettingsView: View {
             .alert("Categories are not supported", isPresented: $showCategoryWarning) {
                 Button("Return to selection") { DispatchQueue.main.async { showActivityPicker = true } }
             } message: { Text("Remove every selected category. Select individual apps instead; websites may remain selected.") }
-            .confirmationDialog("Reset today's estimated bitmap?", isPresented: $confirmClearEstimate, titleVisibility: .visible) { Button("Reset", role: .destructive) { Task { await model.clearTodayEstimate() } } }
-            .confirmationDialog("Remove bitmap rows imported from other devices?", isPresented: $confirmClearDevices, titleVisibility: .visible) { Button("Remove", role: .destructive) { Task { await model.clearImportedDevices() } } }
     }
 }
 
@@ -438,7 +431,7 @@ struct TrackingView: View {
     @State private var status = "Public data; no OpenRouter account or API key is needed."
     @State private var viewIndex = 1
     @State private var customStart = Calendar.current.date(byAdding: .day, value: -7, to: .now) ?? .now
-    @State private var metric: IOSWeeklyTrackingMetric = .totalTokens
+    @State private var metric: OpenRouterWeeklyMetric = .totalTokens
     @State private var sortField: TrackingSortField = .rank
     @State private var sortDirection: TrackingSortDirection = .ascending
     @State private var startDate = ""
@@ -458,7 +451,7 @@ struct TrackingView: View {
                     }
                     Text("Prices are OpenRouter's observed effective weighted prices per 1M tokens (including cache and provider discounts). Revenue is an estimate, not OpenRouter financial reporting.").font(.caption).foregroundStyle(.secondary)
                 } else {
-                    Picker("Value", selection: $metric) { ForEach(IOSWeeklyTrackingMetric.allCases) { Text($0.label).tag($0) } }
+                    Picker("Value", selection: $metric) { ForEach(OpenRouterWeeklyMetric.allCases) { Text($0.label).tag($0) } }
                     Chart(weeklyRows) { row in
                         if let value = metric.value(row) {
                             LineMark(x: .value("Week", row.weekStart), y: .value(metric.label, value)).foregroundStyle(by: .value("Model", row.modelPermaslug))
@@ -472,6 +465,7 @@ struct TrackingView: View {
             }.padding()
         }.navigationTitle("Tracking").task { loadWeeks() }
             .onChange(of: viewIndex) { _, value in if value == 0 && rows.isEmpty { Task { await refresh() } } else if value == 1 { loadWeeks() } }
+            .onChange(of: metric) { _, _ in if viewIndex == 1 { loadWeeks() } }
             .sheet(item: $trackingShare) { item in ActivityShareView(url: item.url) { _ in trackingShare = nil } }
     }
     private var sortedRows: [OpenRouterRankingRow] { sortedOpenRouterRows(rows, by: sortField, direction: sortDirection) }
@@ -507,9 +501,9 @@ struct TrackingView: View {
         } catch { status = error.localizedDescription; SharedEnvironment.diagnosticLog.record("OpenRouter: \(status)", category: "tracking") }
     }
     private func loadWeeks() {
-        let models = rows.isEmpty ? model.latestOpenRouterTopModels() : Array(rows.sorted { $0.rank < $1.rank }.prefix(10).map(\.modelPermaslug))
+        let models = model.latestOpenRouterTopModels(metric: metric)
         weeklyRows = model.openRouterWeeks(models: models)
-        status = weeklyRows.isEmpty ? "Weekly data will be collected by the weekly action during incremental sync." : "Showing saved weekly data for the latest Top 10 models. Historical seed data contains Rank and Total tokens; OpenRouter does not publish its historical input/output split and returned no rows for 2025-06-15 or 2025-07-15."
+        status = weeklyRows.isEmpty ? "No saved weekly data contains \(metric.label). The weekly action will add it when OpenRouter publishes that field." : "Showing all saved weeks for the latest completed week's \(metric.label) Top \(models.count)."
     }
     private func prepareTrackingExport() {
         let periodName = "date_to_latest"
@@ -521,15 +515,8 @@ struct TrackingView: View {
     }
 }
 
-private enum IOSWeeklyTrackingMetric: String, CaseIterable, Identifiable {
-    case rank, promptTokens, completionTokens, totalTokens, promptPrice, completionPrice, revenue
-    var id: String { rawValue }
-    var label: String { switch self { case .rank: "Rank"; case .promptTokens: "Input tokens"; case .completionTokens: "Output tokens"; case .totalTokens: "Total tokens"; case .promptPrice: "Input price / M"; case .completionPrice: "Output price / M"; case .revenue: "Revenue" } }
-    func value(_ row: OpenRouterWeeklyRankingRow) -> Double? { switch self { case .rank: Double(row.rank); case .promptTokens: row.hasTokenBreakdown ? Double(row.promptTokens) : nil; case .completionTokens: row.hasTokenBreakdown ? Double(row.completionTokens) : nil; case .totalTokens: Double(row.totalTokens); case .promptPrice: row.promptPricePerToken.map { $0 * 1_000_000 }; case .completionPrice: row.completionPricePerToken.map { $0 * 1_000_000 }; case .revenue: row.revenueUSD } }
-}
-
 struct AboutView: View {
-    var body: some View { ScrollView { VStack(alignment: .leading, spacing: 16) { HStack { Spacer(); Image(systemName: "shield.lefthalf.filled").font(.system(size: 64)).foregroundStyle(.blue); Spacer() }; Text("Screen Time Guardian").font(.title.bold()).frame(maxWidth: .infinity); Group { Text("Version 1.1.6 · Developer: TimberTrail\nCopyright © 2026 TimberTrail."); Text("Screen Time Guardian reconstructs a minute-level screen-use estimate, reminds you to rest, and can combine data from your own devices."); Text("Privacy: screen-use data remains on this device and in the private-cloud account you explicitly authorize. It is not uploaded to the app developer."); Text("Accuracy: Apple does not expose its Screen Time total directly to this app. STG estimates minutes from DeviceActivity threshold callbacks, so its value can differ from iOS Settings → Screen Time."); Text("Open-source claim: this application includes SQLite (public domain) and Apple Swift open-source runtime components. Their copyright notices and license terms are preserved in THIRD_PARTY_NOTICES.md. STG does not claim ownership of those components.") } }.padding() } .navigationTitle("About") }
+    var body: some View { ScrollView { VStack(alignment: .leading, spacing: 16) { HStack { Spacer(); Image(systemName: "shield.lefthalf.filled").font(.system(size: 64)).foregroundStyle(.blue); Spacer() }; Text("Screen Time Guardian").font(.title.bold()).frame(maxWidth: .infinity); Group { Text("Version 1.1.7 · Developer: TimberTrail\nCopyright © 2026 TimberTrail."); Text("Screen Time Guardian reconstructs a minute-level screen-use estimate, reminds you to rest, and can combine data from your own devices."); Text("Privacy: screen-use data remains on this device and in the private-cloud account you explicitly authorize. It is not uploaded to the app developer."); Text("Accuracy: Apple does not expose its Screen Time total directly to this app. STG estimates minutes from DeviceActivity threshold callbacks, so its value can differ from iOS Settings → Screen Time."); Text("Open-source claim: this application includes SQLite (public domain) and Apple Swift open-source runtime components. Their copyright notices and license terms are preserved in THIRD_PARTY_NOTICES.md. STG does not claim ownership of those components.") } }.padding() } .navigationTitle("About") }
 }
 
 func duration(_ minutes: Int) -> String { "\(minutes / 60)h \(minutes % 60)m" }
