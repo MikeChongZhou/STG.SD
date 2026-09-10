@@ -46,7 +46,10 @@ internal sealed record WeeklyRankingRow(
     long CompletionTokens,
     long TotalTokens,
     double? PromptPricePerToken,
-    double? CompletionPricePerToken)
+    double? CompletionPricePerToken,
+    DateTimeOffset? AsOf = null,
+    IReadOnlyList<string>? MissingDates = null,
+    bool IsComplete = true)
 {
     public bool HasTokenBreakdown => PromptTokens >= 0 && CompletionTokens >= 0;
     public double? RevenueUSD =>
@@ -70,7 +73,7 @@ internal sealed class OpenRouterClient
     {
         http = httpClient ?? new HttpClient();
         http.Timeout = TimeSpan.FromSeconds(45);
-        http.DefaultRequestHeaders.UserAgent.ParseAdd("Screen-Time-Guardian/1.1.6");
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("Screen-Time-Guardian/1.1.8");
         http.DefaultRequestHeaders.Accept.Add(
             new MediaTypeWithQualityHeaderValue("application/json"));
         http.DefaultRequestHeaders.Referrer = new Uri("https://openrouter.ai/rankings");
@@ -228,7 +231,7 @@ internal sealed class OpenRouterClient
             for (var index = 0; index < totals.Count; index++)
             {
                 var value = totals[index];
-                result.Add(new WeeklyRankingRow(week.Key.Start, week.Key.End, index + 1, value.Model, value.PromptTokens, value.CompletionTokens, value.TotalTokens, value.PromptPrice, value.CompletionPrice));
+                result.Add(new WeeklyRankingRow(week.Key.Start, week.Key.End, index + 1, value.Model, value.PromptTokens, value.CompletionTokens, value.TotalTokens, value.PromptPrice, value.CompletionPrice, new DateTimeOffset(week.Key.End.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero)));
             }
         }
         return result;

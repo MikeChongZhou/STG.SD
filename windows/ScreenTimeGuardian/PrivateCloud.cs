@@ -6,6 +6,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.IO.Compression;
 using Microsoft.Win32;
 
 namespace ScreenTimeGuardian;
@@ -39,16 +40,38 @@ internal interface IPrivateCloudDrive
     Task<IReadOnlyList<RemoteFile>> ListAsync(CancellationToken token);
     Task UploadAsync(string name, byte[] data, string? existingID, CancellationToken token);
     Task<byte[]> DownloadAsync(string id, CancellationToken token);
+    Task<IReadOnlyList<RemoteFile>> ListFolderAsync(string folder, CancellationToken token);
+    Task UploadFolderAsync(string folder, string name, byte[] data, string? existingID, CancellationToken token);
+    Task DeleteAsync(string id, CancellationToken token);
 }
 
 internal sealed class PrivateCloudSync(BitmapRepository repository, AppSettings settings, IPrivateCloudDrive drive)
 {
+    private sealed record BitmapArchive(string Kind, string DeviceID, string PeriodStart, string PeriodEnd, IReadOnlyList<BitmapDocument> Rows, DateTimeOffset CreatedAt);
+    private sealed record TrackingArchive(string Kind, int Year, IReadOnlyList<WeeklyRankingRow> Rows, DateTimeOffset CreatedAt);
+
+    public async Task<int> QuickUploadAsync(CancellationToken token = default)
+    {
+        var key = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+        var stored = repository.StoredBitmap(settings.DeviceID, key);
+        if (stored is null) { repository.CompleteQuickUpload(settings.DeviceID); return 0; }
+        var files = await drive.ListAsync(token);
+        var name = $"{settings.DeviceID}_bitmap_{key}.json";
+        var existing = files.FirstOrDefault(value => value.Name.Equals(name, StringComparison.Ordinal));
+        var document = new BitmapDocument(settings.DeviceID, key, stored.Value.Bitmap.ToBase64(), stored.Value.UpdatedAt, []);
+        await drive.UploadAsync(name, JsonSerializer.SerializeToUtf8Bytes(document, JsonOptions.Default), existing?.ID, token);
+        repository.CompleteQuickUpload(settings.DeviceID);
+        return 1;
+    }
+
     public async Task<CloudSyncResult> IncrementalAsync(CancellationToken token = default)
     {
         var remoteFiles = await drive.ListAsync(token);
         var byName = remoteFiles.GroupBy(value => value.Name, StringComparer.Ordinal).ToDictionary(value => value.Key, value => value.First(), StringComparer.Ordinal);
         var devices = remoteFiles.Select(value => ParseDevice(value.Name)).Where(value => value is not null).Cast<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
         var downloaded = 0;
+        var uploadTarget = settings.SyncProvider.ToString();
+        var existingUploadCursor = repository.IncrementalUploadCursor(uploadTarget);
 
         foreach (var file in remoteFiles.Where(value => value.Name.EndsWith("_setting.json", StringComparison.Ordinal)))
         {
@@ -63,9 +86,12 @@ internal sealed class PrivateCloudSync(BitmapRepository repository, AppSettings 
         }
 
         var downloadCursors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var remoteID in devices.Where(value => !value.Equals(settings.DeviceID, StringComparison.OrdinalIgnoreCase) && !value.Equals("alldevices", StringComparison.OrdinalIgnoreCase)))
+        foreach (var remoteID in devices.Where(value =>
+                     !value.Equals("alldevices", StringComparison.OrdinalIgnoreCase) &&
+                     (!value.Equals(settings.DeviceID, StringComparison.OrdinalIgnoreCase) || existingUploadCursor is null)))
         {
-            var cursor = repository.IncrementalDownloadCursor(remoteID);
+            var restoringThisDevice = remoteID.Equals(settings.DeviceID, StringComparison.OrdinalIgnoreCase);
+            var cursor = restoringThisDevice ? null : repository.IncrementalDownloadCursor(remoteID);
             var candidates = remoteFiles
                 .Select(file => (File: file, Device: ParseDevice(file.Name), Date: ParseBitmapDate(file.Name)))
                 .Where(value => value.Device?.Equals(remoteID, StringComparison.OrdinalIgnoreCase) == true && value.Date is not null && (cursor is null || string.CompareOrdinal(value.Date, cursor) >= 0))
@@ -76,9 +102,17 @@ internal sealed class PrivateCloudSync(BitmapRepository repository, AppSettings 
                 {
                     var document = JsonSerializer.Deserialize<BitmapDocument>(await drive.DownloadAsync(candidate.File.ID, token), JsonOptions.Default);
                     if (document is null || !document.DeviceID.Equals(remoteID, StringComparison.OrdinalIgnoreCase) || document.UtcDate != candidate.Date) throw new InvalidDataException("Remote bitmap identity mismatch");
-                    repository.Upsert(remoteID, document.UtcDate, MinuteBitmap.FromBase64(document.BitmapBase64), document.UpdatedAt);
-                    repository.RebuildAll(document.UtcDate); repository.SaveIncrementalDownloadCursor(remoteID, document.UtcDate);
-                    downloadCursors[remoteID] = document.UtcDate; downloaded++;
+                    if (restoringThisDevice)
+                        repository.MergeBitmap(remoteID, document.UtcDate, MinuteBitmap.FromBase64(document.BitmapBase64), document.UpdatedAt);
+                    else
+                        repository.UpsertIfNewer(remoteID, document.UtcDate, MinuteBitmap.FromBase64(document.BitmapBase64), document.UpdatedAt);
+                    repository.RebuildAll(document.UtcDate);
+                    if (!restoringThisDevice)
+                    {
+                        repository.SaveIncrementalDownloadCursor(remoteID, document.UtcDate);
+                        downloadCursors[remoteID] = document.UtcDate;
+                    }
+                    downloaded++;
                 }
                 catch { break; }
             }
@@ -86,11 +120,12 @@ internal sealed class PrivateCloudSync(BitmapRepository repository, AppSettings 
 
         repository.UpsertDevice(new(settings.DeviceID, settings.DeviceName, settings.DeviceKind, settings.UpdatedAt));
         var uploaded = 0; string? uploadCursor = null;
-        var uploadTarget = settings.SyncProvider.ToString();
-        foreach (var date in TimeModel.IncrementalUploadUtcDates(repository.IncrementalUploadCursor(uploadTarget), DateTimeOffset.UtcNow))
+        foreach (var date in TimeModel.IncrementalUploadUtcDates(existingUploadCursor, DateTimeOffset.UtcNow))
         {
             token.ThrowIfCancellationRequested();
-            var document = new BitmapDocument(settings.DeviceID, date, repository.Bitmap(settings.DeviceID, date).ToBase64(), DateTimeOffset.UtcNow, []);
+            var stored = repository.StoredBitmap(settings.DeviceID, date);
+            if (stored is null) continue;
+            var document = new BitmapDocument(settings.DeviceID, date, stored.Value.Bitmap.ToBase64(), stored.Value.UpdatedAt, []);
             var name = $"{settings.DeviceID}_bitmap_{date}.json";
             await drive.UploadAsync(name, JsonSerializer.SerializeToUtf8Bytes(document, JsonOptions.Default), byName.GetValueOrDefault(name)?.ID, token);
             repository.SaveIncrementalUploadCursor(uploadTarget, date); uploadCursor = date; uploaded++;
@@ -98,6 +133,60 @@ internal sealed class PrivateCloudSync(BitmapRepository repository, AppSettings 
         var settingsName = $"{settings.DeviceID}_setting.json";
         await drive.UploadAsync(settingsName, JsonSerializer.SerializeToUtf8Bytes(settings, JsonOptions.Default), byName.GetValueOrDefault(settingsName)?.ID, token);
         return new(uploaded, downloaded, devices, downloadCursors, uploadCursor);
+    }
+
+    public async Task<(int Uploaded, int DeletedDaily, int MovedWeekly)> WeeklyMaintenanceAsync(DateOnly currentWeekStart, DateOnly previousWeekStart, DateOnly previousWeekEnd, CancellationToken token = default)
+    {
+        var remote = await drive.ListAsync(token);
+        var history = await drive.ListFolderAsync("history", token);
+        var rows = repository.BitmapArchive(settings.DeviceID, previousWeekStart, previousWeekEnd);
+        var archiveName = $"{settings.DeviceID}_week_{previousWeekStart:yyyy-MM-dd}_{previousWeekEnd:yyyy-MM-dd}.json";
+        var archive = new BitmapArchive("weekly_bitmap", settings.DeviceID, $"{previousWeekStart:yyyy-MM-dd}", $"{previousWeekEnd:yyyy-MM-dd}", rows, DateTimeOffset.UtcNow);
+        await drive.UploadAsync(archiveName, JsonSerializer.SerializeToUtf8Bytes(archive, JsonOptions.Default), remote.FirstOrDefault(value => value.Name == archiveName)?.ID, token);
+
+        var deleted = 0;
+        foreach (var file in remote)
+        {
+            var date = ParseBitmapDate(file.Name);
+            if (ParseDevice(file.Name) == settings.DeviceID && date is not null && DateOnly.Parse(date) < currentWeekStart) { await drive.DeleteAsync(file.ID, token); deleted++; }
+        }
+        var moved = 0;
+        remote = await drive.ListAsync(token);
+        var archiveCutoff = previousWeekStart.AddDays(-7);
+        foreach (var file in remote.Where(value => value.Name.StartsWith($"{settings.DeviceID}_week_", StringComparison.Ordinal) && value.Name != archiveName && ParseWeekEnd(value.Name) is DateOnly end && end < archiveCutoff))
+        {
+            var data = await drive.DownloadAsync(file.ID, token);
+            await drive.UploadFolderAsync("history", file.Name, data, history.FirstOrDefault(value => value.Name == file.Name)?.ID, token);
+            await drive.DeleteAsync(file.ID, token); moved++;
+        }
+        repository.RecordArchive($"bitmap-week-{settings.DeviceID}-{previousWeekStart:yyyy-MM-dd}", "weekly_bitmap", previousWeekStart, previousWeekEnd, null, archiveName, null, DateTimeOffset.UtcNow, "uploaded");
+        return (1, deleted, moved);
+    }
+
+    public async Task<(int Uploaded, int DeletedBitmaps, int DeletedWeekly)> YearlyMaintenanceAsync(int year, int trackingCleanupYear, CancellationToken token = default)
+    {
+        var history = await drive.ListFolderAsync("history", token);
+        var start = new DateOnly(year, 1, 1); var end = new DateOnly(year, 12, 31);
+        var bitmapRows = repository.BitmapArchive(settings.DeviceID, start, end);
+        var bitmapData = JsonSerializer.SerializeToUtf8Bytes(new BitmapArchive("yearly_bitmap", settings.DeviceID, $"{start:yyyy-MM-dd}", $"{end:yyyy-MM-dd}", bitmapRows, DateTimeOffset.UtcNow), JsonOptions.Default);
+        var bitmapName = $"{settings.DeviceID}_year_{year}.json.gz";
+        await drive.UploadFolderAsync("history", bitmapName, Gzip(bitmapData), history.FirstOrDefault(value => value.Name == bitmapName)?.ID, token);
+        var trackingRows = repository.OpenRouterArchive(year);
+        var trackingName = $"openrouter_year_{year}.json.gz";
+        var trackingData = JsonSerializer.SerializeToUtf8Bytes(new TrackingArchive("openrouter_year", year, trackingRows, DateTimeOffset.UtcNow), JsonOptions.Default);
+        await drive.UploadFolderAsync("history", trackingName, Gzip(trackingData), history.FirstOrDefault(value => value.Name == trackingName)?.ID, token);
+        var deletedBitmaps = repository.DeleteBitmapRows(settings.DeviceID, start, end);
+        var deletedWeekly = repository.DeleteOpenRouterWeeks(trackingCleanupYear);
+        repository.RecordArchive($"bitmap-year-{settings.DeviceID}-{year}", "yearly_bitmap", start, end, null, $"history/{bitmapName}", null, DateTimeOffset.UtcNow, "uploaded");
+        repository.RecordArchive($"openrouter-year-{year}", "openrouter_year", start, end, null, $"history/{trackingName}", null, DateTimeOffset.UtcNow, "uploaded");
+        return (2, deletedBitmaps, deletedWeekly);
+    }
+
+    private static byte[] Gzip(byte[] data)
+    {
+        using var output = new MemoryStream();
+        using (var gzip = new GZipStream(output, CompressionLevel.SmallestSize, true)) gzip.Write(data);
+        return output.ToArray();
     }
 
     private static string? ParseDevice(string name)
@@ -113,6 +202,16 @@ internal sealed class PrivateCloudSync(BitmapRepository repository, AppSettings 
         if (marker <= 0 || !name.EndsWith(".json", StringComparison.Ordinal)) return null;
         var date = name[(marker + "_bitmap_".Length)..^5];
         return DateOnly.TryParseExact(date, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out _) ? date : null;
+    }
+
+    private static DateOnly? ParseWeekEnd(string name)
+    {
+        var marker = name.IndexOf("_week_", StringComparison.Ordinal);
+        if (marker <= 0 || !name.EndsWith(".json", StringComparison.Ordinal)) return null;
+        var pieces = name[(marker + "_week_".Length)..^5].Split('_');
+        var value = pieces.Length == 2 ? pieces[1] : pieces.Length == 1 ? pieces[0] : null;
+        if (value is null || !DateOnly.TryParseExact(value, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var date)) return null;
+        return pieces.Length == 1 ? date.AddDays(6) : date;
     }
 }
 
@@ -173,6 +272,22 @@ internal sealed class ICloudDriveClient : IPrivateCloudDrive
         if (!path.StartsWith(root, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("Invalid iCloud Drive file path");
         return File.ReadAllBytesAsync(path, token);
     }
+
+    public Task<IReadOnlyList<RemoteFile>> ListFolderAsync(string folder, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested(); var path = SafeFolder(folder); Directory.CreateDirectory(path);
+        return Task.FromResult<IReadOnlyList<RemoteFile>>(Directory.EnumerateFiles(path, "*", SearchOption.TopDirectoryOnly).Select(value => new RemoteFile(value, Path.GetFileName(value))).ToList());
+    }
+
+    public async Task UploadFolderAsync(string folder, string name, byte[] data, string? existingID, CancellationToken token)
+    {
+        var directory = SafeFolder(folder); Directory.CreateDirectory(directory); var destination = Path.Combine(directory, Path.GetFileName(name));
+        await File.WriteAllBytesAsync(destination, data, token);
+    }
+
+    public Task DeleteAsync(string id, CancellationToken token) { token.ThrowIfCancellationRequested(); var path = Path.GetFullPath(id); var root = Path.GetFullPath(syncFolder) + Path.DirectorySeparatorChar; if (!path.StartsWith(root, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("Invalid iCloud Drive file path"); File.Delete(path); return Task.CompletedTask; }
+
+    private string SafeFolder(string name) { if (Path.GetFileName(name) != name) throw new InvalidDataException("Invalid iCloud Drive folder name"); return Path.Combine(Directory.GetParent(syncFolder)?.FullName ?? syncFolder, name); }
 
     private string SafeFile(string name)
     {
@@ -310,6 +425,7 @@ internal sealed class OneDriveClient : IPrivateCloudDrive
     private const string Scope = "offline_access User.Read Files.ReadWrite.AppFolder";
     private readonly HttpClient http = new();
     private OneDriveCredential credential;
+    private bool appRootReady;
 
     private OneDriveClient(OneDriveCredential credential) => this.credential = credential;
     public static bool IsSignedIn => Load() is not null;
@@ -373,20 +489,80 @@ internal sealed class OneDriveClient : IPrivateCloudDrive
 
     public async Task<IReadOnlyList<RemoteFile>> ListAsync(CancellationToken token)
     {
+        await EnsureAppRootAsync(token);
         var data = await GraphAsync(HttpMethod.Get, "/v1.0/me/drive/special/approot/children?$select=id,name", null, token);
         return (JsonSerializer.Deserialize<OneDriveFileList>(data, JsonOptions.Default)?.Value ?? []).Select(value => new RemoteFile(value.ID, value.Name)).ToList();
     }
 
-    public async Task UploadAsync(string name, byte[] data, string? existingID, CancellationToken token) =>
+    public async Task UploadAsync(string name, byte[] data, string? existingID, CancellationToken token)
+    {
+        await EnsureAppRootAsync(token);
         _ = await GraphAsync(HttpMethod.Put, $"/v1.0/me/drive/special/approot:/{Uri.EscapeDataString(name)}:/content", new ByteArrayContent(data), token);
+    }
 
     public Task<byte[]> DownloadAsync(string id, CancellationToken token) => GraphAsync(HttpMethod.Get, $"/v1.0/me/drive/items/{Uri.EscapeDataString(id)}/content", null, token);
+
+    public async Task<IReadOnlyList<RemoteFile>> ListFolderAsync(string folder, CancellationToken token)
+    {
+        var folderID = await EnsureFolderAsync(folder, token);
+        var data = await GraphAsync(HttpMethod.Get, $"/v1.0/me/drive/items/{Uri.EscapeDataString(folderID)}/children?$select=id,name", null, token);
+        return (JsonSerializer.Deserialize<OneDriveFileList>(data, JsonOptions.Default)?.Value ?? []).Select(value => new RemoteFile(value.ID, value.Name)).ToList();
+    }
+
+    public async Task UploadFolderAsync(string folder, string name, byte[] data, string? existingID, CancellationToken token)
+    {
+        var folderID = await EnsureFolderAsync(folder, token);
+        _ = await GraphAsync(HttpMethod.Put, $"/v1.0/me/drive/items/{Uri.EscapeDataString(folderID)}:/{Uri.EscapeDataString(name)}:/content", new ByteArrayContent(data), token);
+    }
+
+    public async Task DeleteAsync(string id, CancellationToken token) => _ = await GraphAsync(HttpMethod.Delete, $"/v1.0/me/drive/items/{Uri.EscapeDataString(id)}", null, token);
+
+    private async Task<string> EnsureFolderAsync(string name, CancellationToken token)
+    {
+        var files = await ListAsync(token); var found = files.FirstOrDefault(value => value.Name == name); if (found is not null) return found.ID;
+        var content = new StringContent(JsonSerializer.Serialize(new { name, folder = new { }, @microsoft_graph_conflictBehavior = "fail" }).Replace("microsoft_graph_conflictBehavior", "@microsoft.graph.conflictBehavior"), Encoding.UTF8, "application/json");
+        var data = await GraphAsync(HttpMethod.Post, "/v1.0/me/drive/special/approot/children", content, token);
+        return JsonSerializer.Deserialize<OneDriveFile>(data, JsonOptions.Default)?.ID ?? throw new InvalidDataException("Microsoft Graph did not return the history folder ID");
+    }
 
     private async Task<string> GetProfileAsync(CancellationToken token)
     {
         var data = await GraphAsync(HttpMethod.Get, "/v1.0/me?$select=displayName,mail,userPrincipalName", null, token);
         var profile = JsonSerializer.Deserialize<MicrosoftProfile>(data, JsonOptions.Default);
         return profile?.Mail ?? profile?.UserPrincipalName ?? profile?.DisplayName ?? "Microsoft account";
+    }
+
+    private async Task EnsureAppRootAsync(CancellationToken token)
+    {
+        if (appRootReady) return;
+        var delays = new[] { 1, 2, 4, 8 };
+        for (var attempt = 0; attempt <= delays.Length; attempt++)
+        {
+            try
+            {
+                _ = await GraphAsync(HttpMethod.Get, "/v1.0/me/drive/special/approot?$select=id,name,specialFolder", null, token);
+                appRootReady = true;
+                return;
+            }
+            catch (InvalidOperationException error) when (IsPendingProvisioning(error))
+            {
+                if (attempt == 0)
+                {
+                    try { _ = await GraphAsync(HttpMethod.Get, "/v1.0/me/drive?$select=id,driveType", null, token); }
+                    catch (InvalidOperationException probeError) when (IsPendingProvisioning(probeError)) { }
+                }
+                if (attempt == delays.Length)
+                    throw new InvalidOperationException("OneDrive is still preparing this account. Open OneDrive once with the same Microsoft account, wait for its Files page to load, then return to STG and sync again.");
+                await Task.Delay(TimeSpan.FromSeconds(delays[attempt]), token);
+            }
+        }
+    }
+
+    private static bool IsPendingProvisioning(Exception error)
+    {
+        var message = error.Message;
+        return message.Contains("pending provisioning", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("serviceNotAvailable", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task<byte[]> GraphAsync(HttpMethod method, string path, HttpContent? content, CancellationToken token)
@@ -478,11 +654,13 @@ internal sealed class GoogleDriveClient : IPrivateCloudDrive
             if (!valid) throw new InvalidOperationException(values.GetValueOrDefault("error") ?? "Google sign-in response was invalid");
 
             using var http = new HttpClient();
-            var response = await http.PostAsync("https://oauth2.googleapis.com/token", new FormUrlEncodedContent(new Dictionary<string, string>
+            var tokenItems = new Dictionary<string, string>
             {
-                ["client_id"] = CloudConfiguration.GoogleClientID, ["client_secret"] = CloudConfiguration.GoogleClientSecret,
-                ["code"] = values["code"], ["code_verifier"] = verifier, ["grant_type"] = "authorization_code", ["redirect_uri"] = redirect
-            }), token);
+                ["client_id"] = CloudConfiguration.GoogleClientID, ["code"] = values["code"],
+                ["code_verifier"] = verifier, ["grant_type"] = "authorization_code", ["redirect_uri"] = redirect
+            };
+            if (!string.IsNullOrWhiteSpace(CloudConfiguration.GoogleClientSecret)) tokenItems["client_secret"] = CloudConfiguration.GoogleClientSecret;
+            var response = await http.PostAsync("https://oauth2.googleapis.com/token", new FormUrlEncodedContent(tokenItems), token);
             var data = await response.Content.ReadAsByteArrayAsync(token);
             Ensure(response, data, "Google token request failed");
             var tokenValue = JsonSerializer.Deserialize<GoogleToken>(data, JsonOptions.Default) ?? throw new InvalidOperationException("Google returned an invalid token");
@@ -524,6 +702,34 @@ internal sealed class GoogleDriveClient : IPrivateCloudDrive
 
     public Task<byte[]> DownloadAsync(string id, CancellationToken token) => AuthorizedAsync(HttpMethod.Get, $"https://www.googleapis.com/drive/v3/files/{Uri.EscapeDataString(id)}?alt=media", null, token);
 
+    public async Task<IReadOnlyList<RemoteFile>> ListFolderAsync(string folder, CancellationToken token)
+    {
+        var folderID = await EnsureFolderAsync(folder, token); var query = $"'{folderID}' in parents and trashed = false";
+        var url = "https://www.googleapis.com/drive/v3/files?" + Query(new() { ["spaces"] = "appDataFolder", ["fields"] = "files(id,name)", ["pageSize"] = "1000", ["q"] = query });
+        var data = await AuthorizedAsync(HttpMethod.Get, url, null, token);
+        return (JsonSerializer.Deserialize<GoogleFileList>(data, JsonOptions.Default)?.Files ?? []).Select(value => new RemoteFile(value.ID, value.Name)).ToList();
+    }
+
+    public async Task UploadFolderAsync(string folder, string name, byte[] data, string? existingID, CancellationToken token)
+    {
+        if (existingID is not null) { var replacement = new ByteArrayContent(data); replacement.Headers.ContentType = new("application/octet-stream"); _ = await AuthorizedAsync(HttpMethod.Patch, $"https://www.googleapis.com/upload/drive/v3/files/{Uri.EscapeDataString(existingID)}?uploadType=media", replacement, token); return; }
+        var parent = await EnsureFolderAsync(folder, token); var boundary = "stg-" + Guid.NewGuid().ToString("N"); var multipart = new MultipartContent("related", boundary);
+        multipart.Add(new StringContent(JsonSerializer.Serialize(new { name, parents = new[] { parent } }), Encoding.UTF8, "application/json")); var payload = new ByteArrayContent(data); payload.Headers.ContentType = new("application/octet-stream"); multipart.Add(payload);
+        _ = await AuthorizedAsync(HttpMethod.Post, "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", multipart, token);
+    }
+
+    public async Task DeleteAsync(string id, CancellationToken token) => _ = await AuthorizedAsync(HttpMethod.Delete, $"https://www.googleapis.com/drive/v3/files/{Uri.EscapeDataString(id)}", null, token);
+
+    private async Task<string> EnsureFolderAsync(string name, CancellationToken token)
+    {
+        var escaped = name.Replace("'", "\\'"); var q = $"name = '{escaped}' and mimeType = 'application/vnd.google-apps.folder' and 'appDataFolder' in parents and trashed = false";
+        var url = "https://www.googleapis.com/drive/v3/files?" + Query(new() { ["spaces"] = "appDataFolder", ["fields"] = "files(id,name)", ["q"] = q });
+        var data = await AuthorizedAsync(HttpMethod.Get, url, null, token); var existing = JsonSerializer.Deserialize<GoogleFileList>(data, JsonOptions.Default)?.Files?.FirstOrDefault(); if (existing is not null) return existing.ID;
+        var metadata = new StringContent(JsonSerializer.Serialize(new { name, mimeType = "application/vnd.google-apps.folder", parents = new[] { "appDataFolder" } }), Encoding.UTF8, "application/json");
+        data = await AuthorizedAsync(HttpMethod.Post, "https://www.googleapis.com/drive/v3/files?fields=id,name", metadata, token);
+        return JsonSerializer.Deserialize<GoogleFile>(data, JsonOptions.Default)?.ID ?? throw new InvalidDataException("Google Drive did not return the history folder ID");
+    }
+
     private async Task<string> ProfileAsync(CancellationToken token)
     {
         var data = await AuthorizedAsync(HttpMethod.Get, "https://openidconnect.googleapis.com/v1/userinfo", null, token);
@@ -545,11 +751,13 @@ internal sealed class GoogleDriveClient : IPrivateCloudDrive
     private async Task RefreshAsync(CancellationToken token)
     {
         if (credential.ExpiresAt > DateTimeOffset.UtcNow.AddMinutes(2)) return;
-        var response = await http.PostAsync("https://oauth2.googleapis.com/token", new FormUrlEncodedContent(new Dictionary<string, string>
+        var tokenItems = new Dictionary<string, string>
         {
-            ["client_id"] = CloudConfiguration.GoogleClientID, ["client_secret"] = CloudConfiguration.GoogleClientSecret,
+            ["client_id"] = CloudConfiguration.GoogleClientID,
             ["refresh_token"] = credential.RefreshToken, ["grant_type"] = "refresh_token"
-        }), token);
+        };
+        if (!string.IsNullOrWhiteSpace(CloudConfiguration.GoogleClientSecret)) tokenItems["client_secret"] = CloudConfiguration.GoogleClientSecret;
+        var response = await http.PostAsync("https://oauth2.googleapis.com/token", new FormUrlEncodedContent(tokenItems), token);
         var data = await response.Content.ReadAsByteArrayAsync(token);
         Ensure(response, data, "Google session refresh failed; sign in again");
         var value = JsonSerializer.Deserialize<GoogleToken>(data, JsonOptions.Default) ?? throw new InvalidOperationException("Google returned an invalid token");

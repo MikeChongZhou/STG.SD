@@ -1,8 +1,11 @@
 namespace ScreenTimeGuardian;
 internal partial class AboutForm : System.Windows.Window
 {
-    private readonly TrayAppContext app;
-    public AboutForm(TrayAppContext app) { InitializeComponent(); WindowLayout.FitToWorkingArea(this, 0.84, 0.86); this.app = app; }
-    private void Export_Click(object sender, System.Windows.RoutedEventArgs e) => app.ExportTestLog(this);
+    public AboutForm() { InitializeComponent(); L.Apply(this); WindowLayout.FitToWorkingArea(this, 0.84, 0.86); }
     private void Close_Click(object sender, System.Windows.RoutedEventArgs e) => Close();
+    private void OpenSourceLicenses_RequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
+    {
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
+        e.Handled = true;
+    }
 }

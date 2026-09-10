@@ -20,29 +20,34 @@
 		397B0DC11E175739BA88EF8C /* MonitorExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E5BB61715DD149B4DE00155 /* MonitorExtension.swift */; };
 		3C9F2745DF7DFD937D4D4286 /* STGCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 7ABE4FCC73198B770FF9A987 /* STGCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		436343028053EB4A1C4E4AB2 /* DeviceActivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2DFF0511705B4DD9148C786A /* DeviceActivity.framework */; };
+		4925F05C8BDF19AE9FD38175 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13C3C6EF8359F2E897FCCB78 /* PrivacyInfo.xcprivacy */; };
 		4A88DA5C6A233DC6A4C46FDD /* ThresholdQuickSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AFA0984FBAAEB284AFD1938 /* ThresholdQuickSync.swift */; };
 		55BADEFC8B4DE024C27A3049 /* TrackingSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82EF16980FC376DA08CE6266 /* TrackingSupport.swift */; };
+		57DA82930F2F10035697C7E7 /* stg.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = 299B2E2834BE0DC48ADCAAEC /* stg.sqlite */; };
 		6283C7B0977D792D6195BB70 /* DiagnosticLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 611B3EDA7098B6FFA0B7F1CD /* DiagnosticLog.swift */; };
 		646DF573C8D46180538EB2E3 /* STGCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 7ABE4FCC73198B770FF9A987 /* STGCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		6C9B35529266E3675F1B33FF /* ReminderEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20D64FD1F3FF09E2AFF224D /* ReminderEngine.swift */; };
 		845AB4D10A388855C56F08BB /* OneDriveClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF9130A5C42F17B23E5E09FF /* OneDriveClient.swift */; };
 		8BE5D8D68CA66232B6E3BF03 /* MinuteBitmap.swift in Sources */ = {isa = PBXBuildFile; fileRef = B38BDA65A0B0FABCFC065A0D /* MinuteBitmap.swift */; };
 		8CA06C6934BA518326262310 /* BitmapRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AAC2BE4444E8459C298DB57 /* BitmapRepository.swift */; };
+		94993EE7E0895F1E4B477958 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 48D91E6D837A87190765A376 /* Localizable.strings */; };
 		9835A5FF2EE20E43F2713A20 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = D5964D0549D2B2D5976CAC57 /* libsqlite3.tbd */; };
 		9FEEEFD33E2287524AADFD1C /* FamilyControls.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 735D661A3477E58491F95D8E /* FamilyControls.framework */; };
+		A0D9E37A4EEA1F58C46E3F43 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = A274D9FDD9EBD3D5B7A223C3 /* Localizable.strings */; };
 		A15B2F0DBEDE77F3DF210237 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B1C244846372BFD9CDA3AA2 /* Models.swift */; };
 		A7AEFA26A484C5580838238B /* BackgroundTasks.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CD2491558F5104772E5042DD /* BackgroundTasks.framework */; };
 		AC269030EA6839011648FDCD /* GoogleDriveClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2B97E76C8C280697E15DE77 /* GoogleDriveClient.swift */; };
 		AFA8258BA05B808E497FE22C /* GoogleDriveSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98E3B8D1B81901F8689F92A5 /* GoogleDriveSync.swift */; };
 		B7D4A0C175A0FF21D1DE6BA1 /* SecureStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 320F9B3B102671D26D905570 /* SecureStore.swift */; };
 		CA7D57DB3B9B91AF48BDF902 /* SharedEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = E05092F6925CFF606A904DED /* SharedEnvironment.swift */; };
+		CAB81DF47A1ED76E03252389 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = BEB0EB66D8C5A240C8E5F12D /* PrivacyInfo.xcprivacy */; };
 		D0EC51912F3E63C65A181AAE /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DE6D50AE054B41B4A0024B3 /* AppModel.swift */; };
-		DDEAD9EE8987F370FDC24C6B /* openrouter-weekly-seed-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = 3460FF109A25DF0CF79D357C /* openrouter-weekly-seed-v1.json */; };
 		DF2C0B9211C028D9D472C9D2 /* TimeModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15816743065102E09B371436 /* TimeModel.swift */; };
 		E0518BA8662E4EB1218BE4E0 /* CloudFolderSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA6E3934DF765957C2BAC614 /* CloudFolderSync.swift */; };
 		E6A9B07640FB0EABB121B4A6 /* MonitorRegistration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A15E689B9D2AB209D3DF4BEA /* MonitorRegistration.swift */; };
 		E7708155761A921FB2A0D13A /* DeviceActivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2DFF0511705B4DD9148C786A /* DeviceActivity.framework */; };
 		EFA9EDBF28DC47D2C0337B09 /* DeviceActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6122A972AE4E73638AEC6390 /* DeviceActivityController.swift */; };
+		EFDB4C71CE24184478DD3202 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 6CFA6A232914155F53CFBF51 /* PrivacyInfo.xcprivacy */; };
 		F0B2CCB629C09544BF6B1A84 /* Views.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46289283018BBA4464EAAA56 /* Views.swift */; };
 		F0F12F355845E43278BB86EB /* OpenRouterSeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35D6098CBDF19808738EB5B6 /* OpenRouterSeed.swift */; };
 		F556B829872D2000B59AC044 /* STGCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7ABE4FCC73198B770FF9A987 /* STGCore.framework */; };
@@ -120,36 +125,45 @@
 
 /* Begin PBXFileReference section */
 		00346067565E9114E54ADD34 /* STGDeviceActivityMonitor.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = STGDeviceActivityMonitor.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		087C6A96AFF388964740D91C /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		0DE8D1DBDD477D060AA65BCE /* STGDeviceActivityMonitor.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = STGDeviceActivityMonitor.entitlements; sourceTree = "<group>"; };
 		0EC5068505C201D69C09C4A2 /* STG.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = STG.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		13C3C6EF8359F2E897FCCB78 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		15816743065102E09B371436 /* TimeModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeModel.swift; sourceTree = "<group>"; };
 		1E4B66179A168BD4F7A80455 /* UserNotifications.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UserNotifications.framework; path = System/Library/Frameworks/UserNotifications.framework; sourceTree = SDKROOT; };
 		27668B2EE0EF5C13F56B225E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		299B2E2834BE0DC48ADCAAEC /* stg.sqlite */ = {isa = PBXFileReference; lastKnownFileType = file; path = stg.sqlite; sourceTree = "<group>"; };
 		2CCE4E369121F4AC7369DAF9 /* STGCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = STGCoreTests.swift; sourceTree = "<group>"; };
 		2DFF0511705B4DD9148C786A /* DeviceActivity.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = DeviceActivity.framework; path = System/Library/Frameworks/DeviceActivity.framework; sourceTree = SDKROOT; };
 		320F9B3B102671D26D905570 /* SecureStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureStore.swift; sourceTree = "<group>"; };
-		3460FF109A25DF0CF79D357C /* openrouter-weekly-seed-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "openrouter-weekly-seed-v1.json"; sourceTree = "<group>"; };
 		35D6098CBDF19808738EB5B6 /* OpenRouterSeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenRouterSeed.swift; sourceTree = "<group>"; };
 		46289283018BBA4464EAAA56 /* Views.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views.swift; sourceTree = "<group>"; };
 		4D315CBDBE78C59B4795D733 /* OpenRouterTracking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenRouterTracking.swift; sourceTree = "<group>"; };
 		4E5BB61715DD149B4DE00155 /* MonitorExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonitorExtension.swift; sourceTree = "<group>"; };
 		4FED898BAA83FA10AEBD7ECA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		564DF6A1EE9A85F587B5D72C /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/Localizable.strings; sourceTree = "<group>"; };
 		5AAC2BE4444E8459C298DB57 /* BitmapRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BitmapRepository.swift; sourceTree = "<group>"; };
 		5DE6D50AE054B41B4A0024B3 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		611B3EDA7098B6FFA0B7F1CD /* DiagnosticLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticLog.swift; sourceTree = "<group>"; };
 		6122A972AE4E73638AEC6390 /* DeviceActivityController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceActivityController.swift; sourceTree = "<group>"; };
 		6660BF1BDC8E663DE65A4349 /* STG.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = STG.entitlements; sourceTree = "<group>"; };
 		6AFA0984FBAAEB284AFD1938 /* ThresholdQuickSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThresholdQuickSync.swift; sourceTree = "<group>"; };
+		6CFA6A232914155F53CFBF51 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		735D661A3477E58491F95D8E /* FamilyControls.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = FamilyControls.framework; path = System/Library/Frameworks/FamilyControls.framework; sourceTree = SDKROOT; };
+		752BF8E2D23CA571972C68EA /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		766C106229B054C208CA900C /* STGCoreTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = STGCoreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		76FDAA5828854E293B3796DB /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/Localizable.strings; sourceTree = "<group>"; };
 		7ABE4FCC73198B770FF9A987 /* STGCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = STGCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		7B1C244846372BFD9CDA3AA2 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		82EF16980FC376DA08CE6266 /* TrackingSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackingSupport.swift; sourceTree = "<group>"; };
+		9763A258BBE17E74B1F6D653 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		98E3B8D1B81901F8689F92A5 /* GoogleDriveSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleDriveSync.swift; sourceTree = "<group>"; };
 		A15E689B9D2AB209D3DF4BEA /* MonitorRegistration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonitorRegistration.swift; sourceTree = "<group>"; };
 		A20D64FD1F3FF09E2AFF224D /* ReminderEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReminderEngine.swift; sourceTree = "<group>"; };
+		A683802D99993274D42C318A /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		B38BDA65A0B0FABCFC065A0D /* MinuteBitmap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MinuteBitmap.swift; sourceTree = "<group>"; };
 		BA6E3934DF765957C2BAC614 /* CloudFolderSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudFolderSync.swift; sourceTree = "<group>"; };
+		BEB0EB66D8C5A240C8E5F12D /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		BF9130A5C42F17B23E5E09FF /* OneDriveClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OneDriveClient.swift; sourceTree = "<group>"; };
 		C008B0EEC0E8F94E119C6C54 /* STGApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = STGApp.swift; sourceTree = "<group>"; };
 		C4FC5D5E8940F8218141B8A4 /* OneDriveSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OneDriveSync.swift; sourceTree = "<group>"; };
@@ -234,8 +248,10 @@
 			children = (
 				D8A0462445B91565B1AD5478 /* Info.plist */,
 				4E5BB61715DD149B4DE00155 /* MonitorExtension.swift */,
+				13C3C6EF8359F2E897FCCB78 /* PrivacyInfo.xcprivacy */,
 				0DE8D1DBDD477D060AA65BCE /* STGDeviceActivityMonitor.entitlements */,
 				6AFA0984FBAAEB284AFD1938 /* ThresholdQuickSync.swift */,
+				AF5E4C0E4C1D48A23BB80C50 /* Resources */,
 			);
 			path = Monitor;
 			sourceTree = "<group>";
@@ -243,7 +259,8 @@
 		39ED04F887883CC36DAEB561 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
-				3460FF109A25DF0CF79D357C /* openrouter-weekly-seed-v1.json */,
+				6CFA6A232914155F53CFBF51 /* PrivacyInfo.xcprivacy */,
+				299B2E2834BE0DC48ADCAAEC /* stg.sqlite */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -255,6 +272,14 @@
 				1D8009567AFE0F0F4A67008D /* Tests */,
 			);
 			path = STGCore;
+			sourceTree = "<group>";
+		};
+		747B0603ED9EC0973ADDFDE8 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				48D91E6D837A87190765A376 /* Localizable.strings */,
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 		7C6848D84C7F0E3DB6689A6C = {
@@ -307,6 +332,14 @@
 			path = STGCore;
 			sourceTree = "<group>";
 		};
+		AF5E4C0E4C1D48A23BB80C50 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				A274D9FDD9EBD3D5B7A223C3 /* Localizable.strings */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
 		C50277BF42F105FF2A47F2D7 /* Shared */ = {
 			isa = PBXGroup;
 			children = (
@@ -334,9 +367,11 @@
 				27668B2EE0EF5C13F56B225E /* Assets.xcassets */,
 				6122A972AE4E73638AEC6390 /* DeviceActivityController.swift */,
 				4FED898BAA83FA10AEBD7ECA /* Info.plist */,
+				BEB0EB66D8C5A240C8E5F12D /* PrivacyInfo.xcprivacy */,
 				6660BF1BDC8E663DE65A4349 /* STG.entitlements */,
 				C008B0EEC0E8F94E119C6C54 /* STGApp.swift */,
 				46289283018BBA4464EAAA56 /* Views.swift */,
+				747B0603ED9EC0973ADDFDE8 /* Resources */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -390,6 +425,7 @@
 			buildConfigurationList = F186ABFF0F4518279F771A33 /* Build configuration list for PBXNativeTarget "STGDeviceActivityMonitor" */;
 			buildPhases = (
 				0CAD29D6A88E3015C1BD3A0D /* Sources */,
+				D564366D18419169A409FCFA /* Resources */,
 				2B69E1C470E09C0760863172 /* Frameworks */,
 			);
 			buildRules = (
@@ -479,6 +515,8 @@
 			knownRegions = (
 				Base,
 				en,
+				es,
+				"zh-Hans",
 			);
 			mainGroup = 7C6848D84C7F0E3DB6689A6C;
 			minimizedProjectReferenceProxies = 1;
@@ -500,7 +538,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				DDEAD9EE8987F370FDC24C6B /* openrouter-weekly-seed-v1.json in Resources */,
+				EFDB4C71CE24184478DD3202 /* PrivacyInfo.xcprivacy in Resources */,
+				57DA82930F2F10035697C7E7 /* stg.sqlite in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -509,6 +548,17 @@
 			buildActionMask = 2147483647;
 			files = (
 				FF3B8C865E96281D46D53436 /* Assets.xcassets in Resources */,
+				94993EE7E0895F1E4B477958 /* Localizable.strings in Resources */,
+				CAB81DF47A1ED76E03252389 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D564366D18419169A409FCFA /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A0D9E37A4EEA1F58C46E3F43 /* Localizable.strings in Resources */,
+				4925F05C8BDF19AE9FD38175 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -595,6 +645,29 @@
 		};
 /* End PBXTargetDependency section */
 
+/* Begin PBXVariantGroup section */
+		48D91E6D837A87190765A376 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				9763A258BBE17E74B1F6D653 /* en */,
+				564DF6A1EE9A85F587B5D72C /* es */,
+				A683802D99993274D42C318A /* zh-Hans */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+		A274D9FDD9EBD3D5B7A223C3 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				752BF8E2D23CA571972C68EA /* en */,
+				76FDAA5828854E293B3796DB /* es */,
+				087C6A96AFF388964740D91C /* zh-Hans */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
 /* Begin XCBuildConfiguration section */
 		0E3B228449B46C94232DFA64 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -616,6 +689,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = STG/Monitor/STGDeviceActivityMonitor.entitlements;
+				ENABLE_DEBUG_DYLIB = NO;
 				INFOPLIST_FILE = STG/Monitor/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -665,7 +739,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "";
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 21;
 				DEFINES_MODULE = YES;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
@@ -676,6 +750,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 1.1.8;
 				PRODUCT_BUNDLE_IDENTIFIER = com.timbertrail.screentimeguardian.ios.core;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -749,6 +824,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = STG/App/STG.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_DEBUG_DYLIB = NO;
 				INFOPLIST_FILE = STG/App/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -764,7 +840,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "";
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 21;
 				DEFINES_MODULE = YES;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
@@ -775,6 +851,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 1.1.8;
 				PRODUCT_BUNDLE_IDENTIFIER = com.timbertrail.screentimeguardian.ios.core;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;

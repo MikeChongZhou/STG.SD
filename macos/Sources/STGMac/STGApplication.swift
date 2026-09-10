@@ -12,6 +12,7 @@ final class STGApplication: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var windows: [String: NSWindow] = [:]
     private var reminderWindow: NSWindow?
     private var userRequestedQuit = false
+    private var terminationReplyPending = false
 
     static func main() {
         let app = NSApplication.shared
@@ -23,14 +24,20 @@ final class STGApplication: NSObject, NSApplicationDelegate, NSWindowDelegate {
         ProcessInfo.processInfo.disableAutomaticTermination("Screen Time Guardian is recording screen availability")
         ProcessInfo.processInfo.disableSuddenTermination()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.title = "🛡 STG"
+        if let appIcon = NSApp.applicationIconImage?.copy() as? NSImage {
+            appIcon.size = NSSize(width: 18, height: 18)
+            statusItem.button?.image = appIcon
+            statusItem.button?.imageScaling = .scaleProportionallyDown
+            statusItem.button?.imagePosition = .imageLeading
+        }
+        statusItem.button?.title = "STG"
         let menu = NSMenu()
-        add("Main", #selector(showMain), to: menu)
-        add("Report", #selector(showReport), to: menu)
-        add("Settings", #selector(showSettings), to: menu)
-        add("Tracking", #selector(showTracking), to: menu)
-        add("About", #selector(showAbout), to: menu)
-        menu.addItem(.separator()); add("Quit", #selector(quit), to: menu)
+        add(NSLocalizedString("Main", comment: ""), #selector(showMain), to: menu)
+        add(NSLocalizedString("Report", comment: ""), #selector(showReport), to: menu)
+        add(NSLocalizedString("Settings", comment: ""), #selector(showSettings), to: menu)
+        add(NSLocalizedString("Tracking", comment: ""), #selector(showTracking), to: menu)
+        add(NSLocalizedString("About", comment: ""), #selector(showAbout), to: menu)
+        menu.addItem(.separator()); add(NSLocalizedString("Quit", comment: ""), #selector(quit), to: menu)
         statusMenu = menu
         statusItem.button?.target = self; statusItem.button?.action = #selector(statusItemClicked)
         statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -39,6 +46,9 @@ final class STGApplication: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         model.reconcileLaunchAtLogin(trigger: "application_launch")
         model.start()
+        if !UserDefaults.standard.bool(forKey: "desktopOnboardingV1Complete") {
+            show("onboarding", title: "Set Up Screen Time Guardian", root: MacOnboardingView(model: model) { [weak self] in self?.windows["onboarding"]?.close() })
+        }
     }
 
     private func add(_ title: String, _ action: Selector, to menu: NSMenu) { let item = NSMenuItem(title: title, action: action, keyEquivalent: ""); item.target = self; menu.addItem(item) }
@@ -53,7 +63,11 @@ final class STGApplication: NSObject, NSApplicationDelegate, NSWindowDelegate {
             }
         })
     }
-    @objc private func showReport() { show("report", title: "STG Report", root: ReportView(model: model)) }
+    @objc private func showReport() {
+        show("report", title: "STG Report", root: ReportView(model: model) { [weak self] height in
+            self?.resizeReportWindow(toContentHeight: height)
+        })
+    }
     @objc private func showSettings() { show("settings", title: "STG Settings", root: SettingsView(model: model) { [weak self] in self?.windows["settings"]?.close() }) }
     @objc private func showAbout() { show("about", title: "About STG", root: AboutView()) }
     @objc private func showTracking() { show("tracking", title: "STG Tracking", root: TrackingView(model: model)) }
@@ -72,12 +86,24 @@ final class STGApplication: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func showStatusMenu() {
         pendingStatusClick = nil
-        guard let button = statusItem.button else { return }
-        statusMenu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height + 3), in: button)
+        guard let button = statusItem.button, let window = button.window else { return }
+        let buttonFrameOnScreen = window.convertToScreen(button.convert(button.bounds, to: nil))
+        let menuAnchor = NSPoint(x: buttonFrameOnScreen.minX, y: buttonFrameOnScreen.minY - 1)
+        statusMenu.popUp(positioning: statusMenu.items.first, at: menuAnchor, in: nil)
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { if !flag { showMain() }; return true }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard !terminationReplyPending else { return .terminateLater }
+        terminationReplyPending = true
+        Task { @MainActor in
+            await model.prepareForTermination(reason: userRequestedQuit ? "menu_quit" : "application_termination")
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
 
     func applicationWillTerminate(_ notification: Notification) {
         model.stop(reason: userRequestedQuit ? "menu_quit" : "application_will_terminate")
@@ -88,7 +114,7 @@ final class STGApplication: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func show<V: View>(_ key: String, title: String, root: V) {
-        let requestedSize: NSSize = key == "report" ? .init(width: 1_180, height: 760) : key == "tracking" ? .init(width: 1_120, height: 720) : key == "settings" ? .init(width: 860, height: 700) : .init(width: 720, height: 500)
+        let requestedSize: NSSize = key == "report" ? .init(width: 1_180, height: 580) : key == "tracking" ? .init(width: 1_120, height: 720) : key == "settings" ? .init(width: 860, height: 700) : .init(width: 720, height: 500)
         let isNewWindow = windows[key] == nil
         let window = windows[key] ?? NSWindow(contentRect: NSRect(origin: .zero, size: requestedSize), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         window.title = title; window.contentView = NSHostingView(rootView: root); window.isReleasedWhenClosed = false; window.delegate = self
@@ -101,6 +127,25 @@ final class STGApplication: NSObject, NSApplicationDelegate, NSWindowDelegate {
         windows[key] = window
         if NSApp.activationPolicy() != .regular { NSApp.setActivationPolicy(.regular) }
         NSApp.activate(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil)
+    }
+
+    private func resizeReportWindow(toContentHeight requestedHeight: CGFloat) {
+        guard let window = windows["report"], !window.styleMask.contains(.fullScreen), !window.isZoomed else { return }
+        let visibleFrame = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
+        let maximumContentHeight = max(500, (visibleFrame?.height ?? 760) - 32 - (window.frame.height - (window.contentView?.bounds.height ?? 0)))
+        let contentHeight = min(maximumContentHeight, max(500, requestedHeight))
+        guard let contentView = window.contentView, abs(contentView.bounds.height - contentHeight) > 8 else { return }
+
+        let contentRect = NSRect(x: 0, y: 0, width: contentView.bounds.width, height: contentHeight)
+        let newFrameSize = window.frameRect(forContentRect: contentRect).size
+        var newFrame = window.frame
+        let currentTop = newFrame.maxY
+        newFrame.size.height = newFrameSize.height
+        newFrame.origin.y = currentTop - newFrameSize.height
+        if let visibleFrame, newFrame.minY < visibleFrame.minY + 16 {
+            newFrame.origin.y = visibleFrame.minY + 16
+        }
+        window.setFrame(newFrame, display: true, animate: true)
     }
 
     private func returnToMenuBarIfNoVisibleWindows() {

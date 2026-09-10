@@ -60,7 +60,9 @@ enum SharedEnvironment {
 
     static func repository() throws -> BitmapRepository {
         guard appGroupContainer != nil else { throw EnvironmentError.appGroupUnavailable }
-        return try BitmapRepository(url: databaseURL)
+        // Tracking history is imported by the main app after its first frame.
+        // The DeviceActivity extension must never perform this large import.
+        return try BitmapRepository(url: databaseURL, importsBundledOpenRouterSeed: false)
     }
 
     /// The main app owns creation of the local identity. It persists the

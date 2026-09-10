@@ -10,16 +10,16 @@
     <Nullable>enable</Nullable>
     <AssemblyName>ScreenTimeGuardian</AssemblyName>
     <RootNamespace>ScreenTimeGuardian</RootNamespace>
-    <Version>1.1.6</Version>
-    <AssemblyVersion>1.1.6.0</AssemblyVersion>
-    <FileVersion>1.1.6.0</FileVersion>
+    <Version>1.1.8</Version>
+    <AssemblyVersion>1.1.8</AssemblyVersion>
+    <FileVersion>1.1.8</FileVersion>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\stg.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.22" />
-    <EmbeddedResource Include="..\..\shared\openrouter\openrouter-weekly-seed-v1.json">
-      <Link>Assets\openrouter-weekly-seed-v1.json</Link>
+    <EmbeddedResource Include="..\..\apple\STGCore\Sources\STGCore\Resources\stg.sqlite">
+      <Link>Assets\stg.sqlite</Link>
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup Condition="'$(STG_GOOGLE_CLIENT_SECRET)' != ''">

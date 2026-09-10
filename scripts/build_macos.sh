@@ -16,7 +16,14 @@ if [ -n "${STG_GOOGLE_CLIENT_SECRET:-}" ]; then
     plutil -replace STGGoogleClientSecret -string "$STG_GOOGLE_CLIENT_SECRET" "$APP/Contents/Info.plist"
 fi
 cp "$ROOT/macos/assets/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
-cp "$ROOT/apple/STGCore/Sources/STGCore/Resources/openrouter-weekly-seed-v1.json" "$APP/Contents/Resources/openrouter-weekly-seed-v1.json"
+cp "$ROOT/apple/STGCore/Sources/STGCore/Resources/stg.sqlite" "$APP/Contents/Resources/stg.sqlite"
+# SwiftUI's implicit localized-string lookup uses Bundle.main. Mirror the app
+# localizations into the conventional main-bundle Resources location as well.
+for LANGUAGE_DIR in "$ROOT/macos/Sources/STGMac/Resources"/*.lproj; do
+    LANGUAGE_NAME=$(basename "$LANGUAGE_DIR")
+    mkdir -p "$APP/Contents/Resources/$LANGUAGE_NAME"
+    cp "$LANGUAGE_DIR/Localizable.strings" "$APP/Contents/Resources/$LANGUAGE_NAME/Localizable.strings"
+done
 STG_SIGN_IDENTITY_VALUE=${STG_SIGN_IDENTITY:-"-"}
 if [ -n "${STG_ENABLE_ICLOUD_ENTITLEMENTS+x}" ]; then
     STG_ENABLE_ICLOUD_ENTITLEMENTS_VALUE=$STG_ENABLE_ICLOUD_ENTITLEMENTS

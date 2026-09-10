@@ -48,7 +48,7 @@ public struct OpenRouterRankingSnapshot: Equatable, Sendable {
     public var citation: String { "Source: OpenRouter public rankings (openrouter.ai/rankings), through \(asOf)." }
 }
 
-public struct OpenRouterWeeklyRankingRow: Identifiable, Equatable, Sendable {
+public struct OpenRouterWeeklyRankingRow: Identifiable, Equatable, Codable, Sendable {
     public var id: String { "\(weekStart)|\(modelPermaslug)" }
     public var weekStart: String
     public var weekEnd: String
@@ -59,10 +59,43 @@ public struct OpenRouterWeeklyRankingRow: Identifiable, Equatable, Sendable {
     public var totalTokens: Int64
     public var promptPricePerToken: Double?
     public var completionPricePerToken: Double?
+    public var persistedRevenueUSD: Double? = nil
+    public var asOf: String? = nil
+    public var missingDates: [String] = []
+    public var isComplete: Bool = true
+    public var updatedAt: Date = .now
     public var hasTokenBreakdown: Bool { promptTokens >= 0 && completionTokens >= 0 }
     public var revenueUSD: Double? {
+        if let persistedRevenueUSD { return persistedRevenueUSD }
         guard hasTokenBreakdown, let promptPricePerToken, let completionPricePerToken else { return nil }
         return Double(promptTokens) * promptPricePerToken + Double(completionTokens) * completionPricePerToken
+    }
+}
+
+public enum OpenRouterWeeklyMetric: String, CaseIterable, Identifiable, Sendable {
+    case rank, promptTokens, completionTokens, totalTokens, promptPrice, completionPrice, revenue
+    public var id: String { rawValue }
+    public var label: String {
+        switch self {
+        case .rank: "Rank"
+        case .promptTokens: "Input tokens"
+        case .completionTokens: "Output tokens"
+        case .totalTokens: "Total tokens"
+        case .promptPrice: "Input price / M"
+        case .completionPrice: "Output price / M"
+        case .revenue: "Revenue"
+        }
+    }
+    public func value(_ row: OpenRouterWeeklyRankingRow) -> Double? {
+        switch self {
+        case .rank: Double(row.rank)
+        case .promptTokens: row.hasTokenBreakdown ? Double(row.promptTokens) : nil
+        case .completionTokens: row.hasTokenBreakdown ? Double(row.completionTokens) : nil
+        case .totalTokens: Double(row.totalTokens)
+        case .promptPrice: row.promptPricePerToken.map { $0 * 1_000_000 }
+        case .completionPrice: row.completionPricePerToken.map { $0 * 1_000_000 }
+        case .revenue: row.revenueUSD
+        }
     }
 }
 
@@ -136,10 +169,12 @@ public actor OpenRouterTrackingService {
             return buckets[weekKey, default: [:]].filter { $0.value.total > 0 }
                 .sorted { $0.value.total == $1.value.total ? $0.key < $1.key : $0.value.total > $1.value.total }
                 .enumerated().map { index, element in
-                    return OpenRouterWeeklyRankingRow(weekStart: weekKey, weekEnd: Self.dateString(weekEnd), rank: index + 1,
+                    let endKey = Self.dateString(weekEnd)
+                    return OpenRouterWeeklyRankingRow(weekStart: weekKey, weekEnd: endKey, rank: index + 1,
                         modelPermaslug: element.key, promptTokens: element.value.prompt,
                         completionTokens: element.value.completion, totalTokens: element.value.total,
-                        promptPricePerToken: element.value.promptPrice, completionPricePerToken: element.value.completionPrice)
+                        promptPricePerToken: element.value.promptPrice, completionPricePerToken: element.value.completionPrice,
+                        asOf: endKey)
                 }
         }
     }
@@ -298,7 +333,7 @@ public actor OpenRouterTrackingService {
     private static func publicRequest(_ url: URL) -> URLRequest {
         var request = URLRequest(url: url)
         request.setValue("https://openrouter.ai/rankings", forHTTPHeaderField: "Referer")
-        request.setValue("Screen-Time-Guardian/1.1.6", forHTTPHeaderField: "User-Agent")
+        request.setValue("Screen-Time-Guardian/1.1.7", forHTTPHeaderField: "User-Agent")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         return request
     }

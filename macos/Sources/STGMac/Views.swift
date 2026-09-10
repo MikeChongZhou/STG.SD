@@ -13,19 +13,23 @@ struct DashboardView: View {
             VStack(spacing: 18) {
                 Text("Screen Time Guardian").font(.largeTitle.bold())
                 LazyVGrid(columns: [.init(.flexible()), .init(.flexible())], spacing: 14) {
-                    card("Report", "All devices today: \(duration(model.allMinutes))\nThis Mac: \(duration(model.localMinutes))\nPlan: \(duration(model.settings.dailyPlanMinutes))", "chart.bar.fill") { open(.report) }
-                    card("Tracking", "OpenRouter public model rankings\nNo API key needed", "waveform.path.ecg") { open(.tracking) }
-                    card("Settings", "Daily plan: \(duration(model.settings.dailyPlanMinutes))\nMeeting mode: \(model.settings.meetingMode ? "On" : "Off")", "gearshape.fill") { open(.settings) }
-                    card("About", "Version 1.1.7\nLocal + private cloud", "info.circle.fill") { open(.about) }
+                    card("Report", "All Devices: \(duration(model.allMinutes))\nThis Mac: \(duration(model.localMinutes))", "chart.bar.fill") { open(.report) }
+                    card("Tracking", "Latest week · Top models\n\(model.latestTrackingTopTwo)", "waveform.path.ecg") { open(.tracking) }
+                    card("Settings", "Daily Limit: \(duration(model.settings.dailyPlanMinutes))\n\(meetingStatus)", "gearshape.fill") { open(.settings) }
+                    card("About", "Version 1.1.8\nLocal + private cloud", "info.circle.fill") { open(.about) }
                 }
                 HStack {
                     Circle().fill(model.isScreenAvailable ? .green : .gray).frame(width: 8)
                     Text(model.syncStatus).font(.caption).foregroundStyle(.secondary)
                     Spacer()
-                    Button("Sync now") { Task { await model.synchronize() } }.buttonStyle(.borderedProminent)
+                    Button("Sync Now") { Task { await model.synchronize() } }.buttonStyle(.borderedProminent)
                 }
             }.padding(24)
         }.frame(minWidth: 680, minHeight: 460)
+    }
+
+    private var meetingStatus: String {
+        NSLocalizedString(model.settings.meetingMode ? "Meeting Mode: On" : "Meeting auto-detect: On", comment: "Dashboard meeting detection state")
     }
 
     private func card(_ title: String, _ body: String, _ icon: String, action: @escaping () -> Void) -> some View {
@@ -40,6 +44,7 @@ struct SettingsView: View {
     @ObservedObject var model: AppModel
     @State private var draft: STGSettings
     @State private var showCloudSetup = false
+    @State private var confirmClose = false
     let close: () -> Void
     init(model: AppModel, close: @escaping () -> Void) { self.model = model; self.close = close; _draft = State(initialValue: model.settings) }
     var body: some View {
@@ -47,16 +52,16 @@ struct SettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     Text("Settings").font(.largeTitle.bold())
-                    GroupBox("Plan") {
+                    GroupBox("Daily Limit") {
                         Grid(alignment: .leading, horizontalSpacing: 22, verticalSpacing: 14) {
-                            GridRow { Text("Daily plan").foregroundStyle(.secondary); HStack { Stepper("Hours: \(draft.dailyPlanMinutes / 60)", value: planHours, in: 0...24); Stepper("Minutes: \(draft.dailyPlanMinutes % 60)", value: planMinutes, in: 0...59, step: 5) }.fixedSize() }
+                            GridRow { Text("Daily Limit").foregroundStyle(.secondary); HStack { Stepper("Hours: \(draft.dailyPlanMinutes / 60)", value: planHours, in: 0...24); Stepper("Minutes: \(draft.dailyPlanMinutes % 60)", value: planMinutes, in: 0...45, step: 15) }.fixedSize() }
                         }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
                     }
                     GroupBox("Reminder close countdowns") {
                         Grid(alignment: .leading, horizontalSpacing: 22, verticalSpacing: 14) {
                             GridRow { Text("Eye break").foregroundStyle(.secondary); Stepper("\(draft.eyeCloseCountdownMinutes) minutes", value: $draft.eyeCloseCountdownMinutes, in: 0...10).fixedSize() }
                             GridRow { Text("Posture").foregroundStyle(.secondary); Stepper("\(draft.postureCloseCountdownMinutes) minutes", value: $draft.postureCloseCountdownMinutes, in: 0...10).fixedSize() }
-                            GridRow { Text("Daily limit").foregroundStyle(.secondary); Stepper("\(draft.dailyCloseCountdownMinutes) minutes", value: $draft.dailyCloseCountdownMinutes, in: 0...10).fixedSize() }
+                            GridRow { Text("Daily Limit").foregroundStyle(.secondary); Stepper("\(draft.dailyCloseCountdownMinutes) minutes", value: $draft.dailyCloseCountdownMinutes, in: 0...10).fixedSize() }
                         }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
                     }
                     GroupBox("General") {
@@ -79,7 +84,7 @@ struct SettingsView: View {
                     GroupBox("Diagnostics") {
                         HStack {
                             Text("Export lifecycle, screen-use, reminder, database, and synchronization events without cloud credentials.").foregroundStyle(.secondary)
-                            Spacer(); Button("Export Test Log…") { model.exportTestLog() }
+                            Spacer(); Button("Export App Data…") { model.exportAppData() }; Button("Export Test Log…") { model.exportTestLog() }
                         }.padding(8)
                     }
                 }.padding(28)
@@ -87,21 +92,27 @@ struct SettingsView: View {
             Divider()
             HStack(spacing: 12) {
                 Spacer()
-                Button("Cancel") { draft = model.settings; close() }.keyboardShortcut(.cancelAction)
-                Button("Save") { model.settings = draft; model.saveSettings(); Task { await model.synchronize() }; close() }.keyboardShortcut(.defaultAction)
+                Button("Save") { model.settings = draft; model.saveSettings(); draft = model.settings; Task { await model.synchronize() } }.disabled(!hasChanges)
+                Button("Close") { if hasChanges { confirmClose = true } else { close() } }.keyboardShortcut(.cancelAction)
             }.padding(18)
         }.frame(minWidth: 780, minHeight: 650)
             .sheet(isPresented: $showCloudSetup) { MacCloudSetupView(model: model, draft: $draft) }
+            .alert("Save changes before closing?", isPresented: $confirmClose) {
+                Button("Save") { model.settings = draft; model.saveSettings(); close() }
+                Button("Discard Changes", role: .destructive) { draft = model.settings; close() }
+                Button("Keep Editing", role: .cancel) { }
+            }
     }
     private var planHours: Binding<Int> { Binding(get: { draft.dailyPlanMinutes / 60 }, set: { draft.dailyPlanMinutes = min(1_440, max(20, $0 * 60 + draft.dailyPlanMinutes % 60)) }) }
     private var planMinutes: Binding<Int> { Binding(get: { draft.dailyPlanMinutes % 60 }, set: { draft.dailyPlanMinutes = min(1_440, max(20, (draft.dailyPlanMinutes / 60) * 60 + $0)) }) }
+    private var hasChanges: Bool { draft != model.settings }
 }
 
 @MainActor private func macCloudAccount(provider: SyncProvider, model: AppModel) -> String {
     switch provider { case .none: "Single-device mode"; case .iCloudDrive: model.iCloudAccountLabel; case .oneDrive: model.oneDriveAccountLabel; case .googleDrive: model.googleDriveAccountLabel }
 }
 
-private struct MacCloudSetupView: View {
+struct MacCloudSetupView: View {
     @ObservedObject var model: AppModel
     @Binding var draft: STGSettings
     @Environment(\.dismiss) private var dismiss
@@ -112,7 +123,7 @@ private struct MacCloudSetupView: View {
     private var recommendation: SyncProvider { (android || windows) ? (china ? .oneDrive : .googleDrive) : .iCloudDrive }
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Configure private cloud").font(.title.bold())
+            Text("Configure Private Cloud").font(.title.bold())
             Text("Which devices will share this data?").font(.headline)
             Toggle("This Mac", isOn: .constant(true)).disabled(true)
             Toggle("iPhone / iPad", isOn: $ios); Toggle("Android", isOn: $android); Toggle("Windows", isOn: $windows)
@@ -140,31 +151,78 @@ private struct MacCloudSetupView: View {
     }
 }
 
+struct MacOnboardingView: View {
+    @ObservedObject var model: AppModel
+    let complete: () -> Void
+    @State private var step = 0
+    @State private var showCloudSetup = false
+    @State private var draft: STGSettings
+
+    init(model: AppModel, complete: @escaping () -> Void) {
+        self.model = model; self.complete = complete; _draft = State(initialValue: model.settings)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("Set Up Screen Time Guardian").font(.largeTitle.bold())
+            Text("Step \(step + 1) of 2").foregroundStyle(.secondary)
+            GroupBox {
+                VStack(alignment: .leading, spacing: 16) {
+                    if step == 0 {
+                        Text("Connect your private cloud?").font(.title2.bold())
+                        Text("Private-cloud sync combines screen-use records from your own devices. You can skip this and configure it later.").foregroundStyle(.secondary)
+                    } else {
+                        Text("Start automatically when you sign in?").font(.title2.bold())
+                        Text("Automatic startup keeps minute recording and reminders available after you sign in.").foregroundStyle(.secondary)
+                    }
+                    if step == 0 {
+                        HStack { Button("Set Up Private Cloud") { showCloudSetup = true }; Button("Not Now") { step = 1 } }
+                    } else {
+                        Toggle("Launch Screen Time Guardian when I sign in", isOn: $draft.launchAtLogin)
+                    }
+                }.frame(maxWidth: .infinity, minHeight: 180, alignment: .leading).padding(12)
+            }
+            HStack {
+                if step == 1 { Button("Back") { step = 0 } }
+                Spacer()
+                if step == 1 { Button("Finish") { model.settings = draft; model.saveSettings(); UserDefaults.standard.set(true, forKey: "desktopOnboardingV1Complete"); complete() }.keyboardShortcut(.defaultAction) }
+            }
+        }.padding(30).frame(width: 620, height: 390)
+            .sheet(isPresented: $showCloudSetup, onDismiss: { draft = model.settings; step = 1 }) { MacCloudSetupView(model: model, draft: $draft) }
+    }
+}
+
 struct ReportView: View {
     @ObservedObject var model: AppModel
+    let preferredContentHeightChanged: (CGFloat) -> Void
     @State private var mode = 0
     @State private var selectedDate = Date()
     @State private var rangeStart = Calendar.current.date(byAdding: .day, value: -6, to: .now) ?? .now
     @State private var rangeEnd = Date()
     @State private var dailyBitmaps: [DeviceDayBitmap] = []
     @State private var multiDayPoints: [DailyUsagePoint] = []
+    @State private var periodPoints: [DailyUsagePoint] = []
     @State private var loading = false
     @State private var showDailyCalendar = false
+    init(model: AppModel, preferredContentHeightChanged: @escaping (CGFloat) -> Void = { _ in }) {
+        self.model = model
+        self.preferredContentHeightChanged = preferredContentHeightChanged
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             HStack(spacing: 10) {
                 Text("Screen Time Report").font(.title.bold())
                 if mode == 0 {
-                    summaryMetric("All devices", dailyBitmaps.first(where: { $0.isAggregate })?.usedMinutes ?? 0)
+                    summaryMetric("All Devices", dailyBitmaps.first(where: { $0.isAggregate })?.usedMinutes ?? 0)
                     summaryMetric("This Mac", dailyBitmaps.first(where: { $0.deviceID == model.settings.deviceID })?.usedMinutes ?? 0)
-                    summaryMetric("Plan", model.settings.dailyPlanMinutes)
+                    summaryMetric("Daily Limit", model.settings.dailyPlanMinutes)
                 }
                 Spacer()
-                Button("Sync now") { Task { await model.synchronize(); await reload() } }
+                Button("Sync Now") { Task { await model.synchronize(); await reload() } }
                 Button("Export CSV…") { exportReportCSV(text: reportCSV) }
             }
             HStack(spacing: 12) {
-                Picker("Report type", selection: $mode) { Text("Daily").tag(0); Text("Multiple days").tag(1) }.pickerStyle(.segmented).frame(width: 250)
+                Picker("Report Type", selection: $mode) { Text("Daily").tag(0); Text("Multiple Days").tag(1); Text("Year by Week").tag(2); Text("Years by Month").tag(3) }.pickerStyle(.segmented).frame(width: 500)
                 if mode == 0 {
                     Button { showDailyCalendar.toggle() } label: {
                         HStack(spacing: 7) { Image(systemName: "calendar"); Text(selectedDate.formatted(date: .numeric, time: .omitted)).monospacedDigit() }
@@ -172,166 +230,232 @@ struct ReportView: View {
                         DatePicker("Report date", selection: $selectedDate, displayedComponents: .date).datePickerStyle(.graphical).labelsHidden().padding(14)
                             .onChange(of: selectedDate) { _, _ in showDailyCalendar = false }
                     }
-                } else {
+                } else if mode == 1 {
                     DatePicker("Start", selection: $rangeStart, displayedComponents: .date)
                     DatePicker("End", selection: $rangeEnd, displayedComponents: .date)
                 }
                 Spacer()
+            }
+            .padding(.vertical, 6)
+            if mode == 0 {
+                HStack(spacing: 12) {
+                    averageMetric("This Week", model.statisticsSummary.thisWeekAverageMinutes)
+                    averageMetric("Last Week", model.statisticsSummary.lastWeekAverageMinutes)
+                    averageMetric("This Month", model.statisticsSummary.thisMonthAverageMinutes)
+                    averageMetric("Last Month", model.statisticsSummary.lastMonthAverageMinutes)
+                    averageMetric("This Year", model.statisticsSummary.thisYearAverageMinutes)
+                    Spacer()
+                    if model.statisticsSummary.containsEstimatedIOSData {
+                        Label("Estimated: includes iPhone/iPad data", systemImage: "info.circle").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
             }
             GeometryReader { viewport in
                 ScrollView([.horizontal, .vertical]) {
                     LazyVStack(alignment: .leading, spacing: 12) {
                         if mode == 0 {
                             ForEach(dailyBitmaps) { bitmap in
-                                let cardHeight = dailyCardHeight(availableHeight: viewport.size.height)
-                                VStack(alignment: .leading, spacing: 7) {
+                                let bitmapView = MinuteBitmapView(minutes: bitmap.minutes, rowHeight: 24)
+                                VStack(alignment: .leading, spacing: 4) {
                                     (Text("\(bitmap.displayName), \(duration(bitmap.usedMinutes)).  ").fontWeight(.semibold) + Text("Active intervals: \(usageIntervals(bitmap.minutes, timeZoneID: model.currentReportTimeZone))"))
                                         .font(.callout).textSelection(.enabled)
-                                    MinuteBitmapView(minutes: bitmap.minutes, rowHeight: bitmapRowHeight(cardHeight: cardHeight))
+                                    bitmapView.frame(height: bitmapView.preferredHeight, alignment: .topLeading)
                                 }
-                                .frame(minHeight: max(92, cardHeight - 20), alignment: .topLeading)
-                                .padding(.horizontal, 12).padding(.vertical, 10)
+                                .frame(maxWidth: .infinity, alignment: .topLeading)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.horizontal, 12).padding(.vertical, 7)
                                 .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 11))
                             }
-                        } else {
+                        } else if mode == 1 {
                             Chart(multiDayPoints) { point in
                                 LineMark(x: .value("Date", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName)).symbol(by: .value("Device", point.displayName))
                                 PointMark(x: .value("Date", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName))
                             }.chartYAxis { AxisMarks(position: .leading) { value in AxisGridLine(); AxisTick(); AxisValueLabel { if let minutes = value.as(Int.self) { Text(duration(minutes)) } } } }.chartLegend(position: .bottom, alignment: .leading)
-                                .frame(height: max(390, viewport.size.height - 4)).padding().background(.quaternary.opacity(0.25), in: RoundedRectangle(cornerRadius: 12))
+                                .frame(height: max(360, viewport.size.height - 30)).padding().background(.quaternary.opacity(0.25), in: RoundedRectangle(cornerRadius: 12))
+                            if let average = macIntervalAverage(multiDayPoints) { Text("Interval average: \(duration(average)) per day").font(.caption).foregroundStyle(.secondary) }
+                        } else {
+                            Chart(periodPoints) { point in
+                                LineMark(x: .value("Period", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName)).symbol(by: .value("Device", point.displayName))
+                                PointMark(x: .value("Period", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName))
+                            }.chartYAxis { AxisMarks(position: .leading) { value in AxisGridLine(); AxisTick(); AxisValueLabel { if let minutes = value.as(Int.self) { Text(duration(minutes)) } } } }.chartLegend(position: .bottom, alignment: .leading)
+                                .frame(height: max(360, viewport.size.height - 30)).padding().background(.quaternary.opacity(0.25), in: RoundedRectangle(cornerRadius: 12))
                         }
                     }
                     .frame(width: max(940, viewport.size.width - 1), alignment: .topLeading)
+                    .frame(minHeight: viewport.size.height, alignment: .topLeading)
                 }
             }
             HStack {
                 Text(model.syncStatus).font(.caption).foregroundStyle(.secondary)
                 Spacer(); if loading { ProgressView().controlSize(.small) }
             }
-        }.padding(18).frame(minWidth: 980, minHeight: 620).task { await reload() }
+        }.padding(18).frame(minWidth: 980, minHeight: 500).task { await reload() }
             .onChange(of: mode) { _, _ in Task { await reload() } }
             .onChange(of: selectedDate) { _, _ in if mode == 0 { Task { await reloadDaily() } } }
             .onChange(of: rangeStart) { _, _ in if mode == 1 { Task { await reloadMultiple() } } }
             .onChange(of: rangeEnd) { _, _ in if mode == 1 { Task { await reloadMultiple() } } }
+            .onChange(of: preferredContentHeight, initial: true) { _, height in preferredContentHeightChanged(height) }
     }
 
     private func summaryMetric(_ title: String, _ minutes: Int) -> some View {
         HStack(spacing: 5) { Text(title.uppercased()).font(.caption2).foregroundStyle(.secondary); Text(duration(minutes)).font(.headline).monospacedDigit() }
             .padding(.horizontal, 9).padding(.vertical, 6).background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 9))
     }
-    private func reload() async { if mode == 0 { await reloadDaily() } else { await reloadMultiple() } }
+    private func averageMetric(_ title: String, _ minutes: Double?) -> some View {
+        HStack(spacing: 4) { Text(title).font(.caption2).foregroundStyle(.secondary); Text(minutes.map { duration(Int($0.rounded())) } ?? "—").font(.caption.bold()).monospacedDigit() }
+    }
+    private func reload() async { if mode == 0 { await reloadDaily() } else if mode == 1 { await reloadMultiple() } else { await reloadPeriod() } }
     private func reloadDaily() async { loading = true; dailyBitmaps = await model.reportDay(at: macReportInstant(selectedDate, zone: model.currentReportTimeZone)); loading = false }
     private func reloadMultiple() async { loading = true; multiDayPoints = await model.multiDayReport(from: macReportInstant(rangeStart, zone: model.currentReportTimeZone), through: macReportInstant(rangeEnd, zone: model.currentReportTimeZone)); loading = false }
+    private func reloadPeriod() async {
+        loading = true
+        let calendar = Calendar.current, now = Date()
+        let start = mode == 2 ? (calendar.date(from: DateComponents(year: calendar.component(.year, from: now), month: 1, day: 1)) ?? now) : (calendar.date(byAdding: .year, value: -2, to: now) ?? now)
+        periodPoints = (await model.periodReport(kind: mode == 2 ? "week" : "month", from: start, through: now)).compactMap(macPeriodChartPoint)
+        loading = false
+    }
+    private var preferredContentHeight: CGFloat {
+        guard mode == 0 else { return 720 }
+        let cardsHeight = dailyBitmaps.reduce(CGFloat.zero) { total, bitmap in
+            let bitmapHeight = MinuteBitmapView(minutes: bitmap.minutes, rowHeight: 24).preferredHeight
+            return total + bitmapHeight + 35
+        }
+        let gaps = CGFloat(max(0, dailyBitmaps.count - 1)) * 12
+        return min(760, max(500, 162 + cardsHeight + gaps))
+    }
     private var reportCSV: String {
-        if mode == 1 { return (["date,device_id,device_name,minutes,report_timezone,estimated"] + multiDayPoints.map { "\($0.dateLabel),\($0.deviceID),\($0.displayName.replacingOccurrences(of: ",", with: " ")),\($0.minutes),\(model.currentReportTimeZone),true" }).joined(separator: "\n") + "\n" }
+        if mode == 1 { return (["date,device_id,device_name,minutes,report_timezone,estimated"] + multiDayPoints.map { "\($0.dateLabel),\($0.deviceID),\($0.displayName.replacingOccurrences(of: ",", with: " ")),\($0.minutes),\(model.currentReportTimeZone),\($0.estimated)" }).joined(separator: "\n") + "\n" }
+        if mode > 1 { return (["period,device_id,device_name,average_daily_minutes,estimated"] + periodPoints.map { "\($0.dateLabel),\($0.deviceID),\($0.displayName.replacingOccurrences(of: ",", with: " ")),\($0.minutes),\($0.estimated)" }).joined(separator: "\n") + "\n" }
         let date = macReportDateString(selectedDate, zone: model.currentReportTimeZone)
         return (["date,device_id,device_name,minutes,report_timezone,estimated,bitmap"] + dailyBitmaps.map { bitmap in "\(date),\(bitmap.deviceID),\(bitmap.displayName.replacingOccurrences(of: ",", with: " ")),\(bitmap.usedMinutes),\(model.currentReportTimeZone),true,\(bitmap.minutes.map { $0 ? "1" : "0" }.joined())" }).joined(separator: "\n") + "\n"
     }
 
-    private func dailyCardHeight(availableHeight: CGFloat) -> CGFloat {
-        let count = CGFloat(max(dailyBitmaps.count, 1))
-        return min(168, max(108, (availableHeight - max(0, count - 1) * 12) / count))
-    }
+}
 
-    private func bitmapRowHeight(cardHeight: CGFloat) -> CGFloat { min(22, max(18, (cardHeight - 48) / 4)) }
+private func macPeriodChartPoint(_ value: PeriodUsagePoint) -> DailyUsagePoint? {
+    let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX"); formatter.dateFormat = "yyyy-MM-dd"
+    guard let date = formatter.date(from: value.periodStart) else { return nil }
+    return DailyUsagePoint(date: date, dateLabel: value.periodLabel, deviceID: value.deviceID, displayName: value.displayName, minutes: Int(value.averageDailyMinutes.rounded()), isAggregate: value.deviceID == "alldevices", estimated: value.estimated)
+}
+
+private func macIntervalAverage(_ points: [DailyUsagePoint]) -> Int? {
+    let values = points.filter(\.isAggregate).map(\.minutes)
+    return values.isEmpty ? nil : Int((Double(values.reduce(0, +)) / Double(values.count)).rounded())
 }
 
 struct MinuteBitmapView: View {
     let minutes: [Bool]
-    var rowHeight: CGFloat = 18
-    @State private var hoveredMinute: Int?
+    var rowHeight: CGFloat = 22
+
+    var preferredHeight: CGFloat {
+        let count = visibleSegments.count
+        return count == 0 ? 17 : CGFloat(count) * rowHeight + CGFloat(max(0, count - 1)) * 3
+    }
+
+    private struct Segment: Identifiable {
+        let startMinute: Int
+        let endMinute: Int
+        var id: Int { startMinute }
+        var minuteCount: Int { endMinute - startMinute }
+        var hourBoundaries: [Int] { Array(stride(from: startMinute, through: endMinute, by: 60)) }
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            ForEach(0..<4, id: \.self) { row in
-                HStack(spacing: 7) {
-                    Text(String(format: "%02d–%02d", row * 6, (row + 1) * 6)).font(.system(size: 9)).frame(width: 38, alignment: .leading)
-                    GeometryReader { proxy in
-                        ZStack(alignment: .topLeading) {
-                            ForEach(0..<6, id: \.self) { hour in
-                                Text(String(format: "%02d", row * 6 + hour))
-                                    .font(.system(size: 7, weight: .medium, design: .rounded))
-                                    .foregroundStyle(.secondary)
-                                    .position(x: CGFloat(hour) * proxy.size.width / 6 + 7, y: 4)
-                            }
-                            Canvas { context, size in
-                                let minuteWidth = size.width / 360
-                                let baselineY = size.height * 0.68
-
-                                var baseline = Path()
-                                baseline.move(to: CGPoint(x: 0, y: baselineY))
-                                baseline.addLine(to: CGPoint(x: size.width, y: baselineY))
-                                context.stroke(baseline, with: .color(.secondary.opacity(0.13)), lineWidth: 0.5)
-
-                                for offset in stride(from: 0, through: 360, by: 5) {
-                                    let x = CGFloat(offset) * minuteWidth
-                                    let isHour = offset.isMultiple(of: 60)
-                                    let isHalfHour = offset.isMultiple(of: 30)
-                                    let length: CGFloat = isHour ? size.height : (isHalfHour ? size.height * 0.58 : size.height * 0.32)
-                                    var tick = Path()
-                                    tick.move(to: CGPoint(x: x, y: baselineY - length / 2))
-                                    tick.addLine(to: CGPoint(x: x, y: baselineY + length / 2))
-                                    context.stroke(
-                                        tick,
-                                        with: .color(.secondary.opacity(isHour ? 0.42 : (isHalfHour ? 0.28 : 0.17))),
-                                        lineWidth: isHour ? 0.8 : 0.5
-                                    )
+        let segments = visibleSegments
+        Group {
+            if segments.isEmpty {
+                Text("No Activity").font(.caption).foregroundStyle(.secondary)
+            } else {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(segments) { segment in
+                        GeometryReader { proxy in
+                            ZStack(alignment: .topLeading) {
+                                ForEach(segment.hourBoundaries, id: \.self) { boundary in
+                                    let progress = CGFloat(boundary - segment.startMinute) / CGFloat(segment.minuteCount)
+                                    Text(String(format: "%02d", boundary / 60))
+                                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                        .monospacedDigit()
+                                        .foregroundStyle(.secondary)
+                                        .position(x: min(proxy.size.width - 9, max(9, progress * proxy.size.width)), y: 6)
                                 }
+                                Canvas { context, size in
+                                    let minuteWidth = size.width / CGFloat(segment.minuteCount)
+                                    let baselineY = size.height * 0.58
 
-                                var runStart: Int?
-                                for offset in 0...360 {
-                                    let index = row * 360 + offset
-                                    let active = offset < 360 && index < minutes.count && minutes[index]
-                                    if active, runStart == nil { runStart = offset }
-                                    if !active, let start = runStart {
-                                        let end = offset - 1
-                                        if end > start {
-                                            var run = Path()
-                                            run.move(to: CGPoint(x: (CGFloat(start) + 0.5) * minuteWidth, y: baselineY))
-                                            run.addLine(to: CGPoint(x: (CGFloat(end) + 0.5) * minuteWidth, y: baselineY))
-                                            context.stroke(run, with: .color(.accentColor.opacity(0.82)), style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
+                                    var baseline = Path()
+                                    baseline.move(to: CGPoint(x: 0, y: baselineY))
+                                    baseline.addLine(to: CGPoint(x: size.width, y: baselineY))
+                                    context.stroke(baseline, with: .color(.secondary.opacity(0.13)), lineWidth: 0.5)
+
+                                    for offset in stride(from: 0, through: segment.minuteCount, by: 5) {
+                                        let absoluteMinute = segment.startMinute + offset
+                                        let x = CGFloat(offset) * minuteWidth
+                                        let isHour = absoluteMinute.isMultiple(of: 60)
+                                        let isHalfHour = absoluteMinute.isMultiple(of: 30)
+                                        let length: CGFloat = isHour ? size.height : (isHalfHour ? size.height * 0.58 : size.height * 0.32)
+                                        var tick = Path()
+                                        tick.move(to: CGPoint(x: x, y: baselineY - length / 2))
+                                        tick.addLine(to: CGPoint(x: x, y: baselineY + length / 2))
+                                        context.stroke(tick, with: .color(.secondary.opacity(isHour ? 0.42 : (isHalfHour ? 0.28 : 0.17))), lineWidth: isHour ? 0.8 : 0.5)
+                                    }
+
+                                    var runStart: Int?
+                                    for offset in 0...segment.minuteCount {
+                                        let index = segment.startMinute + offset
+                                        let active = offset < segment.minuteCount && index < minutes.count && minutes[index]
+                                        if active, runStart == nil { runStart = offset }
+                                        if !active, let start = runStart {
+                                            let end = offset - 1
+                                            if end > start {
+                                                var run = Path()
+                                                run.move(to: CGPoint(x: (CGFloat(start) + 0.5) * minuteWidth, y: baselineY))
+                                                run.addLine(to: CGPoint(x: (CGFloat(end) + 0.5) * minuteWidth, y: baselineY))
+                                                context.stroke(run, with: .color(.accentColor.opacity(0.82)), style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
+                                            }
+                                            runStart = nil
                                         }
-                                        runStart = nil
+                                    }
+
+                                    for offset in 0..<segment.minuteCount {
+                                        let index = segment.startMinute + offset
+                                        let active = index < minutes.count && minutes[index]
+                                        let radius: CGFloat = active ? 1.25 : 0.62
+                                        let center = CGPoint(x: (CGFloat(offset) + 0.5) * minuteWidth, y: baselineY)
+                                        let dot = Path(ellipseIn: CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2))
+                                        context.fill(dot, with: .color(active ? .accentColor : .secondary.opacity(0.22)))
                                     }
                                 }
-
-                                for offset in 0..<360 {
-                                    let index = row * 360 + offset
-                                    let active = index < minutes.count && minutes[index]
-                                    let radius: CGFloat = active ? 1.25 : 0.62
-                                    let center = CGPoint(x: (CGFloat(offset) + 0.5) * minuteWidth, y: baselineY)
-                                    let dot = Path(ellipseIn: CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2))
-                                    context.fill(dot, with: .color(active ? .accentColor : .secondary.opacity(0.22)))
-                                }
-                            }
-                            .frame(height: 10)
-                            .offset(y: 7)
-
-                            if let hoveredMinute, hoveredMinute / 360 == row {
-                                let active = hoveredMinute < minutes.count && minutes[hoveredMinute]
-                                Text("\(STGTime.localClockLabel(minute: hoveredMinute)) · \(active ? "Active" : "Inactive")")
-                                    .font(.system(size: 8, weight: .medium, design: .rounded))
-                                    .padding(.horizontal, 5).padding(.vertical, 2)
-                                    .background(.regularMaterial, in: Capsule())
-                                    .frame(maxWidth: .infinity, alignment: .trailing)
-                                    .offset(y: -2)
-                                    .allowsHitTesting(false)
+                                .frame(height: max(14, rowHeight - 9))
+                                .offset(y: 11)
                             }
                         }
-                        .contentShape(Rectangle())
-                        .onContinuousHover { phase in
-                            switch phase {
-                            case .active(let point):
-                                let offset = min(359, max(0, Int(point.x / max(proxy.size.width, 1) * 360)))
-                                hoveredMinute = row * 360 + offset
-                            case .ended:
-                                if hoveredMinute.map({ $0 / 360 == row }) == true { hoveredMinute = nil }
-                            }
-                        }
-                    }.frame(height: rowHeight)
+                        .frame(height: rowHeight)
+                        .accessibilityLabel(segmentAccessibilityLabel(segment))
+                    }
                 }
             }
-        }.accessibilityLabel("\(minutes.filter { $0 }.count) used minutes out of \(minutes.count)")
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .accessibilityElement(children: .contain)
+    }
+
+    private var visibleSegments: [Segment] {
+        let count = min(minutes.count, 1_440)
+        var result: [Segment] = []
+        var cursor = 0
+        while cursor < count {
+            guard let firstActive = (cursor..<count).first(where: { minutes[$0] }) else { break }
+            let start = (firstActive / 60) * 60
+            let end = min(start + 360, 1_440)
+            result.append(Segment(startMinute: start, endMinute: end))
+            cursor = end
+        }
+        return result
+    }
+
+    private func segmentAccessibilityLabel(_ segment: Segment) -> String {
+        let used = (segment.startMinute..<min(segment.endMinute, minutes.count)).reduce(into: 0) { if minutes[$1] { $0 += 1 } }
+        return "\(STGTime.localClockLabel(minute: segment.startMinute))–\(STGTime.localClockLabel(minute: segment.endMinute)), \(used) active minutes"
     }
 }
 
@@ -341,11 +465,12 @@ struct AboutView: View {
             VStack(alignment: .leading, spacing: 14) {
                 HStack { Spacer(); Image(systemName: "shield.lefthalf.filled").font(.system(size: 56)).foregroundStyle(.blue); Spacer() }
                 Text("Screen Time Guardian").font(.title.bold()).frame(maxWidth: .infinity)
-                Text("Version 1.1.7 · Developer: TimberTrail\nCopyright © 2026 TimberTrail.")
-                Text("Screen Time Guardian records minute-level screen-use estimates, reminds you to rest, and can combine data from your own devices.")
-                Text("Privacy: screen-use data remains on this device and in the private-cloud account you explicitly authorize. It is not uploaded to the app developer.")
-                Text("Accuracy: iOS minute maps and cross-device deduplication are estimates. Daily reminder calculations reset at local midnight.")
-                Text("Open-source claim: this application includes SQLite (public domain) and Apple Swift open-source runtime components. Their copyright notices and license terms are preserved in THIRD_PARTY_NOTICES.md. STG does not claim ownership of those components.")
+                Text("Version 1.1.8\nCopyright © 2026 Fairy Phoenix Foundation.")
+                Text("This app records minute-level estimates of screen use, either on this Mac alone or across your devices, and reminds you to take breaks.")
+                Text("Privacy: Your screen-use data remains on this Mac and, if enabled, in your chosen private-cloud account. STG does not send it to the developer or anyone else.")
+                Text("Accuracy: STG estimates screen use from macOS activity signals, so its totals may differ from other system usage statistics.")
+                Text("Third-Party Software Acknowledgments").bold()
+                Text("This app includes SQLite and open-source components from Apple’s Swift project. Their original copyright notices and license terms are preserved. All rights remain with their respective owners. STG claims no ownership of these components.")
                 Link("Open-source licenses", destination: URL(string: "https://www.swift.org/LICENSE.txt")!)
             }.padding(30)
         }.frame(width: 580, height: 500)
@@ -367,7 +492,7 @@ struct TrackingView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("OpenRouter Tracking").font(.largeTitle.bold())
-            Picker("View", selection: $viewIndex) { Text("Top 20 from date").tag(0); Text("Weekly trends").tag(1) }.pickerStyle(.segmented)
+            Picker("View", selection: $viewIndex) { Text("Top 20 Since Date").tag(0); Text("Weekly Trends").tag(1) }.pickerStyle(.segmented)
             if viewIndex == 0 {
                 HStack {
                     DatePicker("Start", selection: $customStart, displayedComponents: .date)
@@ -410,7 +535,7 @@ struct TrackingView: View {
         HStack(spacing: 0) {
             trackingHeaderButton("Rank", .rank, 58); trackingHeaderButton("Model", .model, 250)
             trackingHeaderButton("Input tokens", .promptTokens, 130); trackingHeaderButton("Output tokens", .completionTokens, 130); trackingHeaderButton("Total tokens", .totalTokens, 130)
-            trackingHeaderButton("Input price", .promptPrice, 125); trackingHeaderButton("Output price", .completionPrice, 125); trackingHeaderButton("Revenue", .revenue, 120)
+            trackingHeaderButton("Input price", .promptPrice, 125); trackingHeaderButton("Output price", .completionPrice, 125); trackingHeaderButton("Estimated Revenue", .revenue, 150)
         }.font(.caption.bold()).padding(.vertical, 8)
     }
     private func trackingHeaderButton(_ title: String, _ field: TrackingSortField, _ width: CGFloat) -> some View {
@@ -451,8 +576,8 @@ struct ReminderView: View {
         VStack(spacing: 18) { Image(systemName: icon).font(.system(size: 50)).foregroundStyle(.blue); Text(title).font(.largeTitle.bold()); Text(message).font(.title3).multilineTextAlignment(.center); if decision.silent { Text("Meeting mode: can close immediately") } else if remaining > 0 { Text("Close available in \(remaining)s").monospacedDigit() }; Button("Close", action: close).disabled(remaining > 0) }
             .padding(32).frame(width: 520, height: 360).task { while remaining > 0 { try? await Task.sleep(for: .seconds(1)); remaining -= 1 } }
     }
-    private var title: String { decision.kind == .eye ? "Time for an Eye Break" : decision.kind == .posture ? "Stand Up & Stretch" : "Daily Limit Reached" }
-    private var message: String { decision.kind == .eye ? "Look at something 20 feet away for 20 seconds." : decision.kind == .posture ? "Stand or walk around for 4 minutes and rest your eyes." : "You've used your screen for \(duration(decision.usedMinutes)). Time to walk around for 5 minutes." }
+    private var title: String { decision.kind == .eye ? "Eye Break" : decision.kind == .posture ? "Posture Break" : "Daily Limit Reached" }
+    private var message: String { decision.kind == .eye ? "Look 20 feet away for 20 seconds." : decision.kind == .posture ? "Stand or walk for 4 minutes and rest your eyes." : "You've used your screen for \(duration(decision.usedMinutes)). Take a 5-minute walk." }
     private var icon: String { decision.kind == .eye ? "eye" : decision.kind == .posture ? "figure.walk" : "clock.badge.exclamationmark" }
 }
 

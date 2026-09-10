@@ -14,12 +14,15 @@
             </StackPanel>
         </Grid>
         <TabControl x:Name="TrackingTabs" Grid.Row="1" SelectedIndex="1" SelectionChanged="TrackingTabs_SelectionChanged">
-            <TabItem Header="Top 20 from date">
+            <TabItem Header="Top 20 Since Date">
                 <Grid Margin="5,8,5,5">
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                         <TextBlock Text="From" VerticalAlignment="Center" Margin="0,0,7,0"/>
-                        <DatePicker x:Name="StartDatePicker" Width="150" MinHeight="30" Height="30"/>
+                        <Button x:Name="StartDateButton" Click="StartDate_Click" MinHeight="30" MinWidth="112" Padding="10,4" Margin="0"/>
+                        <Popup x:Name="StartDatePopup" Placement="Bottom" PlacementTarget="{Binding ElementName=StartDateButton}" StaysOpen="False" AllowsTransparency="True">
+                            <Border Background="White" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Padding="5"><Calendar x:Name="StartCalendar" SelectionMode="SingleDate" SelectedDatesChanged="StartCalendar_Changed"/></Border>
+                        </Popup>
                         <TextBlock Text="through latest completed UTC day" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="8,0,12,0"/>
                         <Button Content="Refresh" Style="{StaticResource PrimaryButton}" Click="Refresh_Click" MinHeight="30" MinWidth="74" Padding="11,4" Margin="0"/>
                     </StackPanel>
@@ -32,12 +35,12 @@
                             <DataGridTextColumn Header="Total tokens" Binding="{Binding TotalTokens, StringFormat=N0}" SortMemberPath="TotalTokens" Width="140"/>
                             <DataGridTextColumn Header="Input $/M" Binding="{Binding PromptPricePerMillion, StringFormat='{}{0:$#,##0.####}'}" SortMemberPath="PromptPricePerMillion" Width="102"/>
                             <DataGridTextColumn Header="Output $/M" Binding="{Binding CompletionPricePerMillion, StringFormat='{}{0:$#,##0.####}'}" SortMemberPath="CompletionPricePerMillion" Width="108"/>
-                            <DataGridTextColumn Header="Revenue" Binding="{Binding RevenueUSD, StringFormat='{}{0:$#,##0}'}" SortMemberPath="RevenueUSD" Width="112"/>
+                            <DataGridTextColumn Header="Estimated Revenue" Binding="{Binding RevenueUSD, StringFormat='{}{0:$#,##0}'}" SortMemberPath="RevenueUSD" Width="142"/>
                         </DataGrid.Columns>
                     </DataGrid>
                 </Grid>
             </TabItem>
-            <TabItem Header="Weekly trends">
+            <TabItem Header="Weekly Trends">
                 <Grid Margin="5,8,5,5">
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">

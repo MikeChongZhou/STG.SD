@@ -25,6 +25,7 @@ public actor OneDriveClient {
     private let clientID: String
     private let session: URLSession
     private let scope = "offline_access User.Read Files.ReadWrite.AppFolder"
+    private var appRootIsReady = false
 
     public init(clientID: String, session: URLSession = .shared) {
         self.clientID = clientID.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -69,43 +70,114 @@ public actor OneDriveClient {
     }
 
     public func account(using credential: OneDriveCredential) async throws -> OneDriveAccount {
-        let data = try await graph(path: "/v1.0/me?$select=displayName,mail,userPrincipalName", credential: credential)
+        let data = try await graph(path: "/v1.0/me?$select=displayName,mail,userPrincipalName", operation: "read account profile", credential: credential)
         let profile = try JSONDecoder().decode(ProfileResponse.self, from: data)
         return OneDriveAccount(displayName: profile.displayName, email: profile.mail ?? profile.userPrincipalName ?? "Microsoft account")
     }
 
     public func listFiles(using credential: OneDriveCredential) async throws -> [OneDriveFile] {
-        let data = try await graph(path: "/v1.0/me/drive/special/approot/children?$select=id,name,lastModifiedDateTime", credential: credential)
+        try await ensureAppRoot(using: credential)
+        let data = try await graph(path: "/v1.0/me/drive/special/approot/children?$select=id,name,lastModifiedDateTime", operation: "list App Folder", credential: credential)
         return try JSONDecoder().decode(FileListResponse.self, from: data).value
     }
 
+    public func listFiles(folderID: String, using credential: OneDriveCredential) async throws -> [OneDriveFile] {
+        let data = try await graph(path: "/v1.0/me/drive/items/\(folderID)/children?$select=id,name,lastModifiedDateTime", operation: "list folder", credential: credential)
+        return try JSONDecoder().decode(FileListResponse.self, from: data).value
+    }
+
+    public func ensureFolder(name: String, using credential: OneDriveCredential) async throws -> String {
+        if let existing = try await listFiles(using: credential).first(where: { $0.name == name }) { return existing.id }
+        var request = URLRequest(url: URL(string: "https://graph.microsoft.com/v1.0/me/drive/special/approot/children")!); request.httpMethod = "POST"
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["name": name, "folder": [:], "@microsoft.graph.conflictBehavior": "replace"])
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type"); request.setValue("Bearer \(credential.accessToken)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await session.data(for: request); try Self.validate(response, data: data, operation: "create App Folder subfolder")
+        return try JSONDecoder().decode(OneDriveFile.self, from: data).id
+    }
+
     public func upload(name: String, data: Data, using credential: OneDriveCredential) async throws {
+        try await ensureAppRoot(using: credential)
         let escaped = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
         var request = URLRequest(url: URL(string: "https://graph.microsoft.com/v1.0/me/drive/special/approot:/\(escaped):/content")!)
         request.httpMethod = "PUT"; request.httpBody = data
         request.setValue("Bearer \(credential.accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let (_, response) = try await session.data(for: request); try Self.validate(response)
+        let (responseData, response) = try await session.data(for: request); try Self.validate(response, data: responseData, operation: "upload App Folder file")
+    }
+
+    public func upload(name: String, data: Data, folderID: String, using credential: OneDriveCredential) async throws {
+        let escaped = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
+        var request = URLRequest(url: URL(string: "https://graph.microsoft.com/v1.0/me/drive/items/\(folderID):/\(escaped):/content")!)
+        request.httpMethod = "PUT"; request.httpBody = data; request.setValue("Bearer \(credential.accessToken)", forHTTPHeaderField: "Authorization"); request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (responseData, response) = try await session.data(for: request); try Self.validate(response, data: responseData, operation: "upload folder file")
+    }
+
+    public func delete(fileID: String, using credential: OneDriveCredential) async throws {
+        var request = URLRequest(url: URL(string: "https://graph.microsoft.com/v1.0/me/drive/items/\(fileID)")!); request.httpMethod = "DELETE"; request.setValue("Bearer \(credential.accessToken)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await session.data(for: request); try Self.validate(response, data: data, operation: "delete file")
     }
 
     public func download(fileID: String, using credential: OneDriveCredential) async throws -> Data {
-        try await graph(path: "/v1.0/me/drive/items/\(fileID)/content", credential: credential)
+        try await graph(path: "/v1.0/me/drive/items/\(fileID)/content", operation: "download file", credential: credential)
     }
 
     public func download(name: String, using credential: OneDriveCredential) async throws -> Data? {
+        try await ensureAppRoot(using: credential)
         let escaped = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
         var request = URLRequest(url: URL(string: "https://graph.microsoft.com/v1.0/me/drive/special/approot:/\(escaped):/content")!)
         request.setValue("Bearer \(credential.accessToken)", forHTTPHeaderField: "Authorization")
         let (data, response) = try await session.data(for: request)
         if let http = response as? HTTPURLResponse, http.statusCode == 404 { return nil }
-        try Self.validate(response)
+        try Self.validate(response, data: data, operation: "download App Folder file")
         return data
     }
 
-    private func graph(path: String, credential: OneDriveCredential) async throws -> Data {
+    private func graph(path: String, operation: String, credential: OneDriveCredential) async throws -> Data {
         var request = URLRequest(url: URL(string: "https://graph.microsoft.com\(path)")!)
         request.setValue("Bearer \(credential.accessToken)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await session.data(for: request); try Self.validate(response); return data
+        let (data, response) = try await session.data(for: request); try Self.validate(response, data: data, operation: operation); return data
+    }
+
+    /// Microsoft Graph creates an app's special App Folder on first access to
+    /// the folder itself. Addressing a child path before that provisioning call
+    /// can fail even though account authorization succeeded.
+    private func ensureAppRoot(using credential: OneDriveCredential) async throws {
+        guard !appRootIsReady else { return }
+        let retryDelays: [Duration] = [.seconds(1), .seconds(2), .seconds(4), .seconds(8)]
+        for attempt in 0...retryDelays.count {
+            do {
+                _ = try await graph(
+                    path: "/v1.0/me/drive/special/approot?$select=id,name,specialFolder",
+                    operation: "open App Folder",
+                    credential: credential
+                )
+                appRootIsReady = true
+                return
+            } catch {
+                guard Self.isPendingProvisioning(error) else { throw error }
+                if attempt == 0 {
+                    // Reading the drive root gives Graph a chance to finish provisioning
+                    // before the special App Folder is requested again.
+                    _ = try? await graph(
+                        path: "/v1.0/me/drive?$select=id,driveType",
+                        operation: "initialize OneDrive",
+                        credential: credential
+                    )
+                }
+                guard attempt < retryDelays.count else {
+                    throw STGError.invalidDocument(
+                        "OneDrive is still preparing this account. Open OneDrive once with the same Microsoft account, wait for its Files page to load, then return to STG and sync again."
+                    )
+                }
+                try await Task.sleep(for: retryDelays[attempt])
+            }
+        }
+    }
+
+    private static func isPendingProvisioning(_ error: Error) -> Bool {
+        let message = error.localizedDescription.lowercased()
+        return message.contains("pending provisioning") ||
+            (message.contains("servicenotavailable") && message.contains("http 503"))
     }
 
     private func postForm(url: URL, items: [String: String]) async throws -> Data {
@@ -116,7 +188,7 @@ public actor OneDriveClient {
         let (data, response) = try await session.data(for: request)
         if let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode { return data }
         if let error = try? JSONDecoder().decode(OAuthErrorResponse.self, from: data) { throw OAuthPendingError(code: error.error, description: error.errorDescription ?? error.error) }
-        try Self.validate(response); return data
+        try Self.validate(response, data: data, operation: "OAuth token request"); return data
     }
 
     private func credential(from data: Data, fallbackRefreshToken: String = "") throws -> OneDriveCredential {
@@ -124,8 +196,17 @@ public actor OneDriveClient {
         return OneDriveCredential(accessToken: token.accessToken, refreshToken: token.refreshToken ?? fallbackRefreshToken, expiresAt: Date().addingTimeInterval(TimeInterval(token.expiresIn)))
     }
 
-    private static func validate(_ response: URLResponse) throws {
-        guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else { throw STGError.invalidDocument("Microsoft Graph request failed") }
+    private static func validate(_ response: URLResponse, data: Data, operation: String) throws {
+        guard let http = response as? HTTPURLResponse else {
+            throw STGError.invalidDocument("Microsoft \(operation) failed: invalid HTTP response")
+        }
+        guard 200..<300 ~= http.statusCode else {
+            let graphError = try? JSONDecoder().decode(GraphErrorResponse.self, from: data).error
+            let message = graphError?.message ?? HTTPURLResponse.localizedString(forStatusCode: http.statusCode)
+            let codeSuffix = graphError.map { "; code=\($0.code)" } ?? ""
+            let requestIDSuffix = http.value(forHTTPHeaderField: "request-id").map { "; request_id=\($0)" } ?? ""
+            throw STGError.invalidDocument("Microsoft \(operation) failed (HTTP \(http.statusCode)\(codeSuffix)\(requestIDSuffix)): \(message)")
+        }
     }
 }
 
@@ -181,3 +262,7 @@ private struct OAuthErrorResponse: Decodable {
 private struct OAuthPendingError: Error { var code: String; var description: String }
 private struct ProfileResponse: Decodable { var displayName: String; var mail: String?; var userPrincipalName: String? }
 private struct FileListResponse: Decodable { var value: [OneDriveFile] }
+private struct GraphErrorResponse: Decodable {
+    struct Body: Decodable { var code: String; var message: String }
+    var error: Body
+}

@@ -20,6 +20,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.timbertrail.screentimeguardian.ios.core
         GENERATE_INFOPLIST_FILE: YES
+        MARKETING_VERSION: "1.1.8"
+        CURRENT_PROJECT_VERSION: "21"
     dependencies:
       - sdk: libsqlite3.tbd
   STG:
@@ -29,6 +31,9 @@ targets:
       base:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         PRODUCT_BUNDLE_IDENTIFIER: com.timbertrail.screentimeguardian.ios
+      configs:
+        Debug:
+          ENABLE_DEBUG_DYLIB: NO
     sources:
       - path: STG/App
       - path: STG/Shared
@@ -56,8 +61,9 @@ targets:
       path: STG/App/Info.plist
       properties:
         CFBundleDisplayName: Screen Time Guardian
-        CFBundleShortVersionString: "1.1.6"
-        CFBundleVersion: "14"
+        CFBundleShortVersionString: "1.1.8"
+        CFBundleVersion: "21"
+        ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
         STGOneDriveClientID: "a4ff927c-e45a-413e-b5c3-45b026719171"
         STGKeychainAccessGroup: "$(AppIdentifierPrefix)group.com.timbertrail.screentimeguardian"
@@ -75,12 +81,25 @@ targets:
           - com.timbertrail.screentimeguardian.ios.refresh
         UIBackgroundModes:
           - fetch
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
   STGDeviceActivityMonitor:
     type: app-extension
     platform: iOS
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.timbertrail.screentimeguardian.ios.monitor
+      configs:
+        Debug:
+          ENABLE_DEBUG_DYLIB: NO
     sources:
       - path: STG/Monitor
       - path: STG/Shared
@@ -107,8 +126,8 @@ targets:
       path: STG/Monitor/Info.plist
       properties:
         CFBundleDisplayName: STG Monitor
-        CFBundleShortVersionString: "1.1.6"
-        CFBundleVersion: "14"
+        CFBundleShortVersionString: "1.1.8"
+        CFBundleVersion: "21"
         STGOneDriveClientID: "a4ff927c-e45a-413e-b5c3-45b026719171"
         STGKeychainAccessGroup: "$(AppIdentifierPrefix)group.com.timbertrail.screentimeguardian"
         STGGoogleClientID: "552360735383-alblvd6inepkvg6cni453j1t6pl6gf0g.apps.googleusercontent.com"

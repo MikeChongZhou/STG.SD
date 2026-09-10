@@ -10,6 +10,7 @@ final class AppModel: ObservableObject {
     @Published var localMinutes = 0
     @Published var allMinutes = 0
     @Published var dayBitmaps: [DeviceDayBitmap] = []
+    @Published var statisticsSummary = UsageStatisticsSummary()
     @Published var syncStatus = "Sync off — choose a provider in Settings"
     @Published var isScreenAvailable = true
     @Published var lastReminder: ReminderDecision?
@@ -26,8 +27,10 @@ final class AppModel: ObservableObject {
     private let iCloudContainer = "iCloud.com.timbertrail.screentimeguardian"
     private let webAuthentication = MacWebAuthenticationPresenter()
     private var syncInProgress = false
+    private var quickUploadInProgress = false
     private let settingsStore: SettingsStore
     private var reminderState = ReminderState()
+    private var reminderStateLocalDate = ""
     private let reminderEngine = ReminderEngine()
     private var timer: Timer?
     private var observers: [NSObjectProtocol] = []
@@ -53,6 +56,14 @@ final class AppModel: ObservableObject {
         if let repository, let storedState = try? repository.reminderState(deviceID: settings.deviceID) {
             reminderState = storedState
             diagnosticLog.record("reminder state restored; device=\(settings.deviceID.prefix(8)); last=\(storedState.lastReminder?.rawValue ?? "none"); last_eye=\(storedState.lastEyeAt.ISO8601Format()); last_posture=\(storedState.lastPostureAt.ISO8601Format())", category: "reminder")
+        }
+        let today = Self.dateLabel(.now, zone: TimeZone.current.identifier)
+        reminderStateLocalDate = today
+        let lastStateDate = Self.dateLabel(max(reminderState.lastEyeAt, reminderState.lastPostureAt), zone: TimeZone.current.identifier)
+        if lastStateDate != today {
+            reminderState.lastReminder = .posture
+            try? repository?.saveReminderState(deviceID: settings.deviceID, state: reminderState, updatedAt: .now)
+            diagnosticLog.record("daily reminder slot reset; previous_date=\(lastStateDate); local_date=\(today); next_slot=posture", category: "reminder")
         }
         let provider = settings.syncProvider ?? .none
         if provider != .none { syncStatus = isConnected(provider) ? "\(provider.displayName) connected" : "\(provider.displayName) account sign-in required" }
@@ -104,6 +115,11 @@ final class AppModel: ObservableObject {
         runtimeDefaults.set(true, forKey: Self.sessionCleanShutdownKey)
         runtimeDefaults.set(reason, forKey: Self.sessionTerminationReasonKey)
         runtimeDefaults.synchronize()
+    }
+
+    func prepareForTermination(reason: String) async {
+        await quickUpload(trigger: reason)
+        stop(reason: reason)
     }
 
     func reconcileLaunchAtLogin(trigger: String) {
@@ -184,6 +200,37 @@ final class AppModel: ObservableObject {
         } catch { syncStatus = "iCloud Drive sync failed: \(error.localizedDescription)"; diagnosticLog.record(syncStatus, category: "sync") }
     }
 
+    private func quickUpload(trigger: String) async {
+        guard let repository else { return }
+        guard !quickUploadInProgress else { diagnosticLog.record("quick upload coalesced; trigger=\(trigger)", category: "sync"); return }
+        if syncInProgress { diagnosticLog.record("quick upload covered by running incremental sync; trigger=\(trigger)", category: "sync"); return }
+        let provider = settings.syncProvider ?? .none
+        guard provider != .none, isConnected(provider) else { diagnosticLog.record("quick upload skipped; trigger=\(trigger); provider=\(provider.rawValue); configured=false", category: "sync"); return }
+        quickUploadInProgress = true; defer { quickUploadInProgress = false }
+        do {
+            let now = Date(), currentKey = STGTime.utcDateKey(for: now), state = try repository.quickSyncState(deviceID: settings.deviceID)
+            var keys = state.pendingUTCDateKeys
+            if let modified = try repository.bitmapUpdatedAt(deviceID: settings.deviceID, utcDate: currentKey), modified > state.lastUploadAt { keys.insert(currentKey) }
+            guard !keys.isEmpty else { try repository.completeQuickUpload(deviceID: settings.deviceID, utcDateKeys: [], at: now); diagnosticLog.record("quick upload skipped; trigger=\(trigger); no_changed_bitmap=true", category: "sync"); return }
+            diagnosticLog.record("quick upload begin; trigger=\(trigger); provider=\(provider.rawValue); dates=\(keys.sorted().joined(separator: ","))", category: "sync")
+            let count: Int
+            switch provider {
+            case .oneDrive:
+                guard let clientID = oneDriveClientID else { throw STGError.invalidDocument("OneDrive Client ID is missing") }
+                count = try await OneDriveSync(repository: repository, deviceID: settings.deviceID, clientID: clientID, credentialService: oneDriveCredentialService).quickUpload(utcDateKeys: keys)
+            case .googleDrive:
+                guard let clientID = googleDriveClientID else { throw STGError.invalidDocument("Google Drive Client ID is missing") }
+                count = try await GoogleDriveSync(repository: repository, deviceID: settings.deviceID, clientID: clientID, clientSecret: googleDriveClientSecret ?? "", credentialService: googleDriveCredentialService).quickUpload(utcDateKeys: keys)
+            case .iCloudDrive:
+                guard let folder = Self.iCloudFolder(containerID: iCloudContainer) else { throw STGError.invalidDocument("iCloud Drive is unavailable") }
+                count = try await CloudFolderSync(repository: repository, deviceID: settings.deviceID).quickUpload(folder: folder, utcDates: keys)
+            case .none: return
+            }
+            try repository.completeQuickUpload(deviceID: settings.deviceID, utcDateKeys: keys, at: now)
+            diagnosticLog.record("quick upload complete; trigger=\(trigger); provider=\(provider.rawValue); files=\(count)", category: "sync")
+        } catch { diagnosticLog.record("quick upload failed; trigger=\(trigger); error=\(error.localizedDescription)", category: "sync") }
+    }
+
     func refresh() async {
         guard let repository else { return }
         let deviceID = settings.deviceID
@@ -192,6 +239,7 @@ final class AppModel: ObservableObject {
         let timeZoneID = currentReportTimeZone
         let provider = settings.syncProvider ?? .none
         let syncEnabled = isConnected(provider)
+        let runtimeContinuousMinutes = reminderState.continuousMinutes
         diagnosticLog.record("refresh begin; timezone=\(timeZoneID); sync_enabled=\(syncEnabled)", category: "report")
         do {
             let snapshot = try await Task.detached(priority: .userInitiated) {
@@ -210,6 +258,15 @@ final class AppModel: ObservableObject {
                     ids = try repository.deviceIDs()
                 } else { aggregate = local; aggregateCount = localCount; ids = [deviceID] }
                 if !ids.contains(deviceID) { ids.insert(deviceID, at: 0) }
+                let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX"); formatter.timeZone = TimeZone(identifier: timeZoneID) ?? .current; formatter.dateFormat = "yyyy-MM-dd"
+                try repository.updateRuntimeState(
+                    deviceID: deviceID,
+                    continuousMinutes: runtimeContinuousMinutes,
+                    localDailyMinutes: localCount,
+                    aggregateDailyMinutes: aggregateCount,
+                    localDate: formatter.string(from: now),
+                    at: now
+                )
                 var values = [DeviceDayBitmap(deviceID: "alldevices", displayName: "All devices", minutes: aggregate, isAggregate: true, usedMinutes: aggregateCount)]
                 for id in ids {
                     let name = id == deviceID ? deviceName : (deviceNames[id] ?? "Other device")
@@ -228,28 +285,48 @@ final class AppModel: ObservableObject {
 
     func reportDay(at instant: Date) async -> [DeviceDayBitmap] {
         guard let repository else { return [] }
-        let deviceID = settings.deviceID, deviceName = settings.deviceName, kind = settings.deviceKind, zone = currentReportTimeZone
+        let deviceID = settings.deviceID, deviceName = settings.deviceName, kind = settings.deviceKind, zone = currentReportTimeZone, dailyLimit = settings.dailyPlanMinutes
         let includeSynced = isConnected(settings.syncProvider ?? .none)
         do {
             let result = try await Task.detached(priority: .userInitiated) {
-                try repository.dayReport(localDeviceID: deviceID, localDeviceName: deviceName, localDeviceKind: kind, instant: instant, timeZoneID: zone, includeSyncedDevices: includeSynced)
+                let range = try repository.refreshStatistics(localDeviceID: deviceID, localDeviceName: deviceName, localDeviceKind: kind, dailyLimitMinutes: dailyLimit, timeZoneID: zone, includeSyncedDevices: includeSynced)
+                let summary = try repository.statisticsSummary(reference: instant, timeZoneID: zone)
+                return (try repository.dayReport(localDeviceID: deviceID, localDeviceName: deviceName, localDeviceKind: kind, instant: instant, timeZoneID: zone, includeSyncedDevices: includeSynced), summary, range)
             }.value
-            diagnosticLog.record("selected day report complete; date=\(Self.dateLabel(instant, zone: zone)); devices=\(result.count); totals=[\(result.map { "\($0.deviceID.prefix(8))=\($0.usedMinutes)m" }.joined(separator: ","))]", category: "report")
-            return result
+            statisticsSummary = result.1
+            diagnosticLog.record("statistics refresh complete; range=\(result.2.lowerBound)...\(result.2.upperBound); trigger=report_open; last_statistics_updated=true", category: "report")
+            diagnosticLog.record("selected day report complete; date=\(Self.dateLabel(instant, zone: zone)); devices=\(result.0.count); totals=[\(result.0.map { "\($0.deviceID.prefix(8))=\($0.usedMinutes)m" }.joined(separator: ","))]", category: "report")
+            return result.0
         } catch { syncStatus = "Report failed: \(error.localizedDescription)"; diagnosticLog.record(syncStatus, category: "report"); return [] }
     }
 
     func multiDayReport(from start: Date, through end: Date) async -> [DailyUsagePoint] {
         guard let repository else { return [] }
-        let deviceID = settings.deviceID, deviceName = settings.deviceName, kind = settings.deviceKind, zone = currentReportTimeZone
+        let deviceID = settings.deviceID, deviceName = settings.deviceName, kind = settings.deviceKind, zone = currentReportTimeZone, dailyLimit = settings.dailyPlanMinutes
         let includeSynced = isConnected(settings.syncProvider ?? .none)
         do {
             let points = try await Task.detached(priority: .userInitiated) {
-                try repository.multiDayReport(localDeviceID: deviceID, localDeviceName: deviceName, localDeviceKind: kind, start: start, end: end, timeZoneID: zone, includeSyncedDevices: includeSynced)
+                _ = try repository.refreshStatistics(localDeviceID: deviceID, localDeviceName: deviceName, localDeviceKind: kind, dailyLimitMinutes: dailyLimit, timeZoneID: zone, includeSyncedDevices: includeSynced)
+                return try repository.multiDayReport(localDeviceID: deviceID, localDeviceName: deviceName, localDeviceKind: kind, start: start, end: end, timeZoneID: zone, includeSyncedDevices: includeSynced)
             }.value
             diagnosticLog.record("multi-day report complete; start=\(Self.dateLabel(start, zone: zone)); end=\(Self.dateLabel(end, zone: zone)); points=\(points.count); series=\(Set(points.map(\.deviceID)).count)", category: "report")
             return points
         } catch { syncStatus = "Multi-day report failed: \(error.localizedDescription)"; diagnosticLog.record(syncStatus, category: "report"); return [] }
+    }
+
+    func periodReport(kind: String, from start: Date, through end: Date) async -> [PeriodUsagePoint] {
+        guard let repository else { return [] }
+        let deviceID = settings.deviceID, deviceName = settings.deviceName, deviceKind = settings.deviceKind, zone = currentReportTimeZone, dailyLimit = settings.dailyPlanMinutes
+        let includeSynced = isConnected(settings.syncProvider ?? .none)
+        do {
+            let result = try await Task.detached(priority: .userInitiated) {
+                _ = try repository.refreshStatistics(localDeviceID: deviceID, localDeviceName: deviceName, localDeviceKind: deviceKind, dailyLimitMinutes: dailyLimit, timeZoneID: zone, includeSyncedDevices: includeSynced)
+                let formatter = DateFormatter(); formatter.calendar = Calendar(identifier: .gregorian); formatter.timeZone = TimeZone(identifier: zone) ?? .current; formatter.locale = Locale(identifier: "en_US_POSIX"); formatter.dateFormat = "yyyy-MM-dd"
+                return try repository.periodUsage(kind: kind, from: formatter.string(from: min(start, end)), through: formatter.string(from: max(start, end)))
+            }.value
+            diagnosticLog.record("period report complete; kind=\(kind); points=\(result.count)", category: "report")
+            return result
+        } catch { diagnosticLog.record("period report failed; kind=\(kind); error=\(error.localizedDescription)", category: "report"); return [] }
     }
 
     private func runWeeklyActionIfDue() async {
@@ -271,10 +348,63 @@ final class AppModel: ObservableObject {
             if start <= lastSunday && rows.isEmpty { throw STGError.invalidDocument("OpenRouter returned no weekly model-activity rows; detail cursor was not advanced") }
             try repository.upsertOpenRouterWeeks(rows)
             try repository.completeOpenRouterDetailWeek(through: formatter.string(from: lastSunday))
-            try repository.completeWeeklyAction()
-            diagnosticLog.record("weekly action complete; openrouter_rows=\(rows.count); weeks=\(Set(rows.map(\.weekStart)).count); completion_recorded=true", category: "sync")
+            let previousMonday = calendar.date(byAdding: .day, value: -6, to: lastSunday) ?? lastSunday
+            let maintenance = try await performWeeklyCloudMaintenance(
+                currentWeekStart: formatter.string(from: currentWeek.start),
+                previousWeekStart: formatter.string(from: previousMonday),
+                previousWeekEnd: formatter.string(from: lastSunday)
+            )
+            try repository.completeWeeklyAction(deviceID: settings.deviceID)
+            diagnosticLog.record("weekly action complete; openrouter_rows=\(rows.count); weeks=\(Set(rows.map(\.weekStart)).count); bitmap_uploaded=\(maintenance.uploaded); daily_deleted=\(maintenance.deletedDaily); weekly_moved=\(maintenance.movedWeekly); completion_recorded=true", category: "sync")
+            await runYearlyActionIfDue()
         } catch {
             diagnosticLog.record("weekly action failed; completion_not_recorded=true; error=\(error.localizedDescription)", category: "sync")
+        }
+    }
+
+    private func performWeeklyCloudMaintenance(currentWeekStart: String, previousWeekStart: String, previousWeekEnd: String) async throws -> (uploaded: Int, deletedDaily: Int, movedWeekly: Int) {
+        guard let repository else { throw STGError.database("database unavailable") }
+        switch settings.syncProvider ?? .none {
+        case .iCloudDrive:
+            guard let folder = Self.iCloudFolder(containerID: iCloudContainer) else { throw STGError.invalidDocument("iCloud Drive is unavailable") }
+            return try await CloudFolderSync(repository: repository, deviceID: settings.deviceID).weeklyMaintenance(folder: folder, currentWeekStart: currentWeekStart, previousWeekStart: previousWeekStart, previousWeekEnd: previousWeekEnd)
+        case .oneDrive:
+            guard let clientID = oneDriveClientID else { throw STGError.invalidDocument("OneDrive Client ID is missing") }
+            return try await OneDriveSync(repository: repository, deviceID: settings.deviceID, clientID: clientID, credentialService: oneDriveCredentialService).weeklyMaintenance(currentWeekStart: currentWeekStart, previousWeekStart: previousWeekStart, previousWeekEnd: previousWeekEnd)
+        case .googleDrive:
+            guard let clientID = googleDriveClientID else { throw STGError.invalidDocument("Google Drive Client ID is missing") }
+            return try await GoogleDriveSync(repository: repository, deviceID: settings.deviceID, clientID: clientID, clientSecret: googleDriveClientSecret ?? "", credentialService: googleDriveCredentialService).weeklyMaintenance(currentWeekStart: currentWeekStart, previousWeekStart: previousWeekStart, previousWeekEnd: previousWeekEnd)
+        case .none:
+            throw STGError.invalidDocument("private cloud is not configured")
+        }
+    }
+
+    private func runYearlyActionIfDue() async {
+        guard let repository, (try? repository.yearlyActionDue(deviceID: settings.deviceID)) == true else { return }
+        let currentYear = Calendar(identifier: .gregorian).component(.year, from: .now)
+        let year = currentYear - 1, cleanupYear = currentYear - 2
+        let start = String(format: "%04d-01-01", year), end = String(format: "%04d-12-31", year)
+        do {
+            let rows = try await OpenRouterTrackingService.shared.weeklyHistory(startDate: start, endDate: end)
+            if !rows.isEmpty { try repository.upsertOpenRouterWeeks(rows) }
+            let result: (uploaded: Int, deletedBitmaps: Int, deletedWeekly: Int)
+            switch settings.syncProvider ?? .none {
+            case .iCloudDrive:
+                guard let folder = Self.iCloudFolder(containerID: iCloudContainer) else { throw STGError.invalidDocument("iCloud Drive is unavailable") }
+                result = try await CloudFolderSync(repository: repository, deviceID: settings.deviceID).yearlyMaintenance(folder: folder, year: year, trackingCleanupYear: cleanupYear)
+            case .oneDrive:
+                guard let clientID = oneDriveClientID else { throw STGError.invalidDocument("OneDrive Client ID is missing") }
+                result = try await OneDriveSync(repository: repository, deviceID: settings.deviceID, clientID: clientID, credentialService: oneDriveCredentialService).yearlyMaintenance(year: year, trackingCleanupYear: cleanupYear)
+            case .googleDrive:
+                guard let clientID = googleDriveClientID else { throw STGError.invalidDocument("Google Drive Client ID is missing") }
+                result = try await GoogleDriveSync(repository: repository, deviceID: settings.deviceID, clientID: clientID, clientSecret: googleDriveClientSecret ?? "", credentialService: googleDriveCredentialService).yearlyMaintenance(year: year, trackingCleanupYear: cleanupYear)
+            case .none:
+                return
+            }
+            try repository.completeYearlyAction(deviceID: settings.deviceID)
+            diagnosticLog.record("yearly action complete; year=\(year); uploaded=\(result.uploaded); deleted_bitmaps=\(result.deletedBitmaps); deleted_weekly=\(result.deletedWeekly)", category: "sync")
+        } catch {
+            diagnosticLog.record("yearly action failed; year=\(year); error=\(error.localizedDescription)", category: "sync")
         }
     }
 
@@ -285,12 +415,21 @@ final class AppModel: ObservableObject {
     func latestOpenRouterTopModels(metric: OpenRouterWeeklyMetric) -> [String] {
         (try? repository?.latestOpenRouterTopModels(metric: metric, limit: 10)) ?? []
     }
+    var latestTrackingTopTwo: String { let names = (try? repository?.latestOpenRouterTopModels(metric: .totalTokens, limit: 2)) ?? []; return names.isEmpty ? String(localized: "Weekly data will appear after sync.") : names.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n") }
 
     private static func dateLabel(_ date: Date, zone: String) -> String { let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX"); formatter.timeZone = TimeZone(identifier: zone) ?? .current; formatter.dateFormat = "yyyy-MM-dd"; return formatter.string(from: date) }
 
     private func tick() async {
         guard let repository else { return }
         let now = Date()
+        let today = Self.dateLabel(now, zone: currentReportTimeZone)
+        if today != reminderStateLocalDate {
+            let previousDate = reminderStateLocalDate
+            reminderStateLocalDate = today
+            reminderState.lastReminder = .posture
+            try? repository.saveReminderState(deviceID: settings.deviceID, state: reminderState, updatedAt: now)
+            diagnosticLog.record("daily reminder slot reset; previous_date=\(previousDate); local_date=\(today); next_slot=posture", category: "reminder")
+        }
         markSessionHeartbeat(at: now)
         let previousWasUsed: Bool
         do {
@@ -314,6 +453,7 @@ final class AppModel: ObservableObject {
                 diagnosticLog.record("incremental sync requested; trigger=reminder; kind=\(decision.kind.rawValue)", category: "sync")
                 await synchronize()
             }
+            try repository.updateRuntimeState(deviceID: settings.deviceID, continuousMinutes: reminderState.continuousMinutes, localDailyMinutes: localMinutes, aggregateDailyMinutes: allMinutes, localDate: Self.dateLabel(now, zone: currentReportTimeZone), at: now)
         } catch { syncStatus = "Record failed: \(error.localizedDescription)"; diagnosticLog.record(syncStatus, category: "record") }
     }
 
@@ -336,6 +476,12 @@ final class AppModel: ObservableObject {
         timer?.invalidate(); timer = nil
         markSessionHeartbeat(at: Date(), flush: true)
         diagnosticLog.record("screen unavailable; notification=\(notificationName); minute_timer_paused=\(wasRunning)", category: "lifecycle")
+        if notificationName == NSWorkspace.sessionDidResignActiveNotification.rawValue {
+            diagnosticLog.record("incremental sync requested; trigger=screen_lock", category: "sync")
+            Task { await synchronize() }
+        } else {
+            Task { await quickUpload(trigger: "sleep_or_display_sleep") }
+        }
     }
 
     private func handleScreenAvailable(_ notificationName: String) {
@@ -377,6 +523,19 @@ final class AppModel: ObservableObject {
         catch { syncStatus = "Log export failed: \(error.localizedDescription)" }
     }
 
+    func exportAppData() {
+        guard let repository else { syncStatus = "Database unavailable"; return }
+        let panel = NSSavePanel(); panel.nameFieldStringValue = "STG Data.stgdata"; panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let destination = panel.url else { return }
+        do {
+            if FileManager.default.fileExists(atPath: destination.path) { try FileManager.default.removeItem(at: destination) }
+            try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+            try repository.exportDatabaseSnapshot(to: destination.appendingPathComponent("stg.sqlite"))
+            try JSONEncoder.stg.encode(settings).write(to: destination.appendingPathComponent("global-settings.json"), options: .atomic)
+            diagnosticLog.record("database and global data exported; destination=\(destination.lastPathComponent)", category: "diagnostics")
+        } catch { syncStatus = "Data export failed: \(error.localizedDescription)" }
+    }
+
     func requestOneDriveSignIn() {
         guard let clientID = oneDriveClientID else {
             syncStatus = "OneDrive sign-in unavailable: Microsoft Entra Client ID is missing"
@@ -394,8 +553,9 @@ final class AppModel: ObservableObject {
                 syncStatus = "Waiting for Microsoft authorization: \(code.userCode)"
                 let credential = try await client.waitForAuthorization(code)
                 webAuthentication.cancel(); oneDriveUserCode = nil
-                try OneDriveCredentialStore.save(credential, service: oneDriveCredentialService)
                 let account = try await client.account(using: credential)
+                // Do not make a partially validated sign-in look connected.
+                try OneDriveCredentialStore.save(credential, service: oneDriveCredentialService)
                 oneDriveAccountLabel = "\(account.displayName) (\(account.email))"
                 UserDefaults.standard.set(oneDriveAccountLabel, forKey: "oneDriveAccountLabel")
                 syncStatus = "OneDrive signed in as \(oneDriveAccountLabel)"
@@ -427,8 +587,9 @@ final class AppModel: ObservableObject {
                 let request = try await client.authorizationRequest(callbackScheme: googleCallbackScheme)
                 let callback = try await webAuthentication.authenticate(url: request.authorizationURL, callbackScheme: request.callbackScheme)
                 let credential = try await client.credential(callbackURL: callback, request: request)
-                try GoogleDriveCredentialStore.save(credential, service: googleDriveCredentialService)
                 let account = try await client.account(using: credential)
+                // Persist only after both token exchange and account validation succeed.
+                try GoogleDriveCredentialStore.save(credential, service: googleDriveCredentialService)
                 googleDriveAccountLabel = "\(account.displayName) (\(account.email))"; UserDefaults.standard.set(googleDriveAccountLabel, forKey: "googleDriveAccountLabel")
                 syncStatus = "Google Drive signed in as \(googleDriveAccountLabel)"; diagnosticLog.record("Google Drive sign-in complete; account=authorized", category: "sync")
             } catch { syncStatus = error.localizedDescription; diagnosticLog.record("Google Drive sign-in failed: \(error.localizedDescription)", category: "sync") }

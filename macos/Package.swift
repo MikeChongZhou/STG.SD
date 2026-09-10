@@ -3,12 +3,14 @@ import PackageDescription
 
 let package = Package(
     name: "STGMac",
+    defaultLocalization: "en",
     platforms: [.macOS(.v14)],
     dependencies: [.package(path: "../apple/STGCore")],
     targets: [
         .executableTarget(
             name: "STGMac",
             dependencies: [.product(name: "STGCore", package: "STGCore")],
+            resources: [.process("Resources")],
             linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("CoreAudio"), .linkedFramework("IOKit"), .linkedFramework("Security"), .linkedFramework("ServiceManagement")]
         )
     ],

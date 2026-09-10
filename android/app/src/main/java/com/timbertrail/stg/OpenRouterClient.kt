@@ -28,7 +28,7 @@ data class RankingRow(
 data class RankingSnapshot(val rows: List<RankingRow>, val asOf: String, val startDate: String, val endDate: String) {
     val citation: String get() = "Source: OpenRouter public rankings (openrouter.ai/rankings), through $asOf."
 }
-data class WeeklyRankingRow(val weekStart: LocalDate, val weekEnd: LocalDate, val rank: Int, val model: String, val promptTokens: Long, val completionTokens: Long, val totalTokens: Long, val promptPrice: Double?, val completionPrice: Double?, val revenue: Double?) { val hasTokenBreakdown: Boolean get() = promptTokens >= 0 && completionTokens >= 0 }
+data class WeeklyRankingRow(val weekStart: LocalDate, val weekEnd: LocalDate, val rank: Int, val model: String, val promptTokens: Long, val completionTokens: Long, val totalTokens: Long, val promptPrice: Double?, val completionPrice: Double?, val revenue: Double?, val asOf: String? = null, val missingDates: List<String> = emptyList(), val isComplete: Boolean = true) { val hasTokenBreakdown: Boolean get() = promptTokens >= 0 && completionTokens >= 0 }
 
 class OpenRouterClient {
     fun top20(period: TrackingPeriod): RankingSnapshot {
@@ -77,7 +77,7 @@ class OpenRouterClient {
         return days.groupBy { it.date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)) }.toSortedMap().flatMap { (weekStart, values) ->
             values.groupBy { it.model }.map { (model, variants) -> weighted(model, variants.map { VariantUsage(it.model, it.variantPermaslug, it.prompt, it.completion) }, prices) }
                 .filter { it.total > 0 }.sortedWith(compareByDescending<WeightedUsage> { it.total }.thenBy { it.model }).take(20)
-                .mapIndexed { index, value -> WeeklyRankingRow(weekStart, minOf(weekStart.plusDays(6), end), index + 1, value.model, value.prompt, value.completion, value.total, value.promptPrice, value.completionPrice, if (value.promptPrice == null || value.completionPrice == null) null else value.prompt * value.promptPrice + value.completion * value.completionPrice) }
+                .mapIndexed { index, value -> WeeklyRankingRow(weekStart, minOf(weekStart.plusDays(6), end), index + 1, value.model, value.prompt, value.completion, value.total, value.promptPrice, value.completionPrice, if (value.promptPrice == null || value.completionPrice == null) null else value.prompt * value.promptPrice + value.completion * value.completionPrice, minOf(weekStart.plusDays(6), end).toString()) }
         }
     }
 
@@ -131,7 +131,7 @@ class OpenRouterClient {
     private fun get(url: String): JSONObject {
         val connection = URL(url).openConnection() as HttpURLConnection
         connection.setRequestProperty("Referer", "https://openrouter.ai/rankings")
-        connection.setRequestProperty("User-Agent", "Screen-Time-Guardian-Android/1.1.6")
+        connection.setRequestProperty("User-Agent", "Screen-Time-Guardian-Android/1.1.8")
         connection.setRequestProperty("Accept", "application/json")
         connection.connectTimeout = 15_000; connection.readTimeout = 30_000
         val code = connection.responseCode

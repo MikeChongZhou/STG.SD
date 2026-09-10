@@ -19,6 +19,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.timbertrail.screentimeguardian.macos.core
         GENERATE_INFOPLIST_FILE: YES
+        MARKETING_VERSION: "1.1.8"
+        CURRENT_PROJECT_VERSION: "21"
     dependencies:
       - sdk: libsqlite3.tbd
       - sdk: AuthenticationServices.framework
@@ -31,10 +33,12 @@ targets:
       - path: assets/Assets.xcassets
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.timbertrail.screentimeguardian.macos
+        PRODUCT_BUNDLE_IDENTIFIER: com.timbertrail.screentimeguardian.ios
         INFOPLIST_FILE: Info.plist
         CODE_SIGN_ENTITLEMENTS: STGMac.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        MARKETING_VERSION: "1.1.8"
+        CURRENT_PROJECT_VERSION: "21"
     dependencies:
       - target: STGCore
       - sdk: AppKit.framework

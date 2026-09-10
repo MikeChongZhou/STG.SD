@@ -2,12 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>CFBundleExecutable</key><string>STGMac</string>
-<key>CFBundleIdentifier</key><string>com.timbertrail.screentimeguardian.macos</string>
+<key>CFBundleIdentifier</key><string>com.timbertrail.screentimeguardian.ios</string>
 <key>CFBundleName</key><string>Screen Time Guardian</string>
 <key>CFBundleDisplayName</key><string>Screen Time Guardian</string>
+<key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
-<key>CFBundleShortVersionString</key><string>1.1.6</string>
-<key>CFBundleVersion</key><string>14</string>
+<key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
+<key>CFBundleShortVersionString</key><string>1.1.8</string>
+<key>CFBundleVersion</key><string>21</string>
 <key>LSUIElement</key><true/>
 <key>NSHighResolutionCapable</key><true/>
 <key>STGOneDriveClientID</key><string>a4ff927c-e45a-413e-b5c3-45b026719171</string>

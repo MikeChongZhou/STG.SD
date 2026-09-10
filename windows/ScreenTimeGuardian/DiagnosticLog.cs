@@ -20,8 +20,11 @@ internal sealed class DiagnosticLog
         {
             try
             {
-                if (File.Exists(path) && new FileInfo(path).Length > 2_000_000)
-                    File.Move(path, path + ".previous", true);
+                if (File.Exists(path) && new FileInfo(path).Length >= 1_024 * 1_024)
+                {
+                    var bytes = File.ReadAllBytes(path); var drop = Math.Min(800 * 1_024, bytes.Length);
+                    File.WriteAllBytes(path, bytes[drop..]);
+                }
                 File.AppendAllText(path, $"{DateTimeOffset.UtcNow:yyyy-MM-ddTHH:mm:ssZ} [{category}] {message}{Environment.NewLine}", Encoding.UTF8);
             }
             catch { }
@@ -35,4 +38,6 @@ internal sealed class DiagnosticLog
         lock (gate) File.Copy(path, target, true);
         return target;
     }
+
+    public void Clear() { lock (gate) { try { File.WriteAllText(path, string.Empty, Encoding.UTF8); File.Delete(path + ".previous"); } catch { } } }
 }

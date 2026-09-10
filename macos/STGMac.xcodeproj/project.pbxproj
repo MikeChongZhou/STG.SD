@@ -20,6 +20,7 @@
 		381D742734081EB773190277 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7645E7626FC6C4D7E646E4E /* Models.swift */; };
 		3C445D5E4F2B4F2184435033 /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3ED369FF3C3E60586794734B /* AppKit.framework */; };
 		481D59A5E34D8001B827BE47 /* OneDriveClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03DEE9D3DB8E56113E842C90 /* OneDriveClient.swift */; };
+		5B098E1C4D6511E99B5580EF /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 5001DEAE71A62AFA1C116D95 /* Localizable.strings */; };
 		5EF684C810E738CAD224EB76 /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB5CD94AC119DBE4A034811A /* IOKit.framework */; };
 		697C15E0DF33FB61C941572F /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A149897817968660B6C4469D /* Security.framework */; };
 		6C1864029E37B739C49A2356 /* AuthenticationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9EFB586BA832BFB0657EAE4B /* AuthenticationServices.framework */; };
@@ -27,15 +28,16 @@
 		76F5E130FA2C348B0269637E /* MinuteBitmap.swift in Sources */ = {isa = PBXBuildFile; fileRef = D206366B4EE2B8D556BF6931 /* MinuteBitmap.swift */; };
 		7BC2D0733BF2DC04E6D29281 /* ServiceManagement.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2800249DD2D3082D98CAA88B /* ServiceManagement.framework */; };
 		7E3934B3DE4E2DF79AD4F368 /* Views.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15B2600B4B9362617D759379 /* Views.swift */; };
-		7F0FED64E4A13218B9418E87 /* openrouter-weekly-seed-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = 11943C06875319E71049A6D8 /* openrouter-weekly-seed-v1.json */; };
 		80A58D36EA64527E9EBCCD07 /* STGCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A164D08AEF33327607893EB4 /* STGCore.framework */; };
 		8199926E856EB6AA7962FF94 /* MeetingDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71C39509282E086ACC1C0EF9 /* MeetingDetector.swift */; };
 		824D348B7CB9E046FD674C4A /* TrackingSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5034D01F7C03F90E59741A04 /* TrackingSupport.swift */; };
 		8D7892314F7A435B2C522A06 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5F66040DF7B3D01E8F8C1C86 /* Assets.xcassets */; };
 		8EA9761C4BC5CA0F77B507F6 /* BitmapRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 217913E470AE3EA9E8016CEA /* BitmapRepository.swift */; };
 		93539A8FB2E8A0E354D27F25 /* OpenRouterSeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 373106C211D2FF2F44EF2ADB /* OpenRouterSeed.swift */; };
+		A4D89AB50C01FD51F7635333 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 3EBEC288B1C7A70A4B1D0E5E /* PrivacyInfo.xcprivacy */; };
 		AA21E7F9A1269EB8D20E8FA0 /* IOSScreenTimeEstimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 580AF62025E87A4F2A2CA61C /* IOSScreenTimeEstimator.swift */; };
 		AA94B69D6DC02CAB98CDE2C2 /* OneDriveSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7206BEA1734AAF13253A57D1 /* OneDriveSync.swift */; };
+		B71913EE99012F52885434E0 /* stg.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = 31F83C20A9A70DFB9BFB1391 /* stg.sqlite */; };
 		BC43BE0F1BB4266A6237AC8E /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 5242C7FAA8AB273BD59EE4D3 /* libsqlite3.tbd */; };
 		CC1D054E18390A9F9F77016F /* TimeModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 073DB2D13A6837010891C139 /* TimeModel.swift */; };
 		E0F9CE28FC67D3E3C18356D9 /* STGCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A164D08AEF33327607893EB4 /* STGCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -73,16 +75,18 @@
 		073DB2D13A6837010891C139 /* TimeModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeModel.swift; sourceTree = "<group>"; };
 		0ADB465291731253D87F94DD /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
 		0C75666FD3E28104E4A99A61 /* GoogleDriveSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleDriveSync.swift; sourceTree = "<group>"; };
-		11943C06875319E71049A6D8 /* openrouter-weekly-seed-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "openrouter-weekly-seed-v1.json"; sourceTree = "<group>"; };
 		11E28C07EA8F15CF13D35E0A /* CloudFolderSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudFolderSync.swift; sourceTree = "<group>"; };
 		15B2600B4B9362617D759379 /* Views.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views.swift; sourceTree = "<group>"; };
 		1B05E786544571C4702A27FF /* DiagnosticLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticLog.swift; sourceTree = "<group>"; };
 		1E592C17D745F2F24E62DD0F /* UniformTypeIdentifiers.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UniformTypeIdentifiers.framework; path = System/Library/Frameworks/UniformTypeIdentifiers.framework; sourceTree = SDKROOT; };
 		217913E470AE3EA9E8016CEA /* BitmapRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BitmapRepository.swift; sourceTree = "<group>"; };
 		2800249DD2D3082D98CAA88B /* ServiceManagement.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ServiceManagement.framework; path = System/Library/Frameworks/ServiceManagement.framework; sourceTree = SDKROOT; };
+		2834C639DC14F644C486C63A /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/Localizable.strings; sourceTree = "<group>"; };
 		2B5AD242ABC0901746FB9635 /* GoogleDriveClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleDriveClient.swift; sourceTree = "<group>"; };
+		31F83C20A9A70DFB9BFB1391 /* stg.sqlite */ = {isa = PBXFileReference; lastKnownFileType = file; path = stg.sqlite; sourceTree = "<group>"; };
 		361F9C7BFC09BF204DBBF486 /* ReminderEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReminderEngine.swift; sourceTree = "<group>"; };
 		373106C211D2FF2F44EF2ADB /* OpenRouterSeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenRouterSeed.swift; sourceTree = "<group>"; };
+		3EBEC288B1C7A70A4B1D0E5E /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		3ED369FF3C3E60586794734B /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
 		5034D01F7C03F90E59741A04 /* TrackingSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackingSupport.swift; sourceTree = "<group>"; };
 		5242C7FAA8AB273BD59EE4D3 /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
@@ -92,6 +96,7 @@
 		71C39509282E086ACC1C0EF9 /* MeetingDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingDetector.swift; sourceTree = "<group>"; };
 		7206BEA1734AAF13253A57D1 /* OneDriveSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OneDriveSync.swift; sourceTree = "<group>"; };
 		9EFB586BA832BFB0657EAE4B /* AuthenticationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AuthenticationServices.framework; path = System/Library/Frameworks/AuthenticationServices.framework; sourceTree = SDKROOT; };
+		A1346465E59FBD8CB41FC1DE /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		A149897817968660B6C4469D /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
 		A164D08AEF33327607893EB4 /* STGCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = STGCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		AD6E2ACE23F1ADEB2E0681D9 /* CoreAudio.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudio.framework; path = System/Library/Frameworks/CoreAudio.framework; sourceTree = SDKROOT; };
@@ -100,6 +105,7 @@
 		D206366B4EE2B8D556BF6931 /* MinuteBitmap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MinuteBitmap.swift; sourceTree = "<group>"; };
 		D7645E7626FC6C4D7E646E4E /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		DB5CD94AC119DBE4A034811A /* IOKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOKit.framework; path = System/Library/Frameworks/IOKit.framework; sourceTree = SDKROOT; };
+		E5D80805119CA8A2F11C8DE8 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		F106D71ECBCFF844EF1F4CFA /* STGApplication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = STGApplication.swift; sourceTree = "<group>"; };
 		F579FE1C432B7CE5FBCB6A2E /* STGMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = STGMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -225,6 +231,14 @@
 			path = STGCore;
 			sourceTree = "<group>";
 		};
+		959E443CF27AF669BD93EAD7 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				5001DEAE71A62AFA1C116D95 /* Localizable.strings */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
 		A995802C609B8C101B9786AF /* Sources */ = {
 			isa = PBXGroup;
 			children = (
@@ -241,6 +255,7 @@
 				0ADB465291731253D87F94DD /* SettingsStore.swift */,
 				F106D71ECBCFF844EF1F4CFA /* STGApplication.swift */,
 				15B2600B4B9362617D759379 /* Views.swift */,
+				959E443CF27AF669BD93EAD7 /* Resources */,
 			);
 			path = STGMac;
 			sourceTree = "<group>";
@@ -248,7 +263,8 @@
 		D21DB4CCB02C73A9B721ABED /* Resources */ = {
 			isa = PBXGroup;
 			children = (
-				11943C06875319E71049A6D8 /* openrouter-weekly-seed-v1.json */,
+				3EBEC288B1C7A70A4B1D0E5E /* PrivacyInfo.xcprivacy */,
+				31F83C20A9A70DFB9BFB1391 /* stg.sqlite */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -329,6 +345,8 @@
 			knownRegions = (
 				Base,
 				en,
+				es,
+				"zh-Hans",
 			);
 			mainGroup = 45CC7618AFD97CCA47085D3D;
 			minimizedProjectReferenceProxies = 1;
@@ -348,7 +366,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				7F0FED64E4A13218B9418E87 /* openrouter-weekly-seed-v1.json in Resources */,
+				A4D89AB50C01FD51F7635333 /* PrivacyInfo.xcprivacy in Resources */,
+				B71913EE99012F52885434E0 /* stg.sqlite in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -357,6 +376,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				8D7892314F7A435B2C522A06 /* Assets.xcassets in Resources */,
+				5B098E1C4D6511E99B5580EF /* Localizable.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -407,6 +427,19 @@
 			targetProxy = 9500E6A0C6B69AB0D9A55CC0 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
+
+/* Begin PBXVariantGroup section */
+		5001DEAE71A62AFA1C116D95 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				A1346465E59FBD8CB41FC1DE /* en */,
+				2834C639DC14F644C486C63A /* es */,
+				E5D80805119CA8A2F11C8DE8 /* zh-Hans */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
 		372374891FB52C9816DCE220 /* Release */ = {
@@ -472,7 +505,7 @@
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "";
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 21;
 				DEFINES_MODULE = YES;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
@@ -483,6 +516,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				MARKETING_VERSION = 1.1.8;
 				PRODUCT_BUNDLE_IDENTIFIER = com.timbertrail.screentimeguardian.macos.core;
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -561,12 +595,14 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = STGMac.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 21;
 				INFOPLIST_FILE = Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.timbertrail.screentimeguardian.macos;
+				MARKETING_VERSION = 1.1.8;
+				PRODUCT_BUNDLE_IDENTIFIER = com.timbertrail.screentimeguardian.ios;
 				SDKROOT = macosx;
 			};
 			name = Debug;
@@ -576,7 +612,7 @@
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "";
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 21;
 				DEFINES_MODULE = YES;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
@@ -587,6 +623,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				MARKETING_VERSION = 1.1.8;
 				PRODUCT_BUNDLE_IDENTIFIER = com.timbertrail.screentimeguardian.macos.core;
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -600,12 +637,14 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = STGMac.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 21;
 				INFOPLIST_FILE = Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.timbertrail.screentimeguardian.macos;
+				MARKETING_VERSION = 1.1.8;
+				PRODUCT_BUNDLE_IDENTIFIER = com.timbertrail.screentimeguardian.ios;
 				SDKROOT = macosx;
 			};
 			name = Release;

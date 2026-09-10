@@ -47,10 +47,45 @@ public struct DailyUsagePoint: Equatable, Sendable, Identifiable {
     public var displayName: String
     public var minutes: Int
     public var isAggregate: Bool
+    public var estimated: Bool
 
-    public init(date: Date, dateLabel: String, deviceID: String, displayName: String, minutes: Int, isAggregate: Bool = false) {
-        self.date = date; self.dateLabel = dateLabel; self.deviceID = deviceID; self.displayName = displayName; self.minutes = minutes; self.isAggregate = isAggregate
+    public init(date: Date, dateLabel: String, deviceID: String, displayName: String, minutes: Int, isAggregate: Bool = false, estimated: Bool = false) {
+        self.date = date; self.dateLabel = dateLabel; self.deviceID = deviceID; self.displayName = displayName; self.minutes = minutes; self.isAggregate = isAggregate; self.estimated = estimated
     }
+}
+
+public struct UsageStatisticsSummary: Equatable, Sendable {
+    public var thisWeekAverageMinutes: Double?
+    public var lastWeekAverageMinutes: Double?
+    public var thisMonthAverageMinutes: Double?
+    public var lastMonthAverageMinutes: Double?
+    public var thisYearAverageMinutes: Double?
+    public var containsEstimatedIOSData: Bool
+
+    public init(thisWeekAverageMinutes: Double? = nil, lastWeekAverageMinutes: Double? = nil,
+                thisMonthAverageMinutes: Double? = nil, lastMonthAverageMinutes: Double? = nil,
+                thisYearAverageMinutes: Double? = nil, containsEstimatedIOSData: Bool = false) {
+        self.thisWeekAverageMinutes = thisWeekAverageMinutes
+        self.lastWeekAverageMinutes = lastWeekAverageMinutes
+        self.thisMonthAverageMinutes = thisMonthAverageMinutes
+        self.lastMonthAverageMinutes = lastMonthAverageMinutes
+        self.thisYearAverageMinutes = thisYearAverageMinutes
+        self.containsEstimatedIOSData = containsEstimatedIOSData
+    }
+}
+
+public struct PeriodUsagePoint: Equatable, Sendable, Identifiable {
+    public var id: String { "\(periodKind)|\(periodLabel)|\(deviceID)" }
+    public var periodKind: String
+    public var periodLabel: String
+    public var periodStart: String
+    public var periodEnd: String
+    public var deviceID: String
+    public var displayName: String
+    public var averageDailyMinutes: Double
+    public var includedDays: Int
+    public var excludedDays: Int
+    public var estimated: Bool
 }
 
 public struct STGSettings: Codable, Equatable, Sendable {
@@ -95,6 +130,29 @@ public struct BitmapDocument: Codable, Equatable, Sendable {
         guard let decoded = Data(base64Encoded: bitmapBase64) else { throw STGError.invalidDocument("invalid base64") }
         return try MinuteBitmap(data: decoded)
     }
+}
+
+public struct BitmapArchiveDocument: Codable, Equatable, Sendable {
+    public var formatVersion = 1
+    public var kind: String
+    public var deviceID: String
+    public var periodStart: String
+    public var periodEnd: String
+    public var rows: [BitmapDocument]
+    public var createdAt: Date
+    public var reserved: [String: String] = [:]
+
+    public init(kind: String, deviceID: String, periodStart: String, periodEnd: String, rows: [BitmapDocument], createdAt: Date = .now) {
+        self.kind = kind; self.deviceID = deviceID; self.periodStart = periodStart; self.periodEnd = periodEnd; self.rows = rows; self.createdAt = createdAt
+    }
+}
+
+public struct OpenRouterArchiveDocument: Codable, Equatable, Sendable {
+    public var formatVersion = 1
+    public var periodStart: String
+    public var periodEnd: String
+    public var rows: [OpenRouterWeeklyRankingRow]
+    public var createdAt: Date
 }
 
 public struct QuickSyncResult: Equatable, Sendable {

@@ -129,19 +129,56 @@ final class STGCoreTests: XCTestCase {
         let repository = try BitmapRepository(url: folder.appendingPathComponent("stg.sqlite"))
         let now = ISO8601DateFormatter().date(from: "2026-08-22T12:00:00Z")!
 
-        let result = try applyIOSScreenTimeThreshold(repository: repository, deviceID: "ios", threshold: 60, now: now, timeZoneID: "UTC")
-        XCTAssertEqual(result.measuredLocalDayMinutes, 60)
-        XCTAssertEqual(result.newlyMarkedMinutes, 60)
+        let result = try applyIOSScreenTimeThreshold(repository: repository, deviceID: "ios", now: now, timeZoneID: "UTC")
+        XCTAssertEqual(result.measuredLocalDayMinutes, 20)
+        XCTAssertEqual(result.newlyMarkedMinutes, 20)
         XCTAssertFalse(result.skippedReminder)
-        XCTAssertEqual(try repository.localDayMinutes(deviceID: "alldevices", instant: now, timeZoneID: "UTC"), 60)
+        XCTAssertEqual(try repository.localDayMinutes(deviceID: "alldevices", instant: now, timeZoneID: "UTC"), 20)
     }
 
-    func testIOSScreenTimeThresholdThreeMinuteToleranceContinuesReminder() throws {
+    func testIOSScreenTimeThresholdRespectsCallbackElapsedMinuteBudget() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }
         let repository = try BitmapRepository(url: folder.appendingPathComponent("stg.sqlite"))
         let now = ISO8601DateFormatter().date(from: "2026-08-22T12:00:00Z")!
-        let result = try applyIOSScreenTimeThreshold(repository: repository, deviceID: "ios", threshold: 23, now: now, timeZoneID: "UTC")
+
+        let result = try applyIOSScreenTimeThreshold(
+            repository: repository,
+            deviceID: "ios",
+            now: now,
+            timeZoneID: "UTC",
+            maximumNewMinutes: 5
+        )
+        XCTAssertEqual(result.measuredLocalDayMinutes, 5)
+        XCTAssertEqual(result.newlyMarkedMinutes, 5)
+        XCTAssertFalse(result.skippedReminder)
+    }
+
+    func testIOSScreenTimeThresholdRejectsSameMinuteCallback() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let repository = try BitmapRepository(url: folder.appendingPathComponent("stg.sqlite"))
+        let now = ISO8601DateFormatter().date(from: "2026-08-22T12:00:00Z")!
+
+        let result = try applyIOSScreenTimeThreshold(
+            repository: repository,
+            deviceID: "ios",
+            now: now,
+            timeZoneID: "UTC",
+            maximumNewMinutes: 0
+        )
+        XCTAssertTrue(result.skippedReminder)
+        XCTAssertEqual(result.measuredLocalDayMinutes, 0)
+        XCTAssertEqual(result.newlyMarkedMinutes, 0)
+        XCTAssertTrue(result.changedUTCDateKeys.isEmpty)
+    }
+
+    func testIOSScreenTimeThresholdUsesDefaultTwentyMinuteBudget() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let repository = try BitmapRepository(url: folder.appendingPathComponent("stg.sqlite"))
+        let now = ISO8601DateFormatter().date(from: "2026-08-22T12:00:00Z")!
+        let result = try applyIOSScreenTimeThreshold(repository: repository, deviceID: "ios", now: now, timeZoneID: "UTC")
         XCTAssertEqual(result.measuredLocalDayMinutes, 20)
         XCTAssertFalse(result.skippedReminder)
     }
@@ -151,13 +188,13 @@ final class STGCoreTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: folder) }
         let repository = try BitmapRepository(url: folder.appendingPathComponent("stg.sqlite"))
         let now = ISO8601DateFormatter().date(from: "2026-08-22T00:05:00Z")!
-        let result = try applyIOSScreenTimeThreshold(repository: repository, deviceID: "ios", threshold: 6, now: now, timeZoneID: "UTC")
+        let result = try applyIOSScreenTimeThreshold(repository: repository, deviceID: "ios", now: now, timeZoneID: "UTC")
         XCTAssertEqual(result.changedUTCDateKeys, ["2026-08-21", "2026-08-22"])
         XCTAssertEqual(result.measuredLocalDayMinutes, 6)
         XCTAssertFalse(result.skippedReminder)
     }
 
-    func testIOSScreenTimeThresholdBelowMeasuredExitsBeforeWriting() throws {
+    func testIOSScreenTimeThresholdDoesNotCompareRegistrationTotalWithDailyBitmap() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }
         let repository = try BitmapRepository(url: folder.appendingPathComponent("stg.sqlite"))
@@ -166,12 +203,12 @@ final class STGCoreTests: XCTestCase {
             XCTAssertTrue(try repository.mark(deviceID: "ios", instant: now.addingTimeInterval(TimeInterval(-(offset + 60) * 60))))
         }
 
-        let result = try applyIOSScreenTimeThreshold(repository: repository, deviceID: "ios", threshold: 60, now: now, timeZoneID: "UTC")
-        XCTAssertTrue(result.skippedReminder)
-        XCTAssertEqual(result.newlyMarkedMinutes, 0)
-        XCTAssertEqual(result.measuredLocalDayMinutes, 61)
-        XCTAssertTrue(result.changedUTCDateKeys.isEmpty)
-        XCTAssertEqual(try repository.localDayMinutes(deviceID: "ios", instant: now, timeZoneID: "UTC"), 61)
+        let result = try applyIOSScreenTimeThreshold(repository: repository, deviceID: "ios", now: now, timeZoneID: "UTC")
+        XCTAssertFalse(result.skippedReminder)
+        XCTAssertEqual(result.newlyMarkedMinutes, 20)
+        XCTAssertEqual(result.measuredLocalDayMinutes, 81)
+        XCTAssertEqual(result.changedUTCDateKeys, ["2026-08-22"])
+        XCTAssertEqual(try repository.localDayMinutes(deviceID: "ios", instant: now, timeZoneID: "UTC"), 81)
     }
 
     func testRepositoryCanResetEstimateAndImportedDevices() throws {
@@ -200,6 +237,12 @@ final class STGCoreTests: XCTestCase {
         let window = try OpenRouterTrackingService.dateWindow(period: .week, now: now)
         XCTAssertEqual(window.start, "2026-08-10")
         XCTAssertEqual(window.end, "2026-08-16")
+    }
+
+    func testWeeklyArchiveKeepsTheTwoMostRecentCompletedWeeks() {
+        XCTAssertEqual(CloudFolderSync.weekEnd(from: "device_week_2026-08-17_2026-08-23.json"), "2026-08-23")
+        XCTAssertEqual(CloudFolderSync.weekEnd(from: "device_week_2026-08-17.json"), "2026-08-23")
+        XCTAssertEqual(CloudFolderSync.weekArchiveCutoff(previousWeekStart: "2026-08-24"), "2026-08-17")
     }
 
     func testOpenRouterPreviousUTCMonthWindow() throws {
@@ -327,10 +370,97 @@ final class STGCoreTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: cloud.appendingPathComponent("sync/local_bitmap_2026-08-24.json").path))
     }
 
+    func testCloudFolderQuickBidirectionalMergesSameDeviceBeforeUpload() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let cloud = folder.appendingPathComponent("cloud", isDirectory: true)
+        let cloudSource = try BitmapRepository(url: folder.appendingPathComponent("cloud-source.sqlite"))
+        let localRepository = try BitmapRepository(url: folder.appendingPathComponent("local.sqlite"))
+        let cloudMinute = ISO8601DateFormatter().date(from: "2026-08-25T12:34:00Z")!
+        let localMinute = cloudMinute.addingTimeInterval(120)
+        XCTAssertTrue(try cloudSource.mark(deviceID: "same-device", instant: cloudMinute))
+        let seeded = try await CloudFolderSync(repository: cloudSource, deviceID: "same-device").quickUpload(folder: cloud, utcDates: ["2026-08-25"])
+        XCTAssertEqual(seeded, 1)
+        XCTAssertTrue(try localRepository.mark(deviceID: "same-device", instant: localMinute))
+
+        let result = try await CloudFolderSync(repository: localRepository, deviceID: "same-device").quickBidirectional(
+            folder: cloud,
+            downloadUTCDateKeys: ["2026-08-25"],
+            uploadUTCDateKeys: ["2026-08-25"]
+        )
+
+        XCTAssertEqual(result.downloaded, 1)
+        XCTAssertEqual(result.uploaded, 1)
+        XCTAssertTrue(result.discoveredDeviceIDs.isEmpty)
+        let merged = try localRepository.bitmap(deviceID: "same-device", utcDate: "2026-08-25")
+        XCTAssertTrue(merged[754])
+        XCTAssertTrue(merged[756])
+        XCTAssertEqual(merged.count, 2)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let cloudDocument = try decoder.decode(
+            BitmapDocument.self,
+            from: Data(contentsOf: cloud.appendingPathComponent("sync/same-device_bitmap_2026-08-25.json"))
+        )
+        XCTAssertEqual(try cloudDocument.bitmap().count, 2)
+    }
+
+    func testStoredDocumentRequiresARealRowAndPreservesUpdatedAt() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let repository = try BitmapRepository(url: folder.appendingPathComponent("stg.sqlite"))
+        let updatedAt = ISO8601DateFormatter().date(from: "2026-08-25T12:34:00Z")!
+
+        XCTAssertNil(try repository.documentIfPresent(deviceID: "local", utcDate: "2026-08-25"))
+        try repository.upsert(deviceID: "local", utcDate: "2026-08-25", bitmap: MinuteBitmap(), updatedAt: updatedAt)
+        let document = try XCTUnwrap(repository.documentIfPresent(deviceID: "local", utcDate: "2026-08-25"))
+        XCTAssertEqual(try document.bitmap().count, 0)
+        XCTAssertEqual(document.updatedAt, updatedAt)
+    }
+
+    func testInitialCloudFolderSyncSkipsMissingLocalDates() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let cloud = folder.appendingPathComponent("cloud", isDirectory: true)
+        let repository = try BitmapRepository(url: folder.appendingPathComponent("local.sqlite"))
+        let now = ISO8601DateFormatter().date(from: "2026-08-25T12:34:00Z")!
+
+        let result = try await CloudFolderSync(repository: repository, deviceID: "local").incrementalSync(folder: cloud, now: now, days: 3)
+
+        XCTAssertEqual(result.uploaded, 0)
+        XCTAssertNil(try repository.incrementalUploadCursor(syncTarget: "cloudFolder"))
+        let sync = cloud.appendingPathComponent("sync", isDirectory: true)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(at: sync, includingPropertiesForKeys: nil).filter { $0.lastPathComponent.contains("_bitmap_") }.count, 0)
+    }
+
+    func testInitialCloudFolderSyncRestoresSameDeviceBeforeUpload() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let cloud = folder.appendingPathComponent("cloud", isDirectory: true)
+        let oldRepository = try BitmapRepository(url: folder.appendingPathComponent("old.sqlite"))
+        let freshRepository = try BitmapRepository(url: folder.appendingPathComponent("fresh.sqlite"))
+        let now = ISO8601DateFormatter().date(from: "2026-08-25T12:34:00Z")!
+        let freshNow = now.addingTimeInterval(120)
+        XCTAssertTrue(try oldRepository.mark(deviceID: "same-device", instant: now))
+        let seeded = try await CloudFolderSync(repository: oldRepository, deviceID: "same-device").quickUpload(folder: cloud, utcDates: ["2026-08-25"])
+        XCTAssertEqual(seeded, 1)
+        XCTAssertTrue(try freshRepository.mark(deviceID: "same-device", instant: freshNow))
+
+        let result = try await CloudFolderSync(repository: freshRepository, deviceID: "same-device").incrementalSync(folder: cloud, now: freshNow, days: 3)
+
+        XCTAssertEqual(result.downloaded, 1)
+        XCTAssertEqual(result.uploaded, 1)
+        XCTAssertTrue(try freshRepository.bitmap(deviceID: "same-device", utcDate: "2026-08-25")[754])
+        XCTAssertTrue(try freshRepository.bitmap(deviceID: "same-device", utcDate: "2026-08-25")[756])
+        let restored = try XCTUnwrap(freshRepository.documentIfPresent(deviceID: "same-device", utcDate: "2026-08-25"))
+        XCTAssertEqual(restored.updatedAt, freshNow)
+        XCTAssertEqual(try restored.bitmap().count, 2)
+    }
+
     func testOpenRouterWeeklyCursorAndModelFilter() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }
-        let repository = try BitmapRepository(url: folder.appendingPathComponent("stg.sqlite"), importsBundledOpenRouterSeed: false)
+        let repository = try BitmapRepository(url: folder.appendingPathComponent("stg.sqlite"), importsBundledOpenRouterSeed: false, installsBundledDatabaseTemplate: false)
         try repository.upsertOpenRouterWeeks([
             OpenRouterWeeklyRankingRow(weekStart: "2026-01-05", weekEnd: "2026-01-11", rank: 1, modelPermaslug: "model/a", promptTokens: 100, completionTokens: 20, totalTokens: 120, promptPricePerToken: 0.1, completionPricePerToken: 0.2),
             OpenRouterWeeklyRankingRow(weekStart: "2026-01-05", weekEnd: "2026-01-11", rank: 2, modelPermaslug: "model/b", promptTokens: 80, completionTokens: 10, totalTokens: 90, promptPricePerToken: nil, completionPricePerToken: nil)
@@ -339,6 +469,19 @@ final class STGCoreTests: XCTestCase {
         let rows = try repository.openRouterWeeks(models: ["model/b"])
         XCTAssertEqual(rows.count, 1)
         XCTAssertEqual(rows.first?.modelPermaslug, "model/b")
+    }
+
+    func testOpenRouterLatestWeekTopModelsFollowSelectedMetric() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let repository = try BitmapRepository(url: folder.appendingPathComponent("stg.sqlite"), importsBundledOpenRouterSeed: false, installsBundledDatabaseTemplate: false)
+        try repository.upsertOpenRouterWeeks([
+            OpenRouterWeeklyRankingRow(weekStart: "2026-01-05", weekEnd: "2026-01-11", rank: 1, modelPermaslug: "old/leader", promptTokens: 9_000, completionTokens: 1_000, totalTokens: 10_000, promptPricePerToken: 0.1, completionPricePerToken: 0.1),
+            OpenRouterWeeklyRankingRow(weekStart: "2026-01-12", weekEnd: "2026-01-18", rank: 1, modelPermaslug: "new/token-leader", promptTokens: 900, completionTokens: 100, totalTokens: 1_000, promptPricePerToken: 0.01, completionPricePerToken: 0.01),
+            OpenRouterWeeklyRankingRow(weekStart: "2026-01-12", weekEnd: "2026-01-18", rank: 2, modelPermaslug: "new/revenue-leader", promptTokens: 100, completionTokens: 100, totalTokens: 200, promptPricePerToken: 10, completionPricePerToken: 10)
+        ])
+        XCTAssertEqual(try repository.latestOpenRouterTopModels(metric: .totalTokens, limit: 1), ["new/token-leader"])
+        XCTAssertEqual(try repository.latestOpenRouterTopModels(metric: .revenue, limit: 1), ["new/revenue-leader"])
     }
 
     func testBundledOpenRouterSeedImportsCompletedHistory() throws {
@@ -352,6 +495,20 @@ final class STGCoreTests: XCTestCase {
         XCTAssertGreaterThan(rows.count, 10)
         XCTAssertTrue(rows.allSatisfy { $0.totalTokens > 0 })
         XCTAssertTrue(rows.allSatisfy { !$0.hasTokenBreakdown })
+        XCTAssertTrue(rows.allSatisfy { $0.asOf != nil })
+        XCTAssertTrue(rows.allSatisfy { $0.updatedAt.timeIntervalSince1970 > 0 })
+        let incompleteRows = try repository.openRouterWeeks(models: ["google/gemini-2.0-flash-001"])
+        XCTAssertTrue(incompleteRows.contains { !$0.isComplete && !$0.missingDates.isEmpty })
+    }
+
+    func testBundledOpenRouterSeedCanBeDeferredAndIsIdempotent() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let repository = try BitmapRepository(url: folder.appendingPathComponent("stg.sqlite"), importsBundledOpenRouterSeed: false, installsBundledDatabaseTemplate: false)
+        XCTAssertNil(try repository.latestOpenRouterWeekEnd())
+        XCTAssertTrue(try repository.importBundledOpenRouterSeedIfNeeded())
+        XCTAssertEqual(try repository.latestOpenRouterWeekEnd(), "2026-08-23")
+        XCTAssertFalse(try repository.importBundledOpenRouterSeedIfNeeded())
     }
 
     func testWeeklyActionRunsOnlyInsideARequiredWeek() throws {

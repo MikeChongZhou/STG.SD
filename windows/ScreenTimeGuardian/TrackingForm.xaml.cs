@@ -17,6 +17,7 @@ internal partial class TrackingForm : Window
     private readonly TrayAppContext app;
     private readonly CancellationTokenSource cancellation = new();
     private bool isInitialized;
+    private DateOnly startDate;
     private IReadOnlyList<RankingRow> rows = [];
     private IReadOnlyList<WeeklyRankingRow> weeklyRows = [];
     private RankingSnapshot? snapshot;
@@ -27,8 +28,12 @@ internal partial class TrackingForm : Window
         // constructing the tab content. Store the app first and ignore those
         // premature events until every named control exists.
         this.app = app ?? throw new ArgumentNullException(nameof(app));
-        InitializeComponent(); WindowLayout.FitToWorkingArea(this, 0.91, 0.87);
-        StartDatePicker.SelectedDate = DateTime.UtcNow.Date.AddDays(-7);
+        InitializeComponent(); L.Apply(this); WindowLayout.FitToWorkingArea(this, 0.91, 0.87);
+        startDate = DateOnly.FromDateTime(DateTime.UtcNow.Date.AddDays(-7));
+        var initialDate = startDate.ToDateTime(TimeOnly.MinValue);
+        StartCalendar.DisplayDate = initialDate;
+        StartCalendar.SelectedDate = initialDate;
+        UpdateStartDateButton();
         MetricBox.ItemsSource = new[] { "Rank", "Input tokens", "Output tokens", "Total tokens", "Input price / M", "Output price / M", "Revenue" }; MetricBox.SelectedIndex = 3;
         ExportButton.IsEnabled = false;
         isInitialized = true;
@@ -41,9 +46,6 @@ internal partial class TrackingForm : Window
         try
         {
             RefreshWeeklyChart();
-            StatusLabel.Text = weeklyRows.Count == 0
-                ? "Weekly data will appear after the next due weekly action in incremental sync."
-                : $"Showing {weeklyRows.Select(value => value.WindowStart).Distinct().Count()} saved weeks for the latest Top 10 models. Historical seed data contains Rank and Total tokens; OpenRouter does not publish its historical input/output split and returned no rows for 2025-06-15 or 2025-07-15.";
         }
         catch (Exception error)
         {
@@ -52,9 +54,18 @@ internal partial class TrackingForm : Window
     }
 
     private async void Refresh_Click(object sender, RoutedEventArgs e) => await RefreshTopAsync();
+    private void StartDate_Click(object sender, RoutedEventArgs e) => StartDatePopup.IsOpen = true;
+    private void StartCalendar_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (StartCalendar.SelectedDate is not DateTime value) return;
+        startDate = DateOnly.FromDateTime(value);
+        UpdateStartDateButton();
+        StartDatePopup.IsOpen = false;
+    }
+    private void UpdateStartDateButton() => StartDateButton.Content = startDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
     private async Task RefreshTopAsync()
     {
-        var start = DateOnly.FromDateTime(StartDatePicker.SelectedDate ?? DateTime.UtcNow.Date.AddDays(-7)); var end = DateOnly.FromDateTime(DateTime.UtcNow.Date.AddDays(-1));
+        var start = startDate; var end = DateOnly.FromDateTime(DateTime.UtcNow.Date.AddDays(-1));
         StatusLabel.Text = "Loading OpenRouter public ranking…"; ExportButton.IsEnabled = false; app.TrackingLog($"OpenRouter refresh begin; start={start:yyyy-MM-dd}; end={end:yyyy-MM-dd}");
         try
         {
@@ -69,13 +80,14 @@ internal partial class TrackingForm : Window
     private void RefreshWeeklyChart()
     {
         if (!isInitialized || WeeklyChart is null || MetricBox is null || TrackingTabs is null || ExportButton is null) return;
-        var models = rows.Count > 0 ? rows.OrderBy(value => value.Rank).Take(10).Select(value => value.Model).ToList() : app.LatestOpenRouterTopModels().ToList(); weeklyRows = app.OpenRouterWeeks(models); WeeklyChart.Points = weeklyRows; WeeklyChart.Metric = (WeeklyMetric)Math.Max(0, MetricBox.SelectedIndex); ExportButton.IsEnabled = TrackingTabs.SelectedIndex == 0 ? rows.Count > 0 : weeklyRows.Count > 0;
+        var metric = (WeeklyMetric)Math.Max(0, MetricBox.SelectedIndex); var models = app.LatestOpenRouterTopModels(metric).ToList(); weeklyRows = app.OpenRouterWeeks(models); WeeklyChart.Points = weeklyRows; WeeklyChart.Metric = metric; ExportButton.IsEnabled = TrackingTabs.SelectedIndex == 0 ? rows.Count > 0 : weeklyRows.Count > 0;
+        if (TrackingTabs.SelectedIndex == 1) StatusLabel.Text = weeklyRows.Count == 0 ? $"No saved weekly data contains {MetricBox.SelectedItem}." : $"Showing all saved weeks for the latest completed week's {MetricBox.SelectedItem} Top {models.Count}.";
     }
 
     private void Metric_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (!isInitialized || WeeklyChart is null || MetricBox is null) return;
-        WeeklyChart.Metric = (WeeklyMetric)Math.Max(0, MetricBox.SelectedIndex);
+        RefreshWeeklyChart();
     }
 
     private async void TrackingTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)

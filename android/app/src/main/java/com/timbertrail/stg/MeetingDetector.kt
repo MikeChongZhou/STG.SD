@@ -18,5 +18,8 @@ class MeetingDetector(private val context: Context) {
         return MeetingDetectionResult(false, "no active call or communication audio mode")
     }
 
-    fun checkAndLog(): MeetingDetectionResult = check().also { Log.i("STGMeeting", "detected=${it.isInMeeting}; reason=${it.reason}") }
+    fun checkAndLog(): MeetingDetectionResult = check().also {
+        Log.i("STGMeeting", "detected=${it.isInMeeting}; reason=${it.reason}")
+        DiagnosticLog.get(context).record("meeting", "detected=${it.isInMeeting}; reason=${it.reason}")
+    }
 }

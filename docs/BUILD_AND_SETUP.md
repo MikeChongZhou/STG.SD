@@ -6,7 +6,7 @@ Run `bash scripts/build_macos.sh`. The locally ad-hoc-signed bundle (`com.timber
 
 In Settings, choose the sync provider explicitly. Until then STG stays in single-device mode. Selecting a provider immediately begins account connection. iCloud uses the system Apple Account and the private ubiquity container. OneDrive uses Microsoft account device-code authorization in a system authentication window and Microsoft Graph App Folder. Google Drive uses OAuth/PKCE and its hidden `appDataFolder`. None of these paths uses a local folder picker.
 
-Export diagnostics from the menu-bar item **Export Test Log…** or About → **Export Test Log…**. After a successful export, the active log is cleared.
+Export diagnostics from Settings → Diagnostics → **Export Test Log…**. After a successful export, the active log is cleared.
 
 ## iOS/iPadOS
 
@@ -24,13 +24,13 @@ Export diagnostics from Settings → Diagnostics → **Export test log**, then c
 
 Both Apple targets use Microsoft Entra public-client application ID `a4ff927c-e45a-413e-b5c3-45b026719171` in `STGOneDriveClientID`. Enable public client/device-code flows and delegated scopes `offline_access`, `User.Read`, and `Files.ReadWrite.AppFolder`.
 
-Google Drive requires a Google OAuth native client ID in each target's `STGGoogleClientID` and the Google Drive API enabled. STG derives Google's standard reversed-client-ID callback (`com.googleusercontent.apps.<client-number>:/oauth2redirect`) and requests only `openid email profile` and `drive.appdata`. Add the derived scheme to that target's URL types. Google's Desktop client type also requires its generated client secret. Keep it out of source control and export `STG_GOOGLE_CLIENT_SECRET` while building macOS or running/building Windows; `build_macos.sh` injects it into the local app bundle. Installed native apps cannot keep this value confidential, but it must not be published in the source repository. The app stores user refresh/access tokens in Keychain or Windows Credential Manager; logs never include tokens or account addresses.
+Google Drive requires a Google OAuth native client ID in each target's `STGGoogleClientID` and the Google Drive API enabled. STG derives Google's standard reversed-client-ID callback (`com.googleusercontent.apps.<client-number>:/oauth2redirect`) and requests only `openid email profile` and `drive.appdata`. Add the derived scheme to that target's URL types. Google's Desktop client type also requires its generated client secret. Keep it out of source control and export `STG_GOOGLE_CLIENT_SECRET` while building macOS or Windows; `build_macos.sh` injects it into the local app bundle, while `build_windows.sh` can also read it from the Git-ignored `android/local.properties` used by Android Studio. A Windows release build now stops instead of producing a Google-incompatible package when the value is absent. Installed native apps cannot keep this value confidential, but it must not be published in the source repository. The app stores user refresh/access tokens in Keychain or Windows Credential Manager; logs never include tokens or account addresses.
 
 ## Android
 
-Install Android Studio/JDK 17 and run `bash scripts/build_android.sh`. The debug APK is written to `dist/android/ScreenTimeGuardian-1.1.6-debug.apk` and supports Android 7.1.1 (API 25) or later.
+Install Android Studio/JDK 17 and run `bash scripts/build_android.sh`. The debug APK is written to `dist/android/ScreenTimeGuardian-1.1.8-debug.apk` and supports Android 9 (API 28) or later.
 
-On first use grant notifications, Usage Access, and foreground-service permission. Choose a OneDrive or Google Drive directory through Android's system document picker; STG persists only the resulting scoped URI grant.
+On first use grant notifications, overlay/full-screen reminder access, and Usage Access, then optionally complete private-cloud setup. Android does not use a folder picker: OneDrive uses Microsoft device-code authorization with `Files.ReadWrite.AppFolder` and Microsoft Graph App Folder; Google Drive uses OAuth/PKCE with the Google Desktop client registration and the hidden `appDataFolder`. The app verifies the account and completes an initial sync before saving the provider. Access and refresh tokens are encrypted with Android Keystore, and logs never include tokens or account addresses. For Google builds, provide `STG_GOOGLE_CLIENT_SECRET` either as an environment variable or as the same key in the Git-ignored `android/local.properties`; Gradle injects it into `BuildConfig` without writing it to tracked source files. The `local.properties` option is required when launching directly from Android Studio unless Android Studio itself was started with that environment variable.
 
 ## Windows
 
@@ -40,21 +40,20 @@ Choose iCloud Drive, OneDrive, or Google Drive in Settings. iCloud Drive uses th
 
 For Windows iCloud sync, install iCloud for Windows, sign in with the same Apple Account used by the Apple devices, and enable iCloud Drive. The Apple builds publish only the Screen Time Guardian container's `Documents` scope, so Windows can find the app folder without gaining access to unrelated iCloud Drive files. The Windows app checks the registered iCloud sync root and the standard iCloud Drive location; Apple Account sign-in and sign-out remain controlled by iCloud for Windows.
 
-The Settings screen also lets the user assign a readable device name; that name
-is synchronized in the settings document and used by other devices' reports
-instead of displaying the technical device ID. The Report screen includes an
+The synchronized device record supplies the readable device name used by other
+devices' reports instead of displaying the technical device ID. The Report screen includes an
 all-device summary, the local-PC summary, the complete aggregate and per-device
 minute bitmaps, a **Sync now** button, and CSV export.
 
-Export diagnostics from the tray menu, About, or the main Settings workflow using **Export test log**. The log records lifecycle, minute samples, report totals, reminder decisions, provider/account state (without account addresses), synchronization counts, and OpenRouter refresh/export events.
+Export diagnostics from Settings using **Export test log**. The log records lifecycle, minute samples, report totals, reminder decisions, provider/account state (without account addresses), synchronization counts, and OpenRouter refresh/export events.
 
-Windows uses Per-Monitor V2 DPI scaling. Meeting mode is effective when the user enables it manually or when a reminder-time registry check finds an application actively using the microphone or camera. Settings includes **Detect meeting now** for verification. Automatic and manual meeting mode both silence the reminder and allow it to close immediately.
+Windows uses Per-Monitor V2 DPI scaling. Meeting mode is effective when the user enables it manually or when a reminder-time registry check finds an application actively using the microphone or camera. Automatic and manual meeting mode both silence the reminder and allow it to close immediately.
 
 macOS checks whether the default microphone is actively running when a reminder is due. Android checks the system communication/call audio mode. On either platform, a detected meeting makes the reminder silent and immediately closeable; the manual meeting-mode override remains available.
 
 ## OpenRouter
 
-Apple, Windows, and Android tracking read OpenRouter's public ranking, per-model daily activity, and effective-pricing endpoints directly; no account or API key is needed. They display input/output/total tokens, observed effective weighted input/output prices (including cache and provider discounts), and estimated revenue in an aligned table. Revenue is rounded to whole USD with thousands separators and is not OpenRouter financial reporting. Every column toggles descending/ascending sorting and the current rows can be exported as CSV. Weekly results cover completed UTC Monday–Sunday periods, and the weekly maintenance action incrementally backfills completed weeks without rewinding the long-term total-token cursor. Monthly results cover the previous completed UTC calendar month, and custom reports include both selected UTC dates.
+Apple, Windows, and Android tracking read OpenRouter's public ranking, per-model daily activity, and effective-pricing endpoints directly; no account or API key is needed. They display input/output/total tokens, observed effective weighted input/output prices (including cache and provider discounts), and estimated revenue in an aligned table. Revenue is rounded to whole USD with thousands separators and is not OpenRouter financial reporting. Every column toggles descending/ascending sorting and the current rows can be exported as CSV. Tracking opens on Weekly Trends; its Top 10 is recalculated from the latest completed week for the selected metric. The weekly maintenance action incrementally backfills completed UTC Monday–Sunday periods. **Top 20 from date** fetches only when that view is opened or refreshed and runs from the selected date through the latest completed UTC day.
 
 ## External release dependencies
 

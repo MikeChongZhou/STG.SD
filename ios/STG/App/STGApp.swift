@@ -8,8 +8,7 @@ struct STGApp: App {
         WindowGroup { RootView(model: model) }
             .onChange(of: scenePhase) { _, phase in
                 SharedEnvironment.diagnosticLog.record("scene phase: \(String(describing: phase))", category: "lifecycle")
-                if phase == .active { Task { await model.refresh(); await model.sync() } }
-                else if phase == .background { model.scheduleBackgroundRefresh() }
+                if phase == .background { model.scheduleBackgroundRefresh() }
             }
     }
 }

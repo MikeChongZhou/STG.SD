@@ -89,7 +89,7 @@ public actor GoogleDriveClient {
         return .init(displayName: profile.name ?? profile.email, email: profile.email)
     }
 
-    public func listFiles(names: Set<String>? = nil, using credential: GoogleDriveCredential) async throws -> [GoogleDriveFile] {
+    public func listFiles(names: Set<String>? = nil, parentID: String? = nil, using credential: GoogleDriveCredential) async throws -> [GoogleDriveFile] {
         var components = URLComponents(string: "https://www.googleapis.com/drive/v3/files")!
         var query = "trashed = false"
         if let names, !names.isEmpty {
@@ -99,6 +99,7 @@ public actor GoogleDriveClient {
             }
             query += " and (\(clauses.joined(separator: " or ")))"
         }
+        if let parentID { query += " and '\(parentID)' in parents" }
         components.queryItems = [
             .init(name: "spaces", value: "appDataFolder"), .init(name: "fields", value: "files(id,name)"),
             .init(name: "pageSize", value: "1000"), .init(name: "q", value: query)
@@ -107,7 +108,16 @@ public actor GoogleDriveClient {
         return try JSONDecoder().decode(FileListResponse.self, from: data).files
     }
 
-    public func upload(name: String, data: Data, existingFileID: String?, using credential: GoogleDriveCredential) async throws {
+    public func ensureFolder(name: String, using credential: GoogleDriveCredential) async throws -> String {
+        if let existing = try await listFiles(names: [name], using: credential).first(where: { $0.name == name }) { return existing.id }
+        var request = URLRequest(url: URL(string: "https://www.googleapis.com/drive/v3/files")!); request.httpMethod = "POST"
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["name": name, "mimeType": "application/vnd.google-apps.folder", "parents": ["appDataFolder"]])
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type"); request.setValue("Bearer \(credential.accessToken)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await session.data(for: request); try validate(response, data: data, operation: "create app-data folder")
+        return try JSONDecoder().decode(GoogleDriveFile.self, from: data).id
+    }
+
+    public func upload(name: String, data: Data, existingFileID: String?, parentID: String? = nil, using credential: GoogleDriveCredential) async throws {
         if let fileID = existingFileID {
             var components = URLComponents(string: "https://www.googleapis.com/upload/drive/v3/files/\(fileID)")!
             components.queryItems = [.init(name: "uploadType", value: "media")]
@@ -119,13 +129,18 @@ public actor GoogleDriveClient {
         let boundary = "stg-\(UUID().uuidString)"
         var components = URLComponents(string: "https://www.googleapis.com/upload/drive/v3/files")!
         components.queryItems = [.init(name: "uploadType", value: "multipart")]
-        let metadata = try JSONSerialization.data(withJSONObject: ["name": name, "parents": ["appDataFolder"]])
+        let metadata = try JSONSerialization.data(withJSONObject: ["name": name, "parents": [parentID ?? "appDataFolder"]])
         var body = Data(); body.append("--\(boundary)\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n".data(using: .utf8)!)
         body.append(metadata); body.append("\r\n--\(boundary)\r\nContent-Type: application/json\r\n\r\n".data(using: .utf8)!)
         body.append(data); body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
         var request = URLRequest(url: components.url!); request.httpMethod = "POST"; request.httpBody = body
         request.setValue("multipart/related; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         try await send(&request, credential: credential)
+    }
+
+    public func delete(fileID: String, using credential: GoogleDriveCredential) async throws {
+        var request = URLRequest(url: URL(string: "https://www.googleapis.com/drive/v3/files/\(fileID)")!); request.httpMethod = "DELETE"; request.setValue("Bearer \(credential.accessToken)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await session.data(for: request); try validate(response, data: data, operation: "delete file")
     }
 
     public func download(fileID: String, using credential: GoogleDriveCredential) async throws -> Data {
@@ -143,12 +158,12 @@ public actor GoogleDriveClient {
 
     private func authorizedRequest(url: URL, credential: GoogleDriveCredential) async throws -> Data {
         var request = URLRequest(url: url); request.setValue("Bearer \(credential.accessToken)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await session.data(for: request); try validate(response, data: data); return data
+        let (data, response) = try await session.data(for: request); try validate(response, data: data, operation: "GET \(url.host ?? "Google API")\(url.path)"); return data
     }
 
     private func send(_ request: inout URLRequest, credential: GoogleDriveCredential) async throws {
         request.setValue("Bearer \(credential.accessToken)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await session.data(for: request); try validate(response, data: data)
+        let (data, response) = try await session.data(for: request); try validate(response, data: data, operation: "upload file")
     }
 
     private func postForm(url: URL, items: [String: String]) async throws -> Data {
@@ -156,7 +171,7 @@ public actor GoogleDriveClient {
         var request = URLRequest(url: url); request.httpMethod = "POST"
         request.httpBody = components.percentEncodedQuery?.data(using: .utf8)
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        let (data, response) = try await session.data(for: request); try validate(response, data: data); return data
+        let (data, response) = try await session.data(for: request); try validate(response, data: data, operation: "OAuth token exchange"); return data
     }
 
     private func decodeCredential(_ data: Data, fallbackRefreshToken: String = "") throws -> GoogleDriveCredential {
@@ -166,10 +181,17 @@ public actor GoogleDriveClient {
         return .init(accessToken: token.accessToken, refreshToken: refresh, expiresAt: Date().addingTimeInterval(TimeInterval(token.expiresIn)))
     }
 
-    private func validate(_ response: URLResponse, data: Data) throws {
-        guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
-            let message = (try? JSONDecoder().decode(GoogleErrorResponse.self, from: data).error.message) ?? "Google API request failed"
-            throw STGError.invalidDocument(message)
+    private func validate(_ response: URLResponse, data: Data, operation: String) throws {
+        guard let http = response as? HTTPURLResponse else {
+            throw STGError.invalidDocument("Google \(operation) failed: invalid HTTP response")
+        }
+        guard 200..<300 ~= http.statusCode else {
+            let apiError = try? JSONDecoder().decode(GoogleErrorResponse.self, from: data).error
+            let oauthError = try? JSONDecoder().decode(GoogleOAuthErrorResponse.self, from: data)
+            let code = apiError?.status ?? oauthError?.error
+            let message = apiError?.message ?? oauthError?.errorDescription ?? HTTPURLResponse.localizedString(forStatusCode: http.statusCode)
+            let codeSuffix = code.map { "; code=\($0)" } ?? ""
+            throw STGError.invalidDocument("Google \(operation) failed (HTTP \(http.statusCode)\(codeSuffix)): \(message)")
         }
     }
 
@@ -220,4 +242,12 @@ private struct TokenResponse: Decodable {
 }
 private struct ProfileResponse: Decodable { var name: String?; var email: String }
 private struct FileListResponse: Decodable { var files: [GoogleDriveFile] }
-private struct GoogleErrorResponse: Decodable { struct Body: Decodable { var message: String }; var error: Body }
+private struct GoogleErrorResponse: Decodable {
+    struct Body: Decodable { var message: String; var status: String? }
+    var error: Body
+}
+private struct GoogleOAuthErrorResponse: Decodable {
+    var error: String
+    var errorDescription: String?
+    enum CodingKeys: String, CodingKey { case error, errorDescription = "error_description" }
+}

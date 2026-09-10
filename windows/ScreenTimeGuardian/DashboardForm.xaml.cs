@@ -7,15 +7,15 @@ internal partial class DashboardForm : System.Windows.Window
     private readonly TrayAppContext app;
     public DashboardForm(TrayAppContext app)
     {
-        InitializeComponent(); WindowLayout.FitToWorkingArea(this, 0.9, 0.9); this.app = app; DateLabel.Text = DateTime.Now.ToString("dddd, MMMM d");
+        InitializeComponent(); L.Apply(this); WindowLayout.FitToWorkingArea(this, 0.82, 0.82); this.app = app;
         app.StateChanged += OnStateChanged; Closing += OnClosing; RefreshView();
     }
     private void OnStateChanged(object? sender, EventArgs e) => Dispatcher.InvokeAsync(RefreshView);
     private void RefreshView()
     {
         AllValue.Text = Duration(app.AllMinutes); LocalValue.Text = Duration(app.LocalMinutes); PlanValue.Text = Duration(app.Settings.DailyPlanMinutes);
-        SyncStatusLabel.Text = app.SyncStatus; PlanProgress.Maximum = Math.Max(1, app.Settings.DailyPlanMinutes); PlanProgress.Value = Math.Min(PlanProgress.Maximum, app.AllMinutes);
-        ProgressLabel.Text = $"{app.AllMinutes * 100 / Math.Max(1, app.Settings.DailyPlanMinutes)}% of plan";
+        MeetingModeLabel.Text = L.T(app.Settings.MeetingMode ? "Meeting Mode: " : "Meeting auto-detect: ");
+        MeetingModeValue.Text = L.T("On"); SyncStatusLabel.Text = app.SyncStatus; TrackingSummary.Text = app.LatestTrackingTopTwo;
     }
     private void OnClosing(object? sender, CancelEventArgs e) { e.Cancel = true; Hide(); }
     private void Report_Click(object sender, System.Windows.RoutedEventArgs e) => app.ShowReport();
