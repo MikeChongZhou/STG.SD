@@ -13,6 +13,7 @@ namespace ScreenTimeGuardian;
 
 internal sealed record DeviceDayReport(string DeviceID, string DisplayName, bool[] Minutes, int UsedMinutes, bool IsAggregate);
 internal sealed record DailyUsagePoint(DateOnly Date, string DeviceID, string DisplayName, int Minutes, bool IsAggregate, bool Estimated = false);
+internal readonly record struct MinuteBitmapSegment(int Start, int End) { public int Count => End - Start; }
 
 internal partial class ReportForm : Window
 {
@@ -42,7 +43,8 @@ internal partial class ReportForm : Window
         AllValue.Text = DashboardForm.Duration(aggregate?.UsedMinutes ?? 0); LocalValue.Text = DashboardForm.Duration(local?.UsedMinutes ?? 0); PlanValue.Text = DashboardForm.Duration(app.Settings.DailyPlanMinutes);
         StatusLabel.Text = $"{date:yyyy-MM-dd} · {app.SyncStatus}";
         UpdateStatisticsSummary();
-        ReportCards.Children.Clear(); foreach (var report in reports) ReportCards.Children.Add(Card(report));
+        var alignedSegments = MinuteBitmapControl.VisibleSegments(CombinedMinutes(reports));
+        ReportCards.Children.Clear(); foreach (var report in reports) ReportCards.Children.Add(Card(report, alignedSegments));
     }
 
     private void RefreshRangeReport()
@@ -83,15 +85,27 @@ internal partial class ReportForm : Window
     private static string Average(double? minutes) => minutes is null ? "—" : DashboardForm.Duration((int)Math.Round(minutes.Value));
     private static string EstimatedSuffix(bool estimated) => estimated ? " · Includes estimated iOS data" : "";
 
-    private static Border Card(DeviceDayReport report)
+    private static bool[] CombinedMinutes(IReadOnlyList<DeviceDayReport> values)
     {
-        var bitmapHeight = MinuteBitmapControl.PreferredHeight(report.Minutes);
-        var root = new Grid(); root.RowDefinitions.Add(new() { Height = GridLength.Auto }); root.RowDefinitions.Add(new() { Height = new GridLength(bitmapHeight) });
+        var count = values.Select(value => value.Minutes.Length).DefaultIfEmpty().Max();
+        var combined = new bool[count];
+        foreach (var value in values) for (var index = 0; index < Math.Min(count, value.Minutes.Length); index++) combined[index] |= value.Minutes[index];
+        return combined;
+    }
+
+    private static Border Card(DeviceDayReport report, IReadOnlyList<MinuteBitmapSegment> alignedSegments)
+    {
+        var bitmapHeight = report.UsedMinutes > 0 ? MinuteBitmapControl.PreferredHeight(alignedSegments) : 0;
+        var root = new Grid(); root.RowDefinitions.Add(new() { Height = GridLength.Auto });
         var heading = new TextBlock { FontSize = 14, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 5) };
         heading.Inlines.Add(new Run($"{report.DisplayName}, {DashboardForm.Duration(report.UsedMinutes)}.  ") { FontWeight = FontWeights.SemiBold });
         heading.Inlines.Add(new Run($"Active intervals: {UsageIntervals(report.Minutes)}") { FontWeight = FontWeights.Normal });
         root.Children.Add(heading);
-        var bitmap = new MinuteBitmapControl(report.Minutes) { MinWidth = 900, Height = bitmapHeight, HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch }; Grid.SetRow(bitmap, 1); root.Children.Add(bitmap);
+        if (report.UsedMinutes > 0)
+        {
+            root.RowDefinitions.Add(new() { Height = new GridLength(bitmapHeight) });
+            var bitmap = new MinuteBitmapControl(report.Minutes, alignedSegments) { MinWidth = 900, Height = bitmapHeight, HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch }; Grid.SetRow(bitmap, 1); root.Children.Add(bitmap);
+        }
         return new Border { Style = (Style)System.Windows.Application.Current.Resources["Card"], Padding = new Thickness(12, 9, 12, 9), Child = root, Margin = new Thickness(0, 0, 0, 9), HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch };
     }
 
@@ -187,20 +201,20 @@ internal sealed class UsageLineChartControl : FrameworkElement
     private static void DrawText(DrawingContext dc, string value, double x, double y, double size, WpfColor color, Typeface face, double dpi) => dc.DrawText(new FormattedText(value, CultureInfo.CurrentCulture, System.Windows.FlowDirection.LeftToRight, face, size, new SolidColorBrush(color), dpi), new WpfPoint(x, y));
 }
 
-internal sealed class MinuteBitmapControl(bool[] minutes) : FrameworkElement
+internal sealed class MinuteBitmapControl(bool[] minutes, IReadOnlyList<MinuteBitmapSegment> segments) : FrameworkElement
 {
     private const int SegmentMinutes = 360;
 
-    internal static double PreferredHeight(bool[] source)
+    internal static double PreferredHeight(IReadOnlyList<MinuteBitmapSegment> source)
     {
-        var segmentCount = VisibleSegments(source).Count;
+        var segmentCount = source.Count;
         return segmentCount == 0 ? 20 : segmentCount * 32;
     }
 
     protected override void OnRender(DrawingContext dc)
     {
         base.OnRender(dc);
-        var segments = VisibleSegments(minutes); var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip; var typeface = new Typeface("Segoe UI");
+        var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip; var typeface = new Typeface("Segoe UI");
         if (segments.Count == 0) { DrawText(dc, "No Activity", 2, 7, 12, WpfColor.FromRgb(100, 116, 139), typeface, dpi); return; }
         var plotWidth = Math.Max(240, ActualWidth - 8); var rowHeight = ActualHeight / segments.Count;
         var active = new SolidColorBrush(WpfColor.FromRgb(15, 136, 123)); var inactive = new SolidColorBrush(WpfColor.FromArgb(56, 100, 116, 139));
@@ -241,14 +255,14 @@ internal sealed class MinuteBitmapControl(bool[] minutes) : FrameworkElement
         }
     }
 
-    private static List<(int Start, int End, int Count)> VisibleSegments(bool[] source)
+    internal static IReadOnlyList<MinuteBitmapSegment> VisibleSegments(bool[] source)
     {
-        var result = new List<(int, int, int)>(); var count = Math.Min(source.Length, 1440); var cursor = 0;
+        var result = new List<MinuteBitmapSegment>(); var count = Math.Min(source.Length, 1440); var cursor = 0;
         while (cursor < count)
         {
             var first = -1; for (var index = cursor; index < count; index++) if (source[index]) { first = index; break; }
             if (first < 0) break;
-            var start = first / 60 * 60; var end = Math.Min(start + SegmentMinutes, 1440); result.Add((start, end, end - start)); cursor = end;
+            var start = first / 60 * 60; var end = Math.Min(start + SegmentMinutes, 1440); result.Add(new(start, end)); cursor = end;
         }
         return result;
     }

@@ -32,9 +32,17 @@
 				<string>com.googleusercontent.apps.552360735383-alblvd6inepkvg6cni453j1t6pl6gf0g</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>STG Microsoft OAuth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>msauth.com.timbertrail.screentimeguardian.ios</string>
+			</array>
+		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>21</string>
+	<string>23</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>STGGoogleClientID</key>

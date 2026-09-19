@@ -95,10 +95,25 @@ enum SharedEnvironment {
             settingsSource += "+legacy_keychain_bootstrap"
         }
 
-        var settings = decodedSettings ?? STGSettings(deviceID: canonicalID, deviceName: UIDevice.current.name, deviceKind: .ios)
+        let userAssignedDeviceName = UIDevice.current.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        var settings = decodedSettings ?? STGSettings(
+            deviceID: canonicalID,
+            deviceName: userAssignedDeviceName,
+            deviceKind: .ios
+        )
         if settings.deviceID != canonicalID {
             diagnosticLog.record("device identity normalized; process=app; settings_device=\(settings.deviceID.prefix(8)); canonical_device=\(canonicalID.prefix(8))", category: "environment")
             settings.deviceID = canonicalID
+        }
+        // With the approved User Assigned Device Name entitlement, UIDevice.name
+        // is the user's current Settings > General > About > Name value. Refresh
+        // it on launch so upgrades replace the generic "iPhone" value persisted
+        // by builds that did not yet include the entitlement, and later renames
+        // propagate to the user's other synced devices.
+        if !userAssignedDeviceName.isEmpty, settings.deviceName != userAssignedDeviceName {
+            diagnosticLog.record("device display name refreshed from user-assigned system name", category: "environment")
+            settings.deviceName = userAssignedDeviceName
+            settings.updatedAt = .now
         }
 
         do {
@@ -109,6 +124,7 @@ enum SharedEnvironment {
         recordEnvironment(process: "app", settingsSource: settingsSource, deviceID: canonicalID)
         return settings
     }
+
 
     /// Extensions may consume the shared identity, but must never invent one.
     static func loadMonitorSettings() throws -> STGSettings {

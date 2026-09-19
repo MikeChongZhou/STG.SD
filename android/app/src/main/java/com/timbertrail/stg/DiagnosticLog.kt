@@ -35,3 +35,8 @@ class DiagnosticLog private constructor(private val context: Context) {
         fun get(context: Context): DiagnosticLog = instance ?: synchronized(this) { instance ?: DiagnosticLog(context.applicationContext).also { instance = it } }
     }
 }
+
+internal fun Throwable.diagnosticSummary(): String = generateSequence(this as Throwable?) { it.cause }.take(3).mapIndexed { index, error ->
+    val prefix = if (index == 0) "" else "inner_"
+    "${prefix}error_type=${error.javaClass.name}; ${prefix}error=${(error.message ?: "no message").replace('\n', ' ')}"
+}.joinToString("; ")

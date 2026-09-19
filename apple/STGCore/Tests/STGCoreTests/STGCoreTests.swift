@@ -18,6 +18,35 @@ final class STGCoreTests: XCTestCase {
         XCTAssertEqual(STGTime.utcMinute(for: instant), 1439)
     }
 
+    func testOneDriveAuthorizationRequestUsesPKCEAndAppCallback() async throws {
+        let client = OneDriveClient(clientID: "test-client")
+        let request = try await client.authorizationRequest(callbackScheme: "msauth.com.timbertrail.screentimeguardian.ios")
+        let components = try XCTUnwrap(URLComponents(url: request.authorizationURL, resolvingAgainstBaseURL: false))
+        let values = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+
+        XCTAssertEqual(components.host, "login.microsoftonline.com")
+        XCTAssertEqual(values["client_id"], "test-client")
+        XCTAssertEqual(values["response_type"], "code")
+        XCTAssertEqual(values["code_challenge_method"], "S256")
+        XCTAssertFalse(values["code_challenge", default: ""].isEmpty)
+        XCTAssertEqual(values["state"], request.state)
+        XCTAssertEqual(request.redirectURI, "msauth.com.timbertrail.screentimeguardian.ios://auth")
+        XCTAssertTrue(values["scope", default: ""].contains("Files.ReadWrite.AppFolder"))
+    }
+
+    func testOneDriveAuthorizationRejectsMismatchedStateBeforeTokenExchange() async throws {
+        let client = OneDriveClient(clientID: "test-client")
+        let request = try await client.authorizationRequest(callbackScheme: "msauth.com.timbertrail.screentimeguardian.ios")
+        let callback = try XCTUnwrap(URL(string: "msauth.com.timbertrail.screentimeguardian.ios://auth?code=test-code&state=wrong-state"))
+
+        do {
+            _ = try await client.credential(callbackURL: callback, request: request)
+            XCTFail("A mismatched OAuth state must be rejected")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("state did not match"))
+        }
+    }
+
     func testDSTLocalDayLength() {
         var components = DateComponents(); components.year = 2026; components.month = 3; components.day = 8; components.hour = 12
         var calendar = Calendar(identifier: .gregorian); calendar.timeZone = TimeZone(identifier: "America/Detroit")!
@@ -243,6 +272,32 @@ final class STGCoreTests: XCTestCase {
         XCTAssertEqual(CloudFolderSync.weekEnd(from: "device_week_2026-08-17_2026-08-23.json"), "2026-08-23")
         XCTAssertEqual(CloudFolderSync.weekEnd(from: "device_week_2026-08-17.json"), "2026-08-23")
         XCTAssertEqual(CloudFolderSync.weekArchiveCutoff(previousWeekStart: "2026-08-24"), "2026-08-17")
+    }
+
+    func testWeeklyMaintenanceBackfillsMissingWeeksBeforeDeletingDailyFiles() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let cloud = folder.appendingPathComponent("cloud", isDirectory: true)
+        let repository = try BitmapRepository(url: folder.appendingPathComponent("stg.sqlite"), importsBundledOpenRouterSeed: false, installsBundledDatabaseTemplate: false)
+        let dates = ["2026-08-25", "2026-09-01", "2026-09-08"]
+        for date in dates {
+            let instant = try XCTUnwrap(ISO8601DateFormatter().date(from: "\(date)T12:00:00Z"))
+            XCTAssertTrue(try repository.mark(deviceID: "local", instant: instant))
+        }
+        let seeded = try await CloudFolderSync(repository: repository, deviceID: "local").quickUpload(folder: cloud, utcDates: Set(dates))
+        XCTAssertEqual(seeded, 3)
+
+        let result = try await CloudFolderSync(repository: repository, deviceID: "local").weeklyMaintenance(
+            folder: cloud, currentWeekStart: "2026-09-14", previousWeekStart: "2026-09-07", previousWeekEnd: "2026-09-13"
+        )
+
+        XCTAssertEqual(result.uploaded, 3)
+        XCTAssertEqual(result.deletedDaily, 3)
+        XCTAssertEqual(result.movedWeekly, 1)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: cloud.appendingPathComponent("history/local_week_2026-08-24_2026-08-30.json").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: cloud.appendingPathComponent("sync/local_week_2026-08-31_2026-09-06.json").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: cloud.appendingPathComponent("sync/local_week_2026-09-07_2026-09-13.json").path))
+        for date in dates { XCTAssertFalse(FileManager.default.fileExists(atPath: cloud.appendingPathComponent("sync/local_bitmap_\(date).json").path)) }
     }
 
     func testOpenRouterPreviousUTCMonthWindow() throws {

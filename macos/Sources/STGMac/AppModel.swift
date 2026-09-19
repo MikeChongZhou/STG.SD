@@ -15,7 +15,6 @@ final class AppModel: ObservableObject {
     @Published var isScreenAvailable = true
     @Published var lastReminder: ReminderDecision?
     @Published var oneDriveAccountLabel = UserDefaults.standard.string(forKey: "oneDriveAccountLabel") ?? "Not signed in"
-    @Published var oneDriveUserCode: String?
     @Published var googleDriveAccountLabel = UserDefaults.standard.string(forKey: "googleDriveAccountLabel") ?? "Not signed in"
     @Published var iCloudAccountLabel = FileManager.default.ubiquityIdentityToken == nil ? "Not signed in" : "System Apple Account"
     @Published var launchAtLoginStatus = "Checking login-item status…"
@@ -27,6 +26,7 @@ final class AppModel: ObservableObject {
     private let iCloudContainer = "iCloud.com.timbertrail.screentimeguardian"
     private let webAuthentication = MacWebAuthenticationPresenter()
     private var syncInProgress = false
+    private var syncWarnings: [String] = []
     private var quickUploadInProgress = false
     private let settingsStore: SettingsStore
     private var reminderState = ReminderState()
@@ -36,6 +36,7 @@ final class AppModel: ObservableObject {
     private var observers: [NSObjectProtocol] = []
     private let sessionID: String
     private var terminationRecorded = false
+    private var terminationPreparationStarted = false
     var currentReportTimeZone: String { TimeZone.current.identifier }
 
     private static let sessionIDKey = "runtime_session_id"
@@ -118,8 +119,25 @@ final class AppModel: ObservableObject {
     }
 
     func prepareForTermination(reason: String) async {
-        await quickUpload(trigger: reason)
+        guard !terminationPreparationStarted else { return }
+        terminationPreparationStarted = true
         stop(reason: reason)
+        if syncInProgress {
+            diagnosticLog.record("quit requested while incremental sync is running; process termination will cancel active sync", category: "lifecycle")
+            return
+        }
+        var uploadFinished = false
+        let uploadTask = Task { @MainActor in
+            await self.quickUpload(trigger: reason)
+            uploadFinished = true
+        }
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while !uploadFinished, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        guard !uploadFinished else { diagnosticLog.record("quit upload complete; hard_timeout=false", category: "lifecycle"); return }
+        uploadTask.cancel()
+        diagnosticLog.record("quit upload hard timeout reached; limit=3s; continuing termination=true", category: "lifecycle")
     }
 
     func reconcileLaunchAtLogin(trigger: String) {
@@ -154,50 +172,59 @@ final class AppModel: ObservableObject {
         guard let repository else { syncStatus = "Database unavailable"; return }
         guard !syncInProgress else { diagnosticLog.record("sync request coalesced; another sync is running", category: "sync"); return }
         syncInProgress = true
+        syncWarnings = []
         defer { syncInProgress = false }
+        let progress: SyncProgressHandler = { [weak self] message in
+            self?.syncStatus = message
+            await Task.yield()
+        }
         let provider = settings.syncProvider ?? .none
         guard provider != .none else { syncStatus = "Sync off — choose a provider in Settings"; diagnosticLog.record("sync skipped; provider=none", category: "sync"); return }
         if provider == .oneDrive {
             guard let clientID = oneDriveClientID else { syncStatus = "OneDrive developer Client ID is not configured"; diagnosticLog.record("sync blocked; provider=oneDrive; missing_client_id", category: "sync"); return }
             guard OneDriveCredentialStore.load(service: oneDriveCredentialService) != nil else { syncStatus = "OneDrive account sign-in required"; diagnosticLog.record("sync blocked; provider=oneDrive; account_not_signed_in", category: "sync"); return }
-            syncStatus = "Syncing OneDrive…"; diagnosticLog.record("sync begin; provider=oneDrive; local_device=\(settings.deviceID.prefix(8))", category: "sync")
+            syncStatus = "Connecting to OneDrive…"; diagnosticLog.record("sync begin; provider=oneDrive; local_device=\(settings.deviceID.prefix(8))", category: "sync")
             do {
-                let result = try await OneDriveSync(repository: repository, deviceID: settings.deviceID, clientID: clientID, credentialService: oneDriveCredentialService).synchronize(settings: settings)
-                syncStatus = "Uploaded \(result.uploaded), downloaded \(result.downloaded)"
+                let result = try await OneDriveSync(repository: repository, deviceID: settings.deviceID, clientID: clientID, credentialService: oneDriveCredentialService).synchronize(settings: settings, progress: progress)
                 diagnosticLog.record("OneDrive sync complete; uploaded=\(result.uploaded); downloaded=\(result.downloaded); upload_cursor=\(result.uploadCursor ?? "none"); discovered=[\(result.discoveredDeviceIDs.map { String($0.prefix(8)) }.sorted().joined(separator: ","))]; download_cursors=[\(result.downloadCursors.sorted { $0.key < $1.key }.map { "\($0.key.prefix(8))=\($0.value)" }.joined(separator: ","))]", category: "sync")
+                result.warnings.forEach { diagnosticLog.record($0, category: "sync-warning") }
                 await runWeeklyActionIfDue()
+                syncStatus = completionStatus(uploaded: result.uploaded, downloaded: result.downloaded)
                 await refresh()
-            } catch { syncStatus = "OneDrive sync failed: \(error.localizedDescription)"; diagnosticLog.record(syncStatus, category: "sync") }
+            } catch { syncStatus = "OneDrive sync failed: \(error.localizedDescription)"; diagnosticLog.record("sync failed; stage=incremental; provider=oneDrive; local_device=\(settings.deviceID.prefix(8)); \(DiagnosticLog.describe(error))", category: "sync") }
             return
         }
         if provider == .googleDrive {
             guard let clientID = googleDriveClientID else { syncStatus = "Google Drive developer OAuth Client ID is not configured"; diagnosticLog.record("sync blocked; provider=googleDrive; missing_client_id", category: "sync"); return }
             guard GoogleDriveCredentialStore.load(service: googleDriveCredentialService) != nil else { syncStatus = "Google Drive account sign-in required"; return }
-            syncStatus = "Syncing Google Drive…"; diagnosticLog.record("sync begin; provider=googleDrive; local_device=\(settings.deviceID.prefix(8))", category: "sync")
+            syncStatus = "Connecting to Google Drive…"; diagnosticLog.record("sync begin; provider=googleDrive; local_device=\(settings.deviceID.prefix(8))", category: "sync")
             do {
-                let result = try await GoogleDriveSync(repository: repository, deviceID: settings.deviceID, clientID: clientID, clientSecret: googleDriveClientSecret ?? "", credentialService: googleDriveCredentialService).synchronize(settings: settings)
-                syncStatus = "Uploaded \(result.uploaded), downloaded \(result.downloaded)"
+                let result = try await GoogleDriveSync(repository: repository, deviceID: settings.deviceID, clientID: clientID, clientSecret: googleDriveClientSecret ?? "", credentialService: googleDriveCredentialService).synchronize(settings: settings, progress: progress)
                 diagnosticLog.record("Google Drive sync complete; uploaded=\(result.uploaded); downloaded=\(result.downloaded); upload_cursor=\(result.uploadCursor ?? "none"); discovered=[\(result.discoveredDeviceIDs.map { String($0.prefix(8)) }.sorted().joined(separator: ","))]; download_cursors=[\(result.downloadCursors.sorted { $0.key < $1.key }.map { "\($0.key.prefix(8))=\($0.value)" }.joined(separator: ","))]", category: "sync")
+                result.warnings.forEach { diagnosticLog.record($0, category: "sync-warning") }
                 await runWeeklyActionIfDue()
+                syncStatus = completionStatus(uploaded: result.uploaded, downloaded: result.downloaded)
                 await refresh()
-            } catch { syncStatus = "Google Drive sync failed: \(error.localizedDescription)"; diagnosticLog.record(syncStatus, category: "sync") }
+            } catch { syncStatus = "Google Drive sync failed: \(error.localizedDescription)"; diagnosticLog.record("sync failed; stage=incremental; provider=googleDrive; local_device=\(settings.deviceID.prefix(8)); \(DiagnosticLog.describe(error))", category: "sync") }
             return
         }
         guard provider == .iCloudDrive else { return }
-        syncStatus = "Syncing iCloud Drive…"; diagnosticLog.record("sync begin; provider=iCloudDrive; local_device=\(settings.deviceID.prefix(8))", category: "sync")
+        syncStatus = "Connecting to iCloud Drive…"; diagnosticLog.record("sync begin; provider=iCloudDrive; local_device=\(settings.deviceID.prefix(8))", category: "sync")
         do {
             guard let folder = await Task.detached(priority: .utility, operation: { Self.iCloudFolder(containerID: self.iCloudContainer) }).value else {
                 iCloudAccountLabel = "Not signed in"; syncStatus = "iCloud Drive unavailable — sign in to Apple Account in System Settings"; return
             }
             iCloudAccountLabel = "System Apple Account"
             let sync = CloudFolderSync(repository: repository, deviceID: settings.deviceID)
+            syncStatus = "Uploading device settings…"
             try await sync.uploadSettings(folder: folder, settings: settings)
-            let result = try await sync.incrementalSync(folder: folder, uploadCursorTarget: "iCloudDrive")
-            syncStatus = "Uploaded \(result.uploaded), downloaded \(result.downloaded)"
+            let result = try await sync.incrementalSync(folder: folder, uploadCursorTarget: "iCloudDrive", progress: progress)
             diagnosticLog.record("iCloud Drive sync complete; uploaded=\(result.uploaded); downloaded=\(result.downloaded); upload_cursor=\(result.uploadCursor ?? "none"); discovered=[\(result.discoveredDeviceIDs.map { String($0.prefix(8)) }.sorted().joined(separator: ","))]; download_cursors=[\(result.downloadCursors.sorted { $0.key < $1.key }.map { "\($0.key.prefix(8))=\($0.value)" }.joined(separator: ","))]", category: "sync")
+            result.warnings.forEach { diagnosticLog.record($0, category: "sync-warning") }
             await runWeeklyActionIfDue()
+            syncStatus = completionStatus(uploaded: result.uploaded, downloaded: result.downloaded)
             await refresh()
-        } catch { syncStatus = "iCloud Drive sync failed: \(error.localizedDescription)"; diagnosticLog.record(syncStatus, category: "sync") }
+        } catch { syncStatus = "iCloud Drive sync failed: \(error.localizedDescription)"; diagnosticLog.record("sync failed; stage=incremental; provider=iCloudDrive; local_device=\(settings.deviceID.prefix(8)); \(DiagnosticLog.describe(error))", category: "sync") }
     }
 
     private func quickUpload(trigger: String) async {
@@ -331,8 +358,6 @@ final class AppModel: ObservableObject {
 
     private func runWeeklyActionIfDue() async {
         guard let repository else { return }
-        do { guard try repository.weeklyActionDue() else { return } }
-        catch { diagnosticLog.record("weekly action due check failed: \(error.localizedDescription)", category: "sync"); return }
         var calendar = Calendar(identifier: .iso8601); calendar.timeZone = STGTime.utc
         let today = calendar.startOfDay(for: .now)
         guard let currentWeek = calendar.dateInterval(of: .weekOfYear, for: today),
@@ -342,24 +367,43 @@ final class AppModel: ObservableObject {
         let totalCursorText = try? repository.latestOpenRouterWeekEnd()
         let totalStart = totalCursorText.flatMap(formatter.date(from:)).flatMap { calendar.date(byAdding: .day, value: 1, to: $0) } ?? first
         let start = totalStart
-        diagnosticLog.record("weekly action begin; openrouter_start=\(formatter.string(from: start)); openrouter_end=\(formatter.string(from: lastSunday)); latest_week_cursor=\(totalCursorText ?? "none")", category: "sync")
-        do {
-            let rows = start <= lastSunday ? try await OpenRouterTrackingService.shared.weeklyHistory(startDate: formatter.string(from: start), endDate: formatter.string(from: lastSunday)) : []
-            if start <= lastSunday && rows.isEmpty { throw STGError.invalidDocument("OpenRouter returned no weekly model-activity rows; detail cursor was not advanced") }
-            try repository.upsertOpenRouterWeeks(rows)
-            try repository.completeOpenRouterDetailWeek(through: formatter.string(from: lastSunday))
-            let previousMonday = calendar.date(byAdding: .day, value: -6, to: lastSunday) ?? lastSunday
-            let maintenance = try await performWeeklyCloudMaintenance(
-                currentWeekStart: formatter.string(from: currentWeek.start),
-                previousWeekStart: formatter.string(from: previousMonday),
-                previousWeekEnd: formatter.string(from: lastSunday)
-            )
-            try repository.completeWeeklyAction(deviceID: settings.deviceID)
-            diagnosticLog.record("weekly action complete; openrouter_rows=\(rows.count); weeks=\(Set(rows.map(\.weekStart)).count); bitmap_uploaded=\(maintenance.uploaded); daily_deleted=\(maintenance.deletedDaily); weekly_moved=\(maintenance.movedWeekly); completion_recorded=true", category: "sync")
-            await runYearlyActionIfDue()
-        } catch {
-            diagnosticLog.record("weekly action failed; completion_not_recorded=true; error=\(error.localizedDescription)", category: "sync")
+        let cloudDue: Bool
+        do { cloudDue = try repository.weeklyCloudActionDue() }
+        catch { diagnosticLog.record("weekly cloud due check failed; \(DiagnosticLog.describe(error))", category: "sync"); return }
+        let trackingDue = start <= lastSunday
+        guard cloudDue || trackingDue else { return }
+        diagnosticLog.record("weekly action begin; cloud_due=\(cloudDue); tracking_due=\(trackingDue); openrouter_start=\(formatter.string(from: start)); openrouter_end=\(formatter.string(from: lastSunday)); latest_week_cursor=\(totalCursorText ?? "none")", category: "sync")
+        var cloudCompleted = false
+        if cloudDue {
+            syncStatus = "Updating weekly archive…"
+            do {
+                let previousMonday = calendar.date(byAdding: .day, value: -6, to: lastSunday) ?? lastSunday
+                let maintenance = try await performWeeklyCloudMaintenance(currentWeekStart: formatter.string(from: currentWeek.start), previousWeekStart: formatter.string(from: previousMonday), previousWeekEnd: formatter.string(from: lastSunday))
+                try repository.completeWeeklyAction(deviceID: settings.deviceID); cloudCompleted = true
+                diagnosticLog.record("weekly cloud maintenance complete; bitmap_uploaded=\(maintenance.uploaded); daily_deleted=\(maintenance.deletedDaily); weekly_moved=\(maintenance.movedWeekly); history_ready=true; completion_recorded=true", category: "sync")
+            } catch {
+                syncWarnings.append("Weekly archive failed")
+                diagnosticLog.record("weekly cloud maintenance failed; completion_not_recorded=true; \(DiagnosticLog.describe(error))", category: "sync")
+            }
         }
+        if trackingDue {
+            syncStatus = "Updating tracking data…"
+            do {
+                let rows = try await OpenRouterTrackingService.shared.weeklyHistory(startDate: formatter.string(from: start), endDate: formatter.string(from: lastSunday))
+                if rows.isEmpty { throw STGError.invalidDocument("OpenRouter returned no weekly model-activity rows; detail cursor was not advanced") }
+                try repository.upsertOpenRouterWeeks(rows); try repository.completeOpenRouterDetailWeek(through: formatter.string(from: lastSunday))
+                diagnosticLog.record("weekly tracking complete; openrouter_rows=\(rows.count); weeks=\(Set(rows.map(\.weekStart)).count); completion_recorded=true", category: "sync")
+            } catch {
+                syncWarnings.append("Tracking update failed")
+                diagnosticLog.record("weekly tracking failed; start=\(formatter.string(from: start)); end=\(formatter.string(from: lastSunday)); completion_not_recorded=true; \(DiagnosticLog.describe(error))", category: "sync")
+            }
+        }
+        if cloudCompleted { await runYearlyActionIfDue() }
+    }
+
+    private func completionStatus(uploaded: Int, downloaded: Int) -> String {
+        let base = "Synced · \(uploaded) activity files uploaded, \(downloaded) downloaded"
+        return syncWarnings.isEmpty ? base : base + " · " + syncWarnings.joined(separator: " · ")
     }
 
     private func performWeeklyCloudMaintenance(currentWeekStart: String, previousWeekStart: String, previousWeekEnd: String) async throws -> (uploaded: Int, deletedDaily: Int, movedWeekly: Int) {
@@ -404,7 +448,7 @@ final class AppModel: ObservableObject {
             try repository.completeYearlyAction(deviceID: settings.deviceID)
             diagnosticLog.record("yearly action complete; year=\(year); uploaded=\(result.uploaded); deleted_bitmaps=\(result.deletedBitmaps); deleted_weekly=\(result.deletedWeekly)", category: "sync")
         } catch {
-            diagnosticLog.record("yearly action failed; year=\(year); error=\(error.localizedDescription)", category: "sync")
+            diagnosticLog.record("yearly action failed; year=\(year); stage=archive; \(DiagnosticLog.describe(error))", category: "sync")
         }
     }
 
@@ -542,17 +586,14 @@ final class AppModel: ObservableObject {
             diagnosticLog.record("OneDrive sign-in blocked; missing_client_id", category: "sync")
             return
         }
-        syncStatus = "Requesting Microsoft sign-in code…"
+        syncStatus = "Opening Microsoft account sign-in…"
         diagnosticLog.record("OneDrive sign-in begin", category: "sync")
         Task {
             do {
                 let client = OneDriveClient(clientID: clientID)
-                let code = try await client.requestDeviceCode(); oneDriveUserCode = code.userCode
-                NSPasteboard.general.clearContents(); NSPasteboard.general.setString(code.userCode, forType: .string)
-                webAuthentication.present(url: code.verificationURL)
-                syncStatus = "Waiting for Microsoft authorization: \(code.userCode)"
-                let credential = try await client.waitForAuthorization(code)
-                webAuthentication.cancel(); oneDriveUserCode = nil
+                let request = try await client.authorizationRequest(callbackScheme: "msauth.com.timbertrail.screentimeguardian.ios")
+                let callback = try await webAuthentication.authenticate(url: request.authorizationURL, callbackScheme: request.callbackScheme)
+                let credential = try await client.credential(callbackURL: callback, request: request)
                 let account = try await client.account(using: credential)
                 // Do not make a partially validated sign-in look connected.
                 try OneDriveCredentialStore.save(credential, service: oneDriveCredentialService)
@@ -560,7 +601,7 @@ final class AppModel: ObservableObject {
                 UserDefaults.standard.set(oneDriveAccountLabel, forKey: "oneDriveAccountLabel")
                 syncStatus = "OneDrive signed in as \(oneDriveAccountLabel)"
                 diagnosticLog.record("OneDrive sign-in complete; account=authorized", category: "sync")
-            } catch { webAuthentication.cancel(); oneDriveUserCode = nil; syncStatus = error.localizedDescription; diagnosticLog.record("OneDrive sign-in failed: \(error.localizedDescription)", category: "sync") }
+            } catch { webAuthentication.cancel(); syncStatus = error.localizedDescription; diagnosticLog.record("OneDrive sign-in failed: \(error.localizedDescription)", category: "sync") }
         }
     }
 

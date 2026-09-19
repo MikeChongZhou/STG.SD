@@ -39,8 +39,8 @@ class MainActivity : Activity() {
     private val navItems = mutableListOf<TextView>()
     private val reportTimeZone: String get() = java.time.ZoneId.systemDefault().id
     override fun attachBaseContext(newBase: Context) { super.attachBaseContext(LanguageSupport.wrap(newBase)) }
-    override fun onCreate(state: Bundle?) { super.onCreate(state); WindowCompat.setDecorFitsSystemWindows(window, false); diagnosticLog = DiagnosticLog.get(this); store = SettingsStore(this); database = BitmapDatabase(this); settings = store.load(); settings.reportTimeZone = reportTimeZone; diagnosticLog.record("lifecycle", "launch; device=${settings.deviceID.take(8)}; provider=${settings.cloudProvider}; database=ready; timezone=$reportTimeZone; language=${store.language()}"); ensureNotificationChannels(); onboarding = !store.onboardingComplete(); if (onboarding) showOnboarding() else { startMonitorService(); showHome() }; handleGoogleCallback(intent) }
-    override fun onNewIntent(intent: Intent?) { super.onNewIntent(intent); setIntent(intent); handleGoogleCallback(intent) }
+    override fun onCreate(state: Bundle?) { super.onCreate(state); WindowCompat.setDecorFitsSystemWindows(window, false); diagnosticLog = DiagnosticLog.get(this); store = SettingsStore(this); database = BitmapDatabase(this); settings = store.load(); settings.reportTimeZone = reportTimeZone; diagnosticLog.record("lifecycle", "launch; device=${settings.deviceID.take(8)}; provider=${settings.cloudProvider}; database=ready; timezone=$reportTimeZone; language=${store.language()}"); ensureNotificationChannels(); onboarding = !store.onboardingComplete(); if (onboarding) showOnboarding() else { startMonitorService(); showHome() }; handleCloudCallback(intent) }
+    override fun onNewIntent(intent: Intent?) { super.onNewIntent(intent); setIntent(intent); handleCloudCallback(intent) }
     override fun onResume() { super.onResume(); if (::diagnosticLog.isInitialized) diagnosticLog.record("lifecycle", "activity resumed; onboarding=$onboarding"); if (onboarding) window.decorView.postDelayed({ if (onboarding) resumeOnboardingAfterSettings() }, 150) else if (::status.isInitialized) refreshStatus() }
     override fun onPause() { if (::diagnosticLog.isInitialized) diagnosticLog.record("lifecycle", "activity paused"); super.onPause() }
     private fun showHome() {
@@ -328,25 +328,11 @@ class MainActivity : Activity() {
     }
 
     private fun beginOneDriveConnection(connection: TextView, summary: TextView?) {
-        diagnosticLog.record("sync", "OneDrive account authorization begin")
-        Thread {
-            val codeResult = runCatching { OneDriveAuthorization.requestCode() }
-            runOnUiThread {
-                codeResult.onFailure { showCloudFailure("onedrive", it, connection) }
-                codeResult.onSuccess { code ->
-                    val codeView = TextView(this).apply { text = "${getString(R.string.microsoft_device_code)}\n\n${code.userCode}\n\n${getString(R.string.microsoft_device_code_detail)}"; textSize = 17f; setPadding(dp(24), dp(12), dp(24), 0); setTextIsSelectable(true) }
-                    AlertDialog.Builder(this).setTitle(R.string.sign_in_microsoft).setView(codeView)
-                        .setPositiveButton(R.string.open_microsoft_sign_in) { _, _ ->
-                            (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("Microsoft device code", code.userCode))
-                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(code.verificationURL)))
-                        }.setNegativeButton(R.string.close, null).show()
-                    Thread {
-                        val credentialResult = runCatching { OneDriveAuthorization.waitForCredential(code) }
-                        runOnUiThread { credentialResult.onSuccess { validateCloudConnection("onedrive", it, connection, summary) }.onFailure { showCloudFailure("onedrive", it, connection) } }
-                    }.start()
-                }
-            }
-        }.start()
+        runCatching {
+            val request = OneDriveAuthorization.begin(); PrivateCloudCredentials.saveOneDriveRequest(this, request)
+            diagnosticLog.record("sync", "OneDrive account authorization begin; callback_registered=true")
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(request.authorizationURL)))
+        }.onFailure { showCloudFailure("onedrive", it, connection) }
     }
 
     private fun beginGoogleConnection(connection: TextView, summary: TextView?) {
@@ -369,6 +355,26 @@ class MainActivity : Activity() {
         Thread {
             val result = runCatching { GoogleAuthorization.finish(callback, request) }
             runOnUiThread { result.onSuccess { validateCloudConnection("google", it, connection, summary) }.onFailure { showCloudFailure("google", it, connection) } }
+        }.start()
+    }
+
+    private fun handleCloudCallback(intent: Intent?) {
+        handleOneDriveCallback(intent)
+        handleGoogleCallback(intent)
+    }
+
+    private fun handleOneDriveCallback(intent: Intent?) {
+        val callback = intent?.data ?: return
+        if (callback.scheme != CloudConfiguration.microsoftCallbackScheme || callback.host != "auth") return
+        val request = PrivateCloudCredentials.loadOneDriveRequest(this)
+        if (request == null) { Toast.makeText(this, "Microsoft sign-in expired. Try again.", Toast.LENGTH_LONG).show(); return }
+        PrivateCloudCredentials.clearOneDriveRequest(this)
+        diagnosticLog.record("sync", "OneDrive authorization callback received; state_present=${callback.getQueryParameter("state") != null}; code_present=${callback.getQueryParameter("code") != null}")
+        val connection = cloudConnectionStatus ?: TextView(this).apply { text = getString(R.string.cloud_validation) }
+        val summary = cloudSetupSummary
+        Thread {
+            val result = runCatching { OneDriveAuthorization.finish(callback, request) }
+            runOnUiThread { result.onSuccess { validateCloudConnection("onedrive", it, connection, summary) }.onFailure { showCloudFailure("onedrive", it, connection) } }
         }.start()
     }
 
@@ -406,7 +412,11 @@ class MainActivity : Activity() {
         diagnosticLog.record("sync", "private-cloud setup failed; provider=$provider; error=$message")
         Toast.makeText(this, getString(R.string.cloud_connection_failed, message), Toast.LENGTH_LONG).show()
     }
-    private fun sync() { AppSyncCoordinator.request(this, "manual") { message -> runOnUiThread { Toast.makeText(this, message, Toast.LENGTH_LONG).show(); refreshStatus() } } }
+    private fun sync() {
+        AppSyncCoordinator.request(this, "manual",
+            progress = { message -> runOnUiThread { if (::status.isInitialized) status.text = message } },
+            completion = { message -> runOnUiThread { refreshStatus(); if (::status.isInitialized) status.text = message; Toast.makeText(this, message, Toast.LENGTH_LONG).show() } })
+    }
     private fun dayReport(date: LocalDate): List<AndroidDayReport> {
         val instant = TimeModel.localDateInstant(date, reportTimeZone); TimeModel.localDayInstants(instant, reportTimeZone).map(TimeModel::utcDate).distinct().forEach(database::rebuildAll)
         database.upsertDevice(AndroidDeviceRecord(settings.deviceID, settings.deviceName, "android", settings.updatedAt)); val names = database.devices(); val ids = database.deviceIDs().toMutableList().apply { if (!contains(settings.deviceID)) add(0, settings.deviceID) }

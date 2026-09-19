@@ -8,14 +8,18 @@ import java.time.LocalDate
 import java.util.zip.GZIPOutputStream
 
 internal class RemoteCloudSync(private val database: BitmapDatabase, private val settings: AppSettings, private val drive: PrivateCloudDrive) {
-    data class Result(val uploaded: Int, val downloaded: Int, val devices: Set<String>, val downloadCursors: Map<String, String>, val uploadCursor: String?)
+    data class Result(val uploaded: Int, val downloaded: Int, val devices: Set<String>, val downloadCursors: Map<String, String>, val uploadCursor: String?, val warnings: List<String>)
     data class MaintenanceResult(val uploaded: Int, val deletedDaily: Int = 0, val movedWeekly: Int = 0, val deletedBitmaps: Int = 0, val deletedWeekly: Int = 0)
 
-    fun incremental(): Result {
+    fun incremental(progress: (String) -> Unit = {}): Result {
+        progress("Preparing cloud folders…")
+        drive.listFolder("history")
+        progress("Scanning remote devices…")
         var files = drive.list()
         var byName = files.associateBy { it.name }
         val devices = files.mapNotNull { parseDevice(it.name) }.toSet()
         var uploaded = 0; var downloaded = 0
+        val warnings = mutableListOf<String>()
         val cursors = linkedMapOf<String, String>()
         database.upsertDevice(AndroidDeviceRecord(settings.deviceID, settings.deviceName, "android", settings.updatedAt))
         val uploadTarget = settings.cloudProvider
@@ -28,18 +32,25 @@ internal class RemoteCloudSync(private val database: BitmapDatabase, private val
                 val json = JSONObject(drive.download(file.id).decodeToString())
                 if (json.getString("device_id") != remoteID) return@runCatching
                 database.upsertDevice(AndroidDeviceRecord(remoteID, json.optString("device_name", "Other device"), json.optString("device_kind", "android"), runCatching { Instant.parse(json.getString("updated_at")).epochSecond }.getOrDefault(Instant.now().epochSecond)))
-            }
+            }.onFailure { warnings += "settings_import_failed; provider=${settings.cloudProvider}; file=${file.name}; ${it.diagnosticSummary()}" }
         }
 
-        devices.filter { it != "alldevices" && (it != settings.deviceID || existingUploadCursor == null) }.forEach { remoteID ->
-            val restoringThisDevice = remoteID == settings.deviceID
-            val cursor = if (restoringThisDevice) null else database.incrementalDownloadCursor(remoteID)
-            val candidates = files.mapNotNull { file ->
+        val downloadIDs = devices.filter { it != "alldevices" && (it != settings.deviceID || existingUploadCursor == null) }
+        val candidatesByDevice = downloadIDs.associateWith { remoteID ->
+            val cursor = if (remoteID == settings.deviceID) null else database.incrementalDownloadCursor(remoteID)
+            files.mapNotNull { file ->
                 val date = parseBitmapDate(file.name) ?: return@mapNotNull null
                 if (parseDevice(file.name) == remoteID && (cursor == null || date >= cursor)) file to date else null
             }.sortedBy { it.second }
+        }
+        val totalDownloads = candidatesByDevice.values.sumOf { it.size }
+        if (totalDownloads == 0) progress("Downloading device data — nothing new…")
+        downloadIDs.forEach { remoteID ->
+            val restoringThisDevice = remoteID == settings.deviceID
+            val candidates = candidatesByDevice[remoteID].orEmpty()
             for ((file, expectedDate) in candidates) {
-                val success = runCatching {
+                progress("Downloading device data — ${downloaded + 1} of $totalDownloads…")
+                val attempt = runCatching {
                     val json = JSONObject(drive.download(file.id).decodeToString())
                     if (json.getString("device_id") != remoteID || json.getString("utc_date") != expectedDate) error("Remote bitmap identity mismatch")
                     val updated = runCatching { Instant.parse(json.getString("updated_at")).epochSecond }.getOrDefault(Instant.now().epochSecond)
@@ -48,21 +59,25 @@ internal class RemoteCloudSync(private val database: BitmapDatabase, private val
                     database.rebuildAll(expectedDate)
                     if (!restoringThisDevice) { database.saveIncrementalDownloadCursor(remoteID, expectedDate); cursors[remoteID] = expectedDate }
                     downloaded++
-                }.isSuccess
-                if (!success) break
+                }
+                if (attempt.isFailure) { warnings += "bitmap_import_failed; provider=${settings.cloudProvider}; device=${remoteID.take(8)}; utc_date=$expectedDate; file=${file.name}; cursor_not_advanced=true; ${attempt.exceptionOrNull()!!.diagnosticSummary()}"; break }
             }
         }
 
-        TimeModel.incrementalUploadUtcDates(existingUploadCursor).forEach { key ->
-            val stored = database.storedBitmap(settings.deviceID, key) ?: return@forEach
+        val uploadKeys = TimeModel.incrementalUploadUtcDates(existingUploadCursor).filter { database.storedBitmap(settings.deviceID, it) != null }
+        if (uploadKeys.isEmpty()) progress("Uploading local changes — nothing new…")
+        uploadKeys.forEachIndexed { index, key ->
+            val stored = database.storedBitmap(settings.deviceID, key) ?: return@forEachIndexed
+            progress("Uploading local changes — ${index + 1} of ${uploadKeys.size}…")
             val name = "${settings.deviceID}_bitmap_$key.json"
             drive.upload(name, bitmapJson(settings.deviceID, key, stored).toString().encodeToByteArray(), byName[name]?.id)
             database.saveIncrementalUploadCursor(uploadTarget, key); uploaded++
         }
-        val uploadCursor = TimeModel.incrementalUploadUtcDates(existingUploadCursor).lastOrNull { database.storedBitmap(settings.deviceID, it) != null }
+        val uploadCursor = uploadKeys.lastOrNull()
         val settingsName = "${settings.deviceID}_setting.json"
+        progress("Uploading device settings…")
         drive.upload(settingsName, settings.toJson().toString(2).encodeToByteArray(), byName[settingsName]?.id)
-        return Result(uploaded, downloaded, devices, cursors, uploadCursor)
+        return Result(uploaded, downloaded, devices, cursors, uploadCursor, warnings)
     }
 
     fun quickUpload(): Int {
@@ -77,20 +92,30 @@ internal class RemoteCloudSync(private val database: BitmapDatabase, private val
 
     fun weeklyMaintenance(currentWeekStart: LocalDate, previousWeekStart: LocalDate, previousWeekEnd: LocalDate): MaintenanceResult {
         var remote = drive.list(); val history = drive.listFolder("history")
-        val rows = database.bitmapArchive(settings.deviceID, previousWeekStart, previousWeekEnd)
-        val archiveName = "${settings.deviceID}_week_${previousWeekStart}_${previousWeekEnd}.json"
-        val archive = JSONObject().put("kind", "weekly_bitmap").put("device_id", settings.deviceID).put("period_start", previousWeekStart.toString()).put("period_end", previousWeekEnd.toString()).put("created_at", Instant.now().toString()).put("rows", JSONArray().apply {
-            rows.forEach { put(JSONObject().put("device_id", it.deviceID).put("utc_date", it.utcDate).put("bitmap_base64", it.bitmapBase64).put("updated_at", Instant.ofEpochSecond(it.updatedAt).toString())) }
-        })
-        drive.upload(archiveName, archive.toString().encodeToByteArray(), remote.firstOrNull { it.name == archiveName }?.id)
-        var deleted = 0
-        remote.forEach { file -> parseBitmapDate(file.name)?.let { if (parseDevice(file.name) == settings.deviceID && LocalDate.parse(it).isBefore(currentWeekStart)) { drive.delete(file.id); deleted++ } } }
+        val dailyFiles = remote.mapNotNull { file ->
+            val text = parseBitmapDate(file.name) ?: return@mapNotNull null
+            val date = runCatching { LocalDate.parse(text) }.getOrNull() ?: return@mapNotNull null
+            if (parseDevice(file.name) != settings.deviceID || !date.isBefore(currentWeekStart)) return@mapNotNull null
+            Triple(file, date, date.minusDays((date.dayOfWeek.value - 1).toLong()))
+        }
+        val weekStarts = (dailyFiles.map { it.third } + previousWeekStart).distinct().sorted()
+        var uploaded = 0; var deleted = 0
+        weekStarts.forEach { weekStart ->
+            val weekEnd = weekStart.plusDays(6)
+            val rows = database.bitmapArchive(settings.deviceID, weekStart, weekEnd)
+            val archiveName = "${settings.deviceID}_week_${weekStart}_${weekEnd}.json"
+            val archive = JSONObject().put("kind", "weekly_bitmap").put("device_id", settings.deviceID).put("period_start", weekStart.toString()).put("period_end", weekEnd.toString()).put("created_at", Instant.now().toString()).put("rows", JSONArray().apply {
+                rows.forEach { put(JSONObject().put("device_id", it.deviceID).put("utc_date", it.utcDate).put("bitmap_base64", it.bitmapBase64).put("updated_at", Instant.ofEpochSecond(it.updatedAt).toString())) }
+            })
+            drive.upload(archiveName, archive.toString().encodeToByteArray(), remote.firstOrNull { it.name == archiveName }?.id); uploaded++
+            dailyFiles.filter { it.third == weekStart }.forEach { drive.delete(it.first.id); deleted++ }
+            database.recordArchive("bitmap-week-${settings.deviceID}-$weekStart", "weekly_bitmap", weekStart, weekEnd, archiveName)
+        }
         remote = drive.list(); val cutoff = previousWeekStart.minusWeeks(1); var moved = 0
-        remote.filter { it.name.startsWith("${settings.deviceID}_week_") && it.name != archiveName && parseWeekEnd(it.name)?.isBefore(cutoff) == true }.forEach { file ->
+        remote.filter { it.name.startsWith("${settings.deviceID}_week_") && parseWeekEnd(it.name)?.isBefore(cutoff) == true }.forEach { file ->
             drive.uploadFolder("history", file.name, drive.download(file.id), history.firstOrNull { it.name == file.name }?.id); drive.delete(file.id); moved++
         }
-        database.recordArchive("bitmap-week-${settings.deviceID}-$previousWeekStart", "weekly_bitmap", previousWeekStart, previousWeekEnd, archiveName)
-        return MaintenanceResult(1, deletedDaily = deleted, movedWeekly = moved)
+        return MaintenanceResult(uploaded, deletedDaily = deleted, movedWeekly = moved)
     }
 
     fun yearlyMaintenance(year: Int, trackingCleanupYear: Int): MaintenanceResult {

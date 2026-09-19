@@ -9,49 +9,49 @@
 /* Begin PBXBuildFile section */
 		011025D6B9F5B40228631300 /* STGCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7ABE4FCC73198B770FF9A987 /* STGCore.framework */; };
 		02596638E32BA9671E649CBA /* STGApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C008B0EEC0E8F94E119C6C54 /* STGApp.swift */; };
+		07F61B814BAE10C28A773403 /* OneDriveClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8ED7C6B3CCB80D28EA057AA9 /* OneDriveClient.swift */; };
 		09A0B4830EB714CF4ADF1E1E /* UserNotifications.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1E4B66179A168BD4F7A80455 /* UserNotifications.framework */; };
-		09BE9B6C31F119DB847A7001 /* IOSScreenTimeEstimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA2CF47179435C56937F4401 /* IOSScreenTimeEstimator.swift */; };
-		0C9A10CCB954BB0EC610D66D /* OpenRouterTracking.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D315CBDBE78C59B4795D733 /* OpenRouterTracking.swift */; };
-		108A69981157CC82126C7A06 /* OneDriveSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4FC5D5E8940F8218141B8A4 /* OneDriveSync.swift */; };
-		18B7A453633AF7BC2886E300 /* STGCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CCE4E369121F4AC7369DAF9 /* STGCoreTests.swift */; };
+		0DFDBAC3766A4AA7C529D106 /* stg.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = 863629E0C3523260054C3B1E /* stg.sqlite */; };
+		124223C59EBDA96980242181 /* ReminderEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 872A63B96EF59CBB71DE2512 /* ReminderEngine.swift */; };
+		180D76E7E4788955CC3DA319 /* CloudFolderSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = E087FB52B9B0F81001F791D8 /* CloudFolderSync.swift */; };
 		1AA07702D5899D9E7B3AC274 /* STGDeviceActivityMonitor.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 00346067565E9114E54ADD34 /* STGDeviceActivityMonitor.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		22AAE9891067281AF64A92E6 /* MonitorRegistration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A15E689B9D2AB209D3DF4BEA /* MonitorRegistration.swift */; };
+		295CEF78489EB348DD150BD2 /* STGCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6E62DFD0210CDDFC0D8D514 /* STGCoreTests.swift */; };
 		2FCA8B9BF358872E7DA1CF1D /* FamilyControls.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 735D661A3477E58491F95D8E /* FamilyControls.framework */; };
+		314EF05D3ADF0DD059A54D3A /* OpenRouterTracking.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E24D9C10047150696CE7822 /* OpenRouterTracking.swift */; };
+		38DC179690C77CD041EE3B17 /* DiagnosticLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 241A1C8B280BC56EC5ED6177 /* DiagnosticLog.swift */; };
 		397B0DC11E175739BA88EF8C /* MonitorExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E5BB61715DD149B4DE00155 /* MonitorExtension.swift */; };
 		3C9F2745DF7DFD937D4D4286 /* STGCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 7ABE4FCC73198B770FF9A987 /* STGCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		436343028053EB4A1C4E4AB2 /* DeviceActivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2DFF0511705B4DD9148C786A /* DeviceActivity.framework */; };
 		4925F05C8BDF19AE9FD38175 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13C3C6EF8359F2E897FCCB78 /* PrivacyInfo.xcprivacy */; };
+		4A31D1ED4C2F78377BAFD8B3 /* OpenRouterSeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DBC6C071BF75D90BF9A34E2 /* OpenRouterSeed.swift */; };
 		4A88DA5C6A233DC6A4C46FDD /* ThresholdQuickSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AFA0984FBAAEB284AFD1938 /* ThresholdQuickSync.swift */; };
-		55BADEFC8B4DE024C27A3049 /* TrackingSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82EF16980FC376DA08CE6266 /* TrackingSupport.swift */; };
-		57DA82930F2F10035697C7E7 /* stg.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = 299B2E2834BE0DC48ADCAAEC /* stg.sqlite */; };
-		6283C7B0977D792D6195BB70 /* DiagnosticLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 611B3EDA7098B6FFA0B7F1CD /* DiagnosticLog.swift */; };
+		5355B8881062104D66BE453D /* TrackingSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4C1C4C1559985BBC49B3343 /* TrackingSupport.swift */; };
+		5716976D88459839A97DD5D7 /* GoogleDriveSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1BA970A8AC077355AFBCEEF /* GoogleDriveSync.swift */; };
 		646DF573C8D46180538EB2E3 /* STGCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 7ABE4FCC73198B770FF9A987 /* STGCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		6C9B35529266E3675F1B33FF /* ReminderEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20D64FD1F3FF09E2AFF224D /* ReminderEngine.swift */; };
-		845AB4D10A388855C56F08BB /* OneDriveClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF9130A5C42F17B23E5E09FF /* OneDriveClient.swift */; };
-		8BE5D8D68CA66232B6E3BF03 /* MinuteBitmap.swift in Sources */ = {isa = PBXBuildFile; fileRef = B38BDA65A0B0FABCFC065A0D /* MinuteBitmap.swift */; };
-		8CA06C6934BA518326262310 /* BitmapRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AAC2BE4444E8459C298DB57 /* BitmapRepository.swift */; };
+		70626EF07901EB3C1B5AC0DE /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 86CF5D6935F892B98987EA8B /* PrivacyInfo.xcprivacy */; };
+		7FA1F2B814BB385437DA3DF2 /* GoogleDriveClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 986E65E1BEEB113820532C55 /* GoogleDriveClient.swift */; };
+		905492A84125A942D298404D /* TimeModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2BDE09E708BE5FB294AB25B /* TimeModel.swift */; };
 		94993EE7E0895F1E4B477958 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 48D91E6D837A87190765A376 /* Localizable.strings */; };
 		9835A5FF2EE20E43F2713A20 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = D5964D0549D2B2D5976CAC57 /* libsqlite3.tbd */; };
 		9FEEEFD33E2287524AADFD1C /* FamilyControls.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 735D661A3477E58491F95D8E /* FamilyControls.framework */; };
 		A0D9E37A4EEA1F58C46E3F43 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = A274D9FDD9EBD3D5B7A223C3 /* Localizable.strings */; };
-		A15B2F0DBEDE77F3DF210237 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B1C244846372BFD9CDA3AA2 /* Models.swift */; };
 		A7AEFA26A484C5580838238B /* BackgroundTasks.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CD2491558F5104772E5042DD /* BackgroundTasks.framework */; };
-		AC269030EA6839011648FDCD /* GoogleDriveClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2B97E76C8C280697E15DE77 /* GoogleDriveClient.swift */; };
-		AFA8258BA05B808E497FE22C /* GoogleDriveSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98E3B8D1B81901F8689F92A5 /* GoogleDriveSync.swift */; };
-		B7D4A0C175A0FF21D1DE6BA1 /* SecureStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 320F9B3B102671D26D905570 /* SecureStore.swift */; };
+		C22489F4025568E5B3E52DE8 /* BitmapRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0488B491E53AFF07FAF185 /* BitmapRepository.swift */; };
+		C910E89DC32F0F7607E20C57 /* IOSScreenTimeEstimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2D90B5EFCDA461C0FC8579F /* IOSScreenTimeEstimator.swift */; };
 		CA7D57DB3B9B91AF48BDF902 /* SharedEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = E05092F6925CFF606A904DED /* SharedEnvironment.swift */; };
 		CAB81DF47A1ED76E03252389 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = BEB0EB66D8C5A240C8E5F12D /* PrivacyInfo.xcprivacy */; };
 		D0EC51912F3E63C65A181AAE /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DE6D50AE054B41B4A0024B3 /* AppModel.swift */; };
-		DF2C0B9211C028D9D472C9D2 /* TimeModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15816743065102E09B371436 /* TimeModel.swift */; };
-		E0518BA8662E4EB1218BE4E0 /* CloudFolderSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA6E3934DF765957C2BAC614 /* CloudFolderSync.swift */; };
+		D20638EA7E514776C1777F5E /* OneDriveSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E1D14FC2006FABE1C898C2D /* OneDriveSync.swift */; };
 		E6A9B07640FB0EABB121B4A6 /* MonitorRegistration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A15E689B9D2AB209D3DF4BEA /* MonitorRegistration.swift */; };
 		E7708155761A921FB2A0D13A /* DeviceActivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2DFF0511705B4DD9148C786A /* DeviceActivity.framework */; };
 		EFA9EDBF28DC47D2C0337B09 /* DeviceActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6122A972AE4E73638AEC6390 /* DeviceActivityController.swift */; };
-		EFDB4C71CE24184478DD3202 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 6CFA6A232914155F53CFBF51 /* PrivacyInfo.xcprivacy */; };
 		F0B2CCB629C09544BF6B1A84 /* Views.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46289283018BBA4464EAAA56 /* Views.swift */; };
-		F0F12F355845E43278BB86EB /* OpenRouterSeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35D6098CBDF19808738EB5B6 /* OpenRouterSeed.swift */; };
+		F2038134EA1978B9C8B5D703 /* MinuteBitmap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CFB6BF90D515BC9AF7DA56B /* MinuteBitmap.swift */; };
 		F556B829872D2000B59AC044 /* STGCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7ABE4FCC73198B770FF9A987 /* STGCore.framework */; };
 		F8DABCDF28E8803BF29C21CC /* SharedEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = E05092F6925CFF606A904DED /* SharedEnvironment.swift */; };
+		FAC1AFF634DFF4D2CDD0C5C7 /* SecureStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 621F85701F967CEDD740B5F3 /* SecureStore.swift */; };
+		FACAC3D3C2B40931CB31E306 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD2FC06D56D0E0CE62ECC5C9 /* Models.swift */; };
 		FB7C65AA3A2A9075AF9AE724 /* STGCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7ABE4FCC73198B770FF9A987 /* STGCore.framework */; };
 		FF3B8C865E96281D46D53436 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 27668B2EE0EF5C13F56B225E /* Assets.xcassets */; };
 /* End PBXBuildFile section */
@@ -129,50 +129,50 @@
 		0DE8D1DBDD477D060AA65BCE /* STGDeviceActivityMonitor.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = STGDeviceActivityMonitor.entitlements; sourceTree = "<group>"; };
 		0EC5068505C201D69C09C4A2 /* STG.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = STG.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13C3C6EF8359F2E897FCCB78 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
-		15816743065102E09B371436 /* TimeModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeModel.swift; sourceTree = "<group>"; };
 		1E4B66179A168BD4F7A80455 /* UserNotifications.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UserNotifications.framework; path = System/Library/Frameworks/UserNotifications.framework; sourceTree = SDKROOT; };
+		241A1C8B280BC56EC5ED6177 /* DiagnosticLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticLog.swift; sourceTree = "<group>"; };
 		27668B2EE0EF5C13F56B225E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		299B2E2834BE0DC48ADCAAEC /* stg.sqlite */ = {isa = PBXFileReference; lastKnownFileType = file; path = stg.sqlite; sourceTree = "<group>"; };
-		2CCE4E369121F4AC7369DAF9 /* STGCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = STGCoreTests.swift; sourceTree = "<group>"; };
 		2DFF0511705B4DD9148C786A /* DeviceActivity.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = DeviceActivity.framework; path = System/Library/Frameworks/DeviceActivity.framework; sourceTree = SDKROOT; };
-		320F9B3B102671D26D905570 /* SecureStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureStore.swift; sourceTree = "<group>"; };
-		35D6098CBDF19808738EB5B6 /* OpenRouterSeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenRouterSeed.swift; sourceTree = "<group>"; };
 		46289283018BBA4464EAAA56 /* Views.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views.swift; sourceTree = "<group>"; };
-		4D315CBDBE78C59B4795D733 /* OpenRouterTracking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenRouterTracking.swift; sourceTree = "<group>"; };
+		4CFB6BF90D515BC9AF7DA56B /* MinuteBitmap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MinuteBitmap.swift; sourceTree = "<group>"; };
+		4DBC6C071BF75D90BF9A34E2 /* OpenRouterSeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenRouterSeed.swift; sourceTree = "<group>"; };
 		4E5BB61715DD149B4DE00155 /* MonitorExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonitorExtension.swift; sourceTree = "<group>"; };
 		4FED898BAA83FA10AEBD7ECA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		564DF6A1EE9A85F587B5D72C /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/Localizable.strings; sourceTree = "<group>"; };
-		5AAC2BE4444E8459C298DB57 /* BitmapRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BitmapRepository.swift; sourceTree = "<group>"; };
 		5DE6D50AE054B41B4A0024B3 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
-		611B3EDA7098B6FFA0B7F1CD /* DiagnosticLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticLog.swift; sourceTree = "<group>"; };
+		5E1D14FC2006FABE1C898C2D /* OneDriveSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OneDriveSync.swift; sourceTree = "<group>"; };
 		6122A972AE4E73638AEC6390 /* DeviceActivityController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceActivityController.swift; sourceTree = "<group>"; };
+		621F85701F967CEDD740B5F3 /* SecureStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureStore.swift; sourceTree = "<group>"; };
 		6660BF1BDC8E663DE65A4349 /* STG.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = STG.entitlements; sourceTree = "<group>"; };
 		6AFA0984FBAAEB284AFD1938 /* ThresholdQuickSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThresholdQuickSync.swift; sourceTree = "<group>"; };
-		6CFA6A232914155F53CFBF51 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		6E24D9C10047150696CE7822 /* OpenRouterTracking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenRouterTracking.swift; sourceTree = "<group>"; };
 		735D661A3477E58491F95D8E /* FamilyControls.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = FamilyControls.framework; path = System/Library/Frameworks/FamilyControls.framework; sourceTree = SDKROOT; };
 		752BF8E2D23CA571972C68EA /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		766C106229B054C208CA900C /* STGCoreTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = STGCoreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		76FDAA5828854E293B3796DB /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/Localizable.strings; sourceTree = "<group>"; };
 		7ABE4FCC73198B770FF9A987 /* STGCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = STGCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		7B1C244846372BFD9CDA3AA2 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
-		82EF16980FC376DA08CE6266 /* TrackingSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackingSupport.swift; sourceTree = "<group>"; };
+		863629E0C3523260054C3B1E /* stg.sqlite */ = {isa = PBXFileReference; lastKnownFileType = file; path = stg.sqlite; sourceTree = "<group>"; };
+		86CF5D6935F892B98987EA8B /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		872A63B96EF59CBB71DE2512 /* ReminderEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReminderEngine.swift; sourceTree = "<group>"; };
+		8ED7C6B3CCB80D28EA057AA9 /* OneDriveClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OneDriveClient.swift; sourceTree = "<group>"; };
 		9763A258BBE17E74B1F6D653 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
-		98E3B8D1B81901F8689F92A5 /* GoogleDriveSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleDriveSync.swift; sourceTree = "<group>"; };
+		986E65E1BEEB113820532C55 /* GoogleDriveClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleDriveClient.swift; sourceTree = "<group>"; };
 		A15E689B9D2AB209D3DF4BEA /* MonitorRegistration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonitorRegistration.swift; sourceTree = "<group>"; };
-		A20D64FD1F3FF09E2AFF224D /* ReminderEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReminderEngine.swift; sourceTree = "<group>"; };
+		A1BA970A8AC077355AFBCEEF /* GoogleDriveSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleDriveSync.swift; sourceTree = "<group>"; };
+		A2BDE09E708BE5FB294AB25B /* TimeModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeModel.swift; sourceTree = "<group>"; };
 		A683802D99993274D42C318A /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
-		B38BDA65A0B0FABCFC065A0D /* MinuteBitmap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MinuteBitmap.swift; sourceTree = "<group>"; };
-		BA6E3934DF765957C2BAC614 /* CloudFolderSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudFolderSync.swift; sourceTree = "<group>"; };
 		BEB0EB66D8C5A240C8E5F12D /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
-		BF9130A5C42F17B23E5E09FF /* OneDriveClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OneDriveClient.swift; sourceTree = "<group>"; };
 		C008B0EEC0E8F94E119C6C54 /* STGApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = STGApp.swift; sourceTree = "<group>"; };
-		C4FC5D5E8940F8218141B8A4 /* OneDriveSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OneDriveSync.swift; sourceTree = "<group>"; };
-		CA2CF47179435C56937F4401 /* IOSScreenTimeEstimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSScreenTimeEstimator.swift; sourceTree = "<group>"; };
+		CC0488B491E53AFF07FAF185 /* BitmapRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BitmapRepository.swift; sourceTree = "<group>"; };
 		CD2491558F5104772E5042DD /* BackgroundTasks.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = BackgroundTasks.framework; path = System/Library/Frameworks/BackgroundTasks.framework; sourceTree = SDKROOT; };
+		CD2FC06D56D0E0CE62ECC5C9 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		D4C1C4C1559985BBC49B3343 /* TrackingSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackingSupport.swift; sourceTree = "<group>"; };
 		D5964D0549D2B2D5976CAC57 /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
+		D6E62DFD0210CDDFC0D8D514 /* STGCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = STGCoreTests.swift; sourceTree = "<group>"; };
 		D8A0462445B91565B1AD5478 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		E05092F6925CFF606A904DED /* SharedEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedEnvironment.swift; sourceTree = "<group>"; };
-		F2B97E76C8C280697E15DE77 /* GoogleDriveClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleDriveClient.swift; sourceTree = "<group>"; };
+		E087FB52B9B0F81001F791D8 /* CloudFolderSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudFolderSync.swift; sourceTree = "<group>"; };
+		E2D90B5EFCDA461C0FC8579F /* IOSScreenTimeEstimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSScreenTimeEstimator.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -217,22 +217,6 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		12CF305F671F39EF1436F126 /* STGCoreTests */ = {
-			isa = PBXGroup;
-			children = (
-				2CCE4E369121F4AC7369DAF9 /* STGCoreTests.swift */,
-			);
-			path = STGCoreTests;
-			sourceTree = "<group>";
-		};
-		1D8009567AFE0F0F4A67008D /* Tests */ = {
-			isa = PBXGroup;
-			children = (
-				12CF305F671F39EF1436F126 /* STGCoreTests */,
-			);
-			path = Tests;
-			sourceTree = "<group>";
-		};
 		21326C2C810AC5719ED3F1FB /* STG */ = {
 			isa = PBXGroup;
 			children = (
@@ -256,22 +240,21 @@
 			path = Monitor;
 			sourceTree = "<group>";
 		};
-		39ED04F887883CC36DAEB561 /* Resources */ = {
+		3DDB94AE78DAA4F353023E1F /* Tests */ = {
 			isa = PBXGroup;
 			children = (
-				6CFA6A232914155F53CFBF51 /* PrivacyInfo.xcprivacy */,
-				299B2E2834BE0DC48ADCAAEC /* stg.sqlite */,
+				E2F82A786126AF0591BD89F9 /* STGCoreTests */,
 			);
-			path = Resources;
+			path = Tests;
 			sourceTree = "<group>";
 		};
-		73349071C9A1709C8F28A484 /* STGCore */ = {
+		60F81AF2118B9945FB2A7042 /* stg.testflight */ = {
 			isa = PBXGroup;
 			children = (
-				81451885C32C2039B6AACCBA /* Sources */,
-				1D8009567AFE0F0F4A67008D /* Tests */,
+				F20BBD29DBC30FDED75EAEE4 /* apple */,
 			);
-			path = STGCore;
+			name = stg.testflight;
+			path = ..;
 			sourceTree = "<group>";
 		};
 		747B0603ED9EC0973ADDFDE8 /* Resources */ = {
@@ -286,50 +269,19 @@
 			isa = PBXGroup;
 			children = (
 				21326C2C810AC5719ED3F1FB /* STG */,
-				FE20FC957D925D8FB85A6340 /* stg.oa */,
+				60F81AF2118B9945FB2A7042 /* stg.testflight */,
 				EF7466626280B8B7A1BCDCC4 /* Frameworks */,
 				CB5DCF7E1B8B94146B310B0A /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		81451885C32C2039B6AACCBA /* Sources */ = {
+		8097257BA070CF177778ACC7 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
-				9A7F2D217E60379C4C8405E8 /* STGCore */,
+				86CF5D6935F892B98987EA8B /* PrivacyInfo.xcprivacy */,
+				863629E0C3523260054C3B1E /* stg.sqlite */,
 			);
-			path = Sources;
-			sourceTree = "<group>";
-		};
-		87087A4EB95C45E0A5E77205 /* apple */ = {
-			isa = PBXGroup;
-			children = (
-				73349071C9A1709C8F28A484 /* STGCore */,
-			);
-			path = apple;
-			sourceTree = "<group>";
-		};
-		9A7F2D217E60379C4C8405E8 /* STGCore */ = {
-			isa = PBXGroup;
-			children = (
-				5AAC2BE4444E8459C298DB57 /* BitmapRepository.swift */,
-				BA6E3934DF765957C2BAC614 /* CloudFolderSync.swift */,
-				611B3EDA7098B6FFA0B7F1CD /* DiagnosticLog.swift */,
-				F2B97E76C8C280697E15DE77 /* GoogleDriveClient.swift */,
-				98E3B8D1B81901F8689F92A5 /* GoogleDriveSync.swift */,
-				CA2CF47179435C56937F4401 /* IOSScreenTimeEstimator.swift */,
-				B38BDA65A0B0FABCFC065A0D /* MinuteBitmap.swift */,
-				7B1C244846372BFD9CDA3AA2 /* Models.swift */,
-				BF9130A5C42F17B23E5E09FF /* OneDriveClient.swift */,
-				C4FC5D5E8940F8218141B8A4 /* OneDriveSync.swift */,
-				35D6098CBDF19808738EB5B6 /* OpenRouterSeed.swift */,
-				4D315CBDBE78C59B4795D733 /* OpenRouterTracking.swift */,
-				A20D64FD1F3FF09E2AFF224D /* ReminderEngine.swift */,
-				320F9B3B102671D26D905570 /* SecureStore.swift */,
-				15816743065102E09B371436 /* TimeModel.swift */,
-				82EF16980FC376DA08CE6266 /* TrackingSupport.swift */,
-				39ED04F887883CC36DAEB561 /* Resources */,
-			);
-			path = STGCore;
+			path = Resources;
 			sourceTree = "<group>";
 		};
 		AF5E4C0E4C1D48A23BB80C50 /* Resources */ = {
@@ -338,6 +290,15 @@
 				A274D9FDD9EBD3D5B7A223C3 /* Localizable.strings */,
 			);
 			path = Resources;
+			sourceTree = "<group>";
+		};
+		B2DD8A75052E23E50D3F9D51 /* STGCore */ = {
+			isa = PBXGroup;
+			children = (
+				F2F12F5E7483E611F55ADD00 /* Sources */,
+				3DDB94AE78DAA4F353023E1F /* Tests */,
+			);
+			path = STGCore;
 			sourceTree = "<group>";
 		};
 		C50277BF42F105FF2A47F2D7 /* Shared */ = {
@@ -358,6 +319,38 @@
 				00346067565E9114E54ADD34 /* STGDeviceActivityMonitor.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		E2F82A786126AF0591BD89F9 /* STGCoreTests */ = {
+			isa = PBXGroup;
+			children = (
+				D6E62DFD0210CDDFC0D8D514 /* STGCoreTests.swift */,
+			);
+			path = STGCoreTests;
+			sourceTree = "<group>";
+		};
+		E8FDB56A1466E9925F49EB00 /* STGCore */ = {
+			isa = PBXGroup;
+			children = (
+				CC0488B491E53AFF07FAF185 /* BitmapRepository.swift */,
+				E087FB52B9B0F81001F791D8 /* CloudFolderSync.swift */,
+				241A1C8B280BC56EC5ED6177 /* DiagnosticLog.swift */,
+				986E65E1BEEB113820532C55 /* GoogleDriveClient.swift */,
+				A1BA970A8AC077355AFBCEEF /* GoogleDriveSync.swift */,
+				E2D90B5EFCDA461C0FC8579F /* IOSScreenTimeEstimator.swift */,
+				4CFB6BF90D515BC9AF7DA56B /* MinuteBitmap.swift */,
+				CD2FC06D56D0E0CE62ECC5C9 /* Models.swift */,
+				8ED7C6B3CCB80D28EA057AA9 /* OneDriveClient.swift */,
+				5E1D14FC2006FABE1C898C2D /* OneDriveSync.swift */,
+				4DBC6C071BF75D90BF9A34E2 /* OpenRouterSeed.swift */,
+				6E24D9C10047150696CE7822 /* OpenRouterTracking.swift */,
+				872A63B96EF59CBB71DE2512 /* ReminderEngine.swift */,
+				621F85701F967CEDD740B5F3 /* SecureStore.swift */,
+				A2BDE09E708BE5FB294AB25B /* TimeModel.swift */,
+				D4C1C4C1559985BBC49B3343 /* TrackingSupport.swift */,
+				8097257BA070CF177778ACC7 /* Resources */,
+			);
+			path = STGCore;
 			sourceTree = "<group>";
 		};
 		EE5612CF4D078FE457C75890 /* App */ = {
@@ -388,13 +381,20 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
-		FE20FC957D925D8FB85A6340 /* stg.oa */ = {
+		F20BBD29DBC30FDED75EAEE4 /* apple */ = {
 			isa = PBXGroup;
 			children = (
-				87087A4EB95C45E0A5E77205 /* apple */,
+				B2DD8A75052E23E50D3F9D51 /* STGCore */,
 			);
-			name = stg.oa;
-			path = ..;
+			path = apple;
+			sourceTree = "<group>";
+		};
+		F2F12F5E7483E611F55ADD00 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				E8FDB56A1466E9925F49EB00 /* STGCore */,
+			);
+			path = Sources;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -538,8 +538,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				EFDB4C71CE24184478DD3202 /* PrivacyInfo.xcprivacy in Resources */,
-				57DA82930F2F10035697C7E7 /* stg.sqlite in Resources */,
+				70626EF07901EB3C1B5AC0DE /* PrivacyInfo.xcprivacy in Resources */,
+				0DFDBAC3766A4AA7C529D106 /* stg.sqlite in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -593,22 +593,22 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				8CA06C6934BA518326262310 /* BitmapRepository.swift in Sources */,
-				E0518BA8662E4EB1218BE4E0 /* CloudFolderSync.swift in Sources */,
-				6283C7B0977D792D6195BB70 /* DiagnosticLog.swift in Sources */,
-				AC269030EA6839011648FDCD /* GoogleDriveClient.swift in Sources */,
-				AFA8258BA05B808E497FE22C /* GoogleDriveSync.swift in Sources */,
-				09BE9B6C31F119DB847A7001 /* IOSScreenTimeEstimator.swift in Sources */,
-				8BE5D8D68CA66232B6E3BF03 /* MinuteBitmap.swift in Sources */,
-				A15B2F0DBEDE77F3DF210237 /* Models.swift in Sources */,
-				845AB4D10A388855C56F08BB /* OneDriveClient.swift in Sources */,
-				108A69981157CC82126C7A06 /* OneDriveSync.swift in Sources */,
-				F0F12F355845E43278BB86EB /* OpenRouterSeed.swift in Sources */,
-				0C9A10CCB954BB0EC610D66D /* OpenRouterTracking.swift in Sources */,
-				6C9B35529266E3675F1B33FF /* ReminderEngine.swift in Sources */,
-				B7D4A0C175A0FF21D1DE6BA1 /* SecureStore.swift in Sources */,
-				DF2C0B9211C028D9D472C9D2 /* TimeModel.swift in Sources */,
-				55BADEFC8B4DE024C27A3049 /* TrackingSupport.swift in Sources */,
+				C22489F4025568E5B3E52DE8 /* BitmapRepository.swift in Sources */,
+				180D76E7E4788955CC3DA319 /* CloudFolderSync.swift in Sources */,
+				38DC179690C77CD041EE3B17 /* DiagnosticLog.swift in Sources */,
+				7FA1F2B814BB385437DA3DF2 /* GoogleDriveClient.swift in Sources */,
+				5716976D88459839A97DD5D7 /* GoogleDriveSync.swift in Sources */,
+				C910E89DC32F0F7607E20C57 /* IOSScreenTimeEstimator.swift in Sources */,
+				F2038134EA1978B9C8B5D703 /* MinuteBitmap.swift in Sources */,
+				FACAC3D3C2B40931CB31E306 /* Models.swift in Sources */,
+				07F61B814BAE10C28A773403 /* OneDriveClient.swift in Sources */,
+				D20638EA7E514776C1777F5E /* OneDriveSync.swift in Sources */,
+				4A31D1ED4C2F78377BAFD8B3 /* OpenRouterSeed.swift in Sources */,
+				314EF05D3ADF0DD059A54D3A /* OpenRouterTracking.swift in Sources */,
+				124223C59EBDA96980242181 /* ReminderEngine.swift in Sources */,
+				FAC1AFF634DFF4D2CDD0C5C7 /* SecureStore.swift in Sources */,
+				905492A84125A942D298404D /* TimeModel.swift in Sources */,
+				5355B8881062104D66BE453D /* TrackingSupport.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -616,7 +616,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				18B7A453633AF7BC2886E300 /* STGCoreTests.swift in Sources */,
+				295CEF78489EB348DD150BD2 /* STGCoreTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -739,7 +739,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "";
-				CURRENT_PROJECT_VERSION = 21;
+				CURRENT_PROJECT_VERSION = 23;
 				DEFINES_MODULE = YES;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
@@ -840,7 +840,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "";
-				CURRENT_PROJECT_VERSION = 21;
+				CURRENT_PROJECT_VERSION = 23;
 				DEFINES_MODULE = YES;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;

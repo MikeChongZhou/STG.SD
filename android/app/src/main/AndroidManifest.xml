@@ -21,6 +21,12 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="com.googleusercontent.apps.552360735383-030pcr7mduhf1d20kjslobh5dhacsg2o" android:path="/oauth2redirect" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="msauth.com.timbertrail.stg" android:host="auth" />
+            </intent-filter>
         </activity>
         <service android:name=".UsageMonitorService" android:foregroundServiceType="specialUse" android:exported="false">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="screen-time reminder monitoring" />

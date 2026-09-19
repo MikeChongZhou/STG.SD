@@ -20,6 +20,9 @@ internal sealed class TrayAppContext : IDisposable
     private bool powerAvailable = true;
     private bool syncInProgress;
     private bool quickUploadInProgress;
+    private bool exitInProgress;
+    private readonly List<string> syncWarnings = [];
+    private CancellationTokenSource? activeSyncCancellation;
     private bool disposed;
     private int continuous;
     private DateTimeOffset lastEye = DateTimeOffset.MinValue, lastPosture = DateTimeOffset.MinValue;
@@ -115,26 +118,39 @@ internal sealed class TrayAppContext : IDisposable
 
     public async Task SyncAsync()
     {
+        if (exitInProgress) { log.Record("sync", "sync skipped; application_exit_in_progress=true"); return; }
         if (syncInProgress) { log.Record("sync", "sync request coalesced; another sync is running"); return; }
         if (Settings.SyncProvider == SyncProvider.None) { SyncStatus = "Sync off — choose iCloud Drive, OneDrive, or Google Drive in Settings"; log.Record("sync", "sync skipped; provider=None"); Changed(); return; }
         if (!ProviderSignedIn(Settings.SyncProvider)) { SyncStatus = $"{ProviderName(Settings.SyncProvider)} account sign-in required"; log.Record("sync", $"sync blocked; provider={Settings.SyncProvider}; account_not_signed_in"); Changed(); return; }
-        syncInProgress = true; SyncStatus = $"Syncing {ProviderName(Settings.SyncProvider)}…"; log.Record("sync", $"sync begin; provider={Settings.SyncProvider}; local_device={ShortDeviceID}"); Changed();
+        syncInProgress = true; syncWarnings.Clear(); SyncStatus = $"Connecting to {ProviderName(Settings.SyncProvider)}…"; log.Record("sync", $"sync begin; provider={Settings.SyncProvider}; local_device={ShortDeviceID}"); Changed();
+        using var cancellation = new CancellationTokenSource(); activeSyncCancellation = cancellation;
         try
         {
             IPrivateCloudDrive drive = Settings.SyncProvider switch { SyncProvider.ICloudDrive => ICloudDriveClient.Connect(), SyncProvider.OneDrive => OneDriveClient.FromStore(), _ => GoogleDriveClient.FromStore() };
-            var result = await new PrivateCloudSync(repository, Settings, drive).IncrementalAsync();
+            var result = await new PrivateCloudSync(repository, Settings, drive).IncrementalAsync(cancellation.Token, ReportSyncProgress);
             repository.CompleteIncrementalSync(Settings.DeviceID);
             var discovered = string.Join(',', result.Devices.Select(value => value[..Math.Min(8, value.Length)]).Order());
-            SyncStatus = $"Synced · {result.Uploaded} uploaded, {result.Downloaded} downloaded";
+            var completionStatus = $"Synced · {result.Uploaded} activity files uploaded, {result.Downloaded} downloaded";
+            SyncStatus = completionStatus;
             var cursors = string.Join(',', result.DownloadCursors.OrderBy(value => value.Key).Select(value => $"{value.Key[..Math.Min(8, value.Key.Length)]}={value.Value}"));
             log.Record("sync", $"sync complete; provider={Settings.SyncProvider}; uploaded={result.Uploaded}; downloaded={result.Downloaded}; upload_cursor={result.UploadCursor ?? "none"}; discovered=[{discovered}]; download_cursors=[{cursors}]"); RefreshTotals();
-            await RunWeeklyActionIfDueAsync();
+            foreach (var warning in result.Warnings) log.Record("sync-warning", warning);
+            await RunWeeklyActionIfDueAsync(cancellation.Token);
+            SyncStatus = syncWarnings.Count == 0 ? completionStatus : completionStatus + " · " + string.Join(" · ", syncWarnings);
         }
-        catch (Exception error) { SyncStatus = $"Sync failed: {error.Message}"; log.Record("sync", $"sync failed; provider={Settings.SyncProvider}; error={error.Message}"); }
-        finally { syncInProgress = false; Changed(); }
+        catch (OperationCanceledException) when (exitInProgress) { log.Record("sync", "active incremental sync cancelled; reason=application_quit"); }
+        catch (Exception error) { SyncStatus = $"Sync failed: {error.Message}"; log.Record("sync", $"sync failed; provider={Settings.SyncProvider}; {DiagnosticLog.Describe(error)}"); }
+        finally { if (ReferenceEquals(activeSyncCancellation, cancellation)) activeSyncCancellation = null; syncInProgress = false; if (!disposed) Changed(); }
     }
 
-    private async Task QuickUploadAsync(string trigger)
+    private void ReportSyncProgress(string message)
+    {
+        SyncStatus = message;
+        log.Record("sync-progress", $"provider={Settings.SyncProvider}; message={message}");
+        Changed();
+    }
+
+    private async Task QuickUploadAsync(string trigger, CancellationToken cancellationToken = default)
     {
         if (disposed || quickUploadInProgress) return;
         if (syncInProgress) { log.Record("sync", $"quick upload covered by running incremental sync; trigger={trigger}"); return; }
@@ -144,11 +160,12 @@ internal sealed class TrayAppContext : IDisposable
         {
             IPrivateCloudDrive drive = Settings.SyncProvider switch { SyncProvider.ICloudDrive => ICloudDriveClient.Connect(), SyncProvider.OneDrive => OneDriveClient.FromStore(), _ => GoogleDriveClient.FromStore() };
             log.Record("sync", $"quick upload begin; trigger={trigger}; provider={Settings.SyncProvider}");
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken); timeout.CancelAfter(TimeSpan.FromSeconds(8));
             var count = await new PrivateCloudSync(repository, Settings, drive).QuickUploadAsync(timeout.Token);
             log.Record("sync", $"quick upload complete; trigger={trigger}; provider={Settings.SyncProvider}; files={count}");
         }
-        catch (Exception error) { log.Record("sync", $"quick upload failed; trigger={trigger}; error={error.Message}"); }
+        catch (OperationCanceledException) { log.Record("sync", $"quick upload cancelled; trigger={trigger}; provider={Settings.SyncProvider}; cancellation_requested=true"); }
+        catch (Exception error) { log.Record("sync", $"quick upload failed; trigger={trigger}; provider={Settings.SyncProvider}; {DiagnosticLog.Describe(error)}"); }
         finally { quickUploadInProgress = false; }
     }
 
@@ -287,23 +304,41 @@ internal sealed class TrayAppContext : IDisposable
 
     private async Task RunWeeklyActionIfDueAsync(CancellationToken cancellationToken = default)
     {
-        if (!repository.WeeklyActionDue(DateTimeOffset.UtcNow)) return;
-        try
+        var now = DateTimeOffset.UtcNow;
+        var cloudDue = repository.WeeklyCloudActionDue(now);
+        var today = DateOnly.FromDateTime(now.UtcDateTime); var daysSinceMonday = ((int)today.DayOfWeek + 6) % 7; var previousSunday = today.AddDays(-daysSinceMonday - 1);
+        var totalCursor = repository.LatestOpenRouterWeekEnd(); var start = DateOnly.TryParse(totalCursor, out var latestDate) ? latestDate.AddDays(1) : new DateOnly(2025, 1, 1);
+        var trackingDue = start <= previousSunday;
+        if (!cloudDue && !trackingDue) return;
+        log.Record("sync", $"weekly action begin; cloud_due={cloudDue}; tracking_due={trackingDue}; openrouter_start={start:yyyy-MM-dd}; openrouter_end={previousSunday:yyyy-MM-dd}; latest_week_cursor={totalCursor ?? "none"}");
+        IPrivateCloudDrive? drive = null;
+        if (cloudDue)
         {
-            var today = DateOnly.FromDateTime(DateTime.UtcNow); var daysSinceMonday = ((int)today.DayOfWeek + 6) % 7; var previousSunday = today.AddDays(-daysSinceMonday - 1);
-            var totalCursor = repository.LatestOpenRouterWeekEnd(); var start = DateOnly.TryParse(totalCursor, out var latestDate) ? latestDate.AddDays(1) : new DateOnly(2025, 1, 1);
-            log.Record("sync", $"weekly action begin; openrouter_start={start:yyyy-MM-dd}; openrouter_end={previousSunday:yyyy-MM-dd}; latest_week_cursor={totalCursor ?? "none"}");
-            IReadOnlyList<WeeklyRankingRow> rows = start > previousSunday ? [] : await new OpenRouterClient().WeeklyHistoryAsync(start, previousSunday, cancellationToken);
-            if (start <= previousSunday && rows.Count == 0) throw new InvalidDataException("OpenRouter returned no weekly model-activity rows; detail cursor was not advanced");
-            repository.UpsertOpenRouterWeeks(rows); repository.CompleteOpenRouterDetailWeek(previousSunday.ToString("yyyy-MM-dd"));
-            IPrivateCloudDrive drive = Settings.SyncProvider switch { SyncProvider.ICloudDrive => ICloudDriveClient.Connect(), SyncProvider.OneDrive => OneDriveClient.FromStore(), _ => GoogleDriveClient.FromStore() };
-            var monday = previousSunday.AddDays(-6); var maintenance = await new PrivateCloudSync(repository, Settings, drive).WeeklyMaintenanceAsync(monday.AddDays(7), monday, previousSunday, cancellationToken);
-            repository.CompleteWeeklyAction(DateTimeOffset.UtcNow); repository.CompleteWeeklyActionState(Settings.DeviceID);
-            log.Record("sync", $"weekly action complete; openrouter_rows={rows.Count}; weeks={rows.Select(value => value.WindowStart).Distinct().Count()}; bitmap_uploaded={maintenance.Uploaded}; daily_deleted={maintenance.DeletedDaily}; weekly_moved={maintenance.MovedWeekly}; completed_at={DateTimeOffset.UtcNow:O}");
-            await RunYearlyActionIfDueAsync(drive, cancellationToken);
+            ReportSyncProgress("Updating weekly archive…");
+            try
+            {
+                drive = Settings.SyncProvider switch { SyncProvider.ICloudDrive => ICloudDriveClient.Connect(), SyncProvider.OneDrive => OneDriveClient.FromStore(), _ => GoogleDriveClient.FromStore() };
+                var monday = previousSunday.AddDays(-6); var maintenance = await new PrivateCloudSync(repository, Settings, drive).WeeklyMaintenanceAsync(monday.AddDays(7), monday, previousSunday, cancellationToken);
+                repository.CompleteWeeklyAction(DateTimeOffset.UtcNow); repository.CompleteWeeklyActionState(Settings.DeviceID);
+                log.Record("sync", $"weekly cloud maintenance complete; bitmap_uploaded={maintenance.Uploaded}; daily_deleted={maintenance.DeletedDaily}; weekly_moved={maintenance.MovedWeekly}; history_ready=true; completed_at={DateTimeOffset.UtcNow:O}");
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception error) { syncWarnings.Add("Weekly archive failed"); log.Record("sync", $"weekly cloud maintenance failed; completion_not_recorded=true; {DiagnosticLog.Describe(error)}"); }
         }
-        catch (OperationCanceledException) { throw; }
-        catch (Exception error) { log.Record("sync", $"weekly action failed; completion_not_recorded=true; error={error.Message}"); }
+        if (trackingDue)
+        {
+            ReportSyncProgress("Updating tracking data…");
+            try
+            {
+                var rows = await new OpenRouterClient().WeeklyHistoryAsync(start, previousSunday, cancellationToken);
+                if (rows.Count == 0) throw new InvalidDataException("OpenRouter returned no weekly model-activity rows; detail cursor was not advanced");
+                repository.UpsertOpenRouterWeeks(rows); repository.CompleteOpenRouterDetailWeek(previousSunday.ToString("yyyy-MM-dd"));
+                log.Record("sync", $"weekly tracking complete; openrouter_rows={rows.Count}; weeks={rows.Select(value => value.WindowStart).Distinct().Count()}; completion_recorded=true");
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception error) { syncWarnings.Add("Tracking update failed"); log.Record("sync", $"weekly tracking failed; completion_not_recorded=true; start={start:yyyy-MM-dd}; end={previousSunday:yyyy-MM-dd}; {DiagnosticLog.Describe(error)}"); }
+        }
+        if (drive is not null) await RunYearlyActionIfDueAsync(drive, cancellationToken);
     }
 
     private async Task RunYearlyActionIfDueAsync(IPrivateCloudDrive drive, CancellationToken cancellationToken)
@@ -318,7 +353,7 @@ internal sealed class TrayAppContext : IDisposable
             repository.CompleteYearlyAction(Settings.DeviceID);
             log.Record("sync", $"yearly action complete; year={year}; uploaded={result.Uploaded}; deleted_bitmaps={result.DeletedBitmaps}; deleted_weekly={result.DeletedWeekly}");
         }
-        catch (Exception error) { log.Record("sync", $"yearly action failed; year={year}; error={error.Message}"); }
+        catch (Exception error) { log.Record("sync", $"yearly action failed; year={year}; stage=archive; {DiagnosticLog.Describe(error)}"); }
     }
 
     private void RefreshSyncStatus() => SyncStatus = Settings.SyncProvider switch { SyncProvider.None => "Sync off — choose a provider in Settings", SyncProvider.ICloudDrive when !ProviderSignedIn(Settings.SyncProvider) => "iCloud for Windows setup required", _ when !ProviderSignedIn(Settings.SyncProvider) => $"{ProviderName(Settings.SyncProvider)} account sign-in required", SyncProvider.ICloudDrive => "iCloud Drive connected through iCloud for Windows", _ => $"{ProviderName(Settings.SyncProvider)} connected as {ProviderAccountLabel(Settings.SyncProvider)}" };
@@ -360,7 +395,32 @@ internal sealed class TrayAppContext : IDisposable
     private string ShortDeviceID => Settings.DeviceID[..Math.Min(8, Settings.DeviceID.Length)];
     private static void Add(WinForms.ContextMenuStrip menu, string text, Action action) { var item = menu.Items.Add(text); item.Click += (_, _) => action(); }
     private void Changed() => System.Windows.Application.Current.Dispatcher.InvokeAsync(() => StateChanged?.Invoke(this, EventArgs.Empty));
-    private void Exit() { _ = ExitAsync(); }
-    private async Task ExitAsync() { log.Record("sync", "quick upload requested; trigger=application_quit"); await QuickUploadAsync("application_quit"); Dispose(); System.Windows.Application.Current.Shutdown(); }
-    public void Dispose() { if (disposed) return; disposed = true; log.Record("lifecycle", "quit requested"); tray.Visible = false; tray.Dispose(); timer.Stop(); timer.Dispose(); SystemEvents.SessionSwitch -= OnSessionSwitch; SystemEvents.PowerModeChanged -= OnPowerModeChanged; repository.Dispose(); }
+    private void Exit() { if (exitInProgress) return; exitInProgress = true; _ = ExitAsync(); }
+    private async Task ExitAsync()
+    {
+        log.Record("lifecycle", $"quit requested; active_sync={syncInProgress}; quick_upload={quickUploadInProgress}; hard_timeout=3s");
+        timer.Stop(); SystemEvents.SessionSwitch -= OnSessionSwitch; SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+        activeSyncCancellation?.Cancel();
+        using var quitCancellation = new CancellationTokenSource();
+        var work = FinishExitUploadAsync(quitCancellation.Token);
+        var completed = await Task.WhenAny(work, Task.Delay(TimeSpan.FromSeconds(3)));
+        if (completed == work) { await work; log.Record("lifecycle", "quit preparation complete; hard_timeout=false"); }
+        else { quitCancellation.Cancel(); log.Record("lifecycle", "quit upload hard timeout reached; limit=3s; continuing_termination=true"); }
+        DisposeCore(disposeRepository: !syncInProgress && !quickUploadInProgress);
+        System.Windows.Application.Current.Shutdown();
+    }
+
+    private async Task FinishExitUploadAsync(CancellationToken token)
+    {
+        for (var attempt = 0; syncInProgress && attempt < 10; attempt++) await Task.Delay(50, token);
+        if (syncInProgress) { log.Record("sync", "quit upload skipped; active incremental sync did not stop within 500ms"); return; }
+        log.Record("sync", "quick upload requested; trigger=application_quit");
+        await QuickUploadAsync("application_quit", token);
+    }
+
+    public void Dispose() => DisposeCore(disposeRepository: true);
+    private void DisposeCore(bool disposeRepository)
+    {
+        if (disposed) return; disposed = true; log.Record("lifecycle", $"shutdown resources; repository_disposed={disposeRepository}"); tray.Visible = false; tray.Dispose(); timer.Stop(); timer.Dispose(); SystemEvents.SessionSwitch -= OnSessionSwitch; SystemEvents.PowerModeChanged -= OnPowerModeChanged; if (disposeRepository) repository.Dispose();
+    }
 }

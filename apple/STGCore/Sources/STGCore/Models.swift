@@ -1,5 +1,7 @@
 import Foundation
 
+public typealias SyncProgressHandler = @MainActor @Sendable (String) async -> Void
+
 public enum DeviceKind: String, Codable, Sendable { case macos, windows, ios, android }
 
 public enum SyncProvider: String, Codable, CaseIterable, Hashable, Sendable {

@@ -138,20 +138,25 @@ public actor OpenRouterTrackingService {
         let candidates = try await candidateModels()
         let prices = await Self.fetchEffectivePrices(candidates: candidates, session: session)
         var dailyByModel: [String: [DailyUsage]] = [:]
+        var failures: [String] = []
         for batchStart in stride(from: 0, to: candidates.count, by: 8) {
             let batch = Array(candidates[batchStart..<min(batchStart + 8, candidates.count)])
-            await withTaskGroup(of: (String, [DailyUsage])?.self) { group in
+            await withTaskGroup(of: (String, [DailyUsage], String?).self) { group in
                 for candidate in batch {
                     group.addTask { [session] in
-                        do { return (candidate.model, try await Self.dailyUsage(candidate, price: prices[candidate.variantPermaslug], session: session)) }
-                        catch { return nil }
+                        do { return (candidate.model, try await Self.dailyUsage(candidate, price: prices[candidate.variantPermaslug], session: session), nil) }
+                        catch { return (candidate.model, [], DiagnosticLog.describe(error)) }
                     }
                 }
                 for await result in group {
-                    guard let (model, days) = result else { continue }
+                    let (model, days, error) = result
+                    if let error { failures.append("model=\(model); \(error)"); continue }
                     dailyByModel[model, default: []].append(contentsOf: days)
                 }
             }
+        }
+        if dailyByModel.isEmpty, !failures.isEmpty {
+            throw STGError.invalidDocument("OpenRouter weekly activity failed for all \(failures.count) candidates; samples=[\(failures.prefix(3).joined(separator: " | "))]")
         }
         var calendar = Calendar(identifier: .iso8601); calendar.timeZone = STGTime.utc
         var buckets: [String: [String: WeightedTokenTotals]] = [:]

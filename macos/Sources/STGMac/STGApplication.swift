@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import SwiftUI
 import STGCore
 
@@ -12,7 +13,8 @@ final class STGApplication: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var windows: [String: NSWindow] = [:]
     private var reminderWindow: NSWindow?
     private var userRequestedQuit = false
-    private var terminationReplyPending = false
+    private var terminationPreparationInProgress = false
+    private var terminationPrepared = false
 
     static func main() {
         let app = NSApplication.shared
@@ -54,6 +56,7 @@ final class STGApplication: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func add(_ title: String, _ action: Selector, to menu: NSMenu) { let item = NSMenuItem(title: title, action: action, keyEquivalent: ""); item.target = self; menu.addItem(item) }
 
     @objc private func showMain() {
+        guard !terminationPreparationInProgress else { return }
         show("main", title: "Screen Time Guardian", root: DashboardView(model: model) { [weak self] destination in
             switch destination {
             case .report: self?.showReport()
@@ -64,16 +67,24 @@ final class STGApplication: NSObject, NSApplicationDelegate, NSWindowDelegate {
         })
     }
     @objc private func showReport() {
+        guard !terminationPreparationInProgress else { return }
         show("report", title: "STG Report", root: ReportView(model: model) { [weak self] height in
             self?.resizeReportWindow(toContentHeight: height)
         })
     }
-    @objc private func showSettings() { show("settings", title: "STG Settings", root: SettingsView(model: model) { [weak self] in self?.windows["settings"]?.close() }) }
-    @objc private func showAbout() { show("about", title: "About STG", root: AboutView()) }
-    @objc private func showTracking() { show("tracking", title: "STG Tracking", root: TrackingView(model: model)) }
-    @objc private func quit() { userRequestedQuit = true; NSApp.terminate(nil) }
+    @objc private func showSettings() { guard !terminationPreparationInProgress else { return }; show("settings", title: "STG Settings", root: SettingsView(model: model) { [weak self] in self?.windows["settings"]?.close() }) }
+    @objc private func showAbout() { guard !terminationPreparationInProgress else { return }; show("about", title: "About STG", root: AboutView()) }
+    @objc private func showTracking() { guard !terminationPreparationInProgress else { return }; show("tracking", title: "STG Tracking", root: TrackingView(model: model)) }
+    @objc private func quit() {
+        guard !terminationPreparationInProgress else { return }
+        userRequestedQuit = true
+        beginTerminationPreparation(reason: "menu_quit") {
+            NSApp.terminate(nil)
+        }
+    }
 
     @objc private func statusItemClicked() {
+        guard !terminationPreparationInProgress else { return }
         guard let event = NSApp.currentEvent else { return }
         if event.type == .leftMouseUp && event.clickCount >= 2 {
             pendingStatusClick?.cancel(); pendingStatusClick = nil; showMain(); return
@@ -86,6 +97,7 @@ final class STGApplication: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func showStatusMenu() {
         pendingStatusClick = nil
+        guard !terminationPreparationInProgress else { return }
         guard let button = statusItem.button, let window = button.window else { return }
         let buttonFrameOnScreen = window.convertToScreen(button.convert(button.bounds, to: nil))
         let menuAnchor = NSPoint(x: buttonFrameOnScreen.minX, y: buttonFrameOnScreen.minY - 1)
@@ -96,13 +108,28 @@ final class STGApplication: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard !terminationReplyPending else { return .terminateLater }
-        terminationReplyPending = true
-        Task { @MainActor in
-            await model.prepareForTermination(reason: userRequestedQuit ? "menu_quit" : "application_termination")
+        if terminationPrepared { return .terminateNow }
+        guard !terminationPreparationInProgress else { return .terminateLater }
+        beginTerminationPreparation(reason: userRequestedQuit ? "menu_quit" : "application_termination") {
             sender.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater
+    }
+
+    private func beginTerminationPreparation(reason: String, completion: @escaping @MainActor () -> Void) {
+        guard !terminationPreparationInProgress else { return }
+        terminationPreparationInProgress = true
+        pendingStatusClick?.cancel(); pendingStatusClick = nil
+        model.diagnosticLog.record("quit action accepted; reason=\(reason); preparing_before_appkit_termination=true; process_fallback=5s", category: "lifecycle")
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 5) { Darwin._exit(EXIT_SUCCESS) }
+        Task { @MainActor in
+            await model.prepareForTermination(reason: reason)
+            terminationPrepared = true
+            ProcessInfo.processInfo.enableAutomaticTermination("Screen Time Guardian quit preparation completed")
+            ProcessInfo.processInfo.enableSuddenTermination()
+            model.diagnosticLog.record("quit preparation finished; requesting terminateNow=true", category: "lifecycle")
+            completion()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -114,6 +141,7 @@ final class STGApplication: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func show<V: View>(_ key: String, title: String, root: V) {
+        guard !terminationPreparationInProgress else { return }
         let requestedSize: NSSize = key == "report" ? .init(width: 1_180, height: 580) : key == "tracking" ? .init(width: 1_120, height: 720) : key == "settings" ? .init(width: 860, height: 700) : .init(width: 720, height: 500)
         let isNewWindow = windows[key] == nil
         let window = windows[key] ?? NSWindow(contentRect: NSRect(origin: .zero, size: requestedSize), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)

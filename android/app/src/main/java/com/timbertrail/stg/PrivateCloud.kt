@@ -21,6 +21,8 @@ import java.util.UUID
 
 internal object CloudConfiguration {
     const val microsoftClientID = "a4ff927c-e45a-413e-b5c3-45b026719171"
+    const val microsoftCallbackScheme = "msauth.com.timbertrail.stg"
+    const val microsoftRedirectURI = "$microsoftCallbackScheme://auth"
     const val googleClientID = "552360735383-030pcr7mduhf1d20kjslobh5dhacsg2o.apps.googleusercontent.com"
     const val googleCallbackScheme = "com.googleusercontent.apps.552360735383-030pcr7mduhf1d20kjslobh5dhacsg2o"
     const val googleRedirectURI = "$googleCallbackScheme:/oauth2redirect"
@@ -61,6 +63,17 @@ internal object PrivateCloudCredentials {
         GoogleAuthorizationRequest("", json.getString("state"), json.getString("verifier"), json.getString("redirect_uri"))
     }.getOrNull()
     fun clearGoogleRequest(context: Context) = SecureStore(context).put("google-oauth-request", "")
+
+    fun saveOneDriveRequest(context: Context, request: OneDriveAuthorizationRequest) {
+        SecureStore(context).put("onedrive-oauth-request", JSONObject().put("state", request.state).put("verifier", request.verifier)
+            .put("redirect_uri", request.redirectURI).put("created_at", Instant.now().epochSecond).toString())
+    }
+    fun loadOneDriveRequest(context: Context): OneDriveAuthorizationRequest? = runCatching {
+        val json = JSONObject(SecureStore(context).get("onedrive-oauth-request"))
+        if (Instant.now().epochSecond - json.getLong("created_at") > 900) return@runCatching null
+        OneDriveAuthorizationRequest("", json.getString("state"), json.getString("verifier"), json.getString("redirect_uri"))
+    }.getOrNull()
+    fun clearOneDriveRequest(context: Context) = SecureStore(context).put("onedrive-oauth-request", "")
 }
 
 internal data class RemoteFile(val id: String, val name: String)
@@ -86,34 +99,35 @@ internal object PrivateCloudDriveFactory {
     }
 }
 
-internal data class OneDriveDeviceCode(val deviceCode: String, val userCode: String, val verificationURL: String, val message: String, val expiresIn: Int, val interval: Int)
+internal data class OneDriveAuthorizationRequest(val authorizationURL: String, val state: String, val verifier: String, val redirectURI: String)
 
 internal object OneDriveAuthorization {
     private const val scope = "offline_access User.Read Files.ReadWrite.AppFolder"
-    fun requestCode(): OneDriveDeviceCode {
-        val json = JSONObject(CloudHttp.form("https://login.microsoftonline.com/common/oauth2/v2.0/devicecode", mapOf("client_id" to CloudConfiguration.microsoftClientID, "scope" to scope)).decodeToString())
-        return OneDriveDeviceCode(json.getString("device_code"), json.getString("user_code"), json.getString("verification_uri"), json.optString("message"), json.getInt("expires_in"), json.optInt("interval", 5))
+    fun begin(): OneDriveAuthorizationRequest {
+        val verifier = randomURLSafe(48)
+        val challenge = Base64.encodeToString(MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray(StandardCharsets.US_ASCII)), Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+        val state = randomURLSafe(24)
+        val redirect = CloudConfiguration.microsoftRedirectURI
+        val url = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?" + CloudHttp.encodedForm(mapOf(
+            "client_id" to CloudConfiguration.microsoftClientID, "response_type" to "code", "redirect_uri" to redirect,
+            "response_mode" to "query", "scope" to scope, "code_challenge" to challenge,
+            "code_challenge_method" to "S256", "state" to state, "prompt" to "select_account"
+        )).decodeToString()
+        return OneDriveAuthorizationRequest(url, state, verifier, redirect)
     }
 
-    fun waitForCredential(code: OneDriveDeviceCode): CloudCredential {
-        val deadline = Instant.now().epochSecond + code.expiresIn
-        var interval = maxOf(3, code.interval)
-        while (Instant.now().epochSecond < deadline) {
-            val response = CloudHttp.raw("POST", "https://login.microsoftonline.com/common/oauth2/v2.0/token", contentType = "application/x-www-form-urlencoded", body = CloudHttp.encodedForm(mapOf(
-                "client_id" to CloudConfiguration.microsoftClientID,
-                "grant_type" to "urn:ietf:params:oauth:grant-type:device_code",
-                "device_code" to code.deviceCode
-            )))
-            if (response.status in 200..299) return tokenCredential(response.body, "")
-            val error = runCatching { JSONObject(response.body.decodeToString()) }.getOrNull()
-            when (error?.optString("error")) {
-                "authorization_pending" -> Unit
-                "slow_down" -> interval += 5
-                else -> error(CloudHttp.errorMessage("Microsoft sign-in failed", response))
-            }
-            Thread.sleep(interval * 1000L)
+    fun finish(callback: Uri, request: OneDriveAuthorizationRequest): CloudCredential {
+        callback.getQueryParameter("error")?.let { error ->
+            throw IllegalStateException("Microsoft sign-in failed: ${callback.getQueryParameter("error_description") ?: error}")
         }
-        error("Microsoft sign-in code expired")
+        check(callback.getQueryParameter("state") == request.state) { "Microsoft sign-in state did not match" }
+        val code = callback.getQueryParameter("code").orEmpty()
+        check(code.isNotBlank()) { "Microsoft sign-in returned no authorization code" }
+        val data = CloudHttp.form("https://login.microsoftonline.com/common/oauth2/v2.0/token", mapOf(
+            "client_id" to CloudConfiguration.microsoftClientID, "code" to code, "code_verifier" to request.verifier,
+            "grant_type" to "authorization_code", "redirect_uri" to request.redirectURI, "scope" to scope
+        ))
+        return tokenCredential(data, "")
     }
 
     internal fun refresh(refreshToken: String): CloudCredential {
@@ -127,6 +141,9 @@ internal object OneDriveAuthorization {
         check(refresh.isNotBlank()) { "Microsoft did not return an offline refresh token" }
         return CloudCredential(json.getString("access_token"), refresh, Instant.now().epochSecond + json.getLong("expires_in"), "Microsoft account")
     }
+
+    private fun randomURLSafe(byteCount: Int): String = ByteArray(byteCount).also { SecureRandom().nextBytes(it) }
+        .let { Base64.encodeToString(it, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING) }
 }
 
 internal class OneDriveCloudDrive(private val context: Context, override var credential: CloudCredential) : PrivateCloudDrive {
@@ -153,8 +170,9 @@ internal class OneDriveCloudDrive(private val context: Context, override var cre
 
     private fun ensureFolder(name: String): String {
         list().firstOrNull { it.name == name }?.let { return it.id }
+        val rootID = JSONObject(graph("GET", "/v1.0/me/drive/special/approot?\$select=id,name").decodeToString()).getString("id")
         val body = JSONObject().put("name", name).put("folder", JSONObject()).put("@microsoft.graph.conflictBehavior", "replace").toString().encodeToByteArray()
-        return JSONObject(graph("POST", "/v1.0/me/drive/special/approot/children", body, "application/json").decodeToString()).getString("id")
+        return JSONObject(graph("POST", "/v1.0/me/drive/items/${CloudHttp.path(rootID)}/children", body, "application/json").decodeToString()).getString("id")
     }
 
     private fun ensureAppRoot() {
@@ -284,7 +302,8 @@ internal object CloudHttp {
 
     fun request(method: String, url: String, headers: Map<String, String> = emptyMap(), contentType: String? = null, body: ByteArray? = null, fallback: String): ByteArray {
         val response = raw(method, url, headers, contentType, body)
-        if (response.status !in 200..299) error(errorMessage(fallback, response))
+        val target = URL(url)
+        if (response.status !in 200..299) error(errorMessage("$fallback; request=$method ${target.host}${target.path}; request_bytes=${body?.size ?: 0}; response_bytes=${response.body.size}", response))
         return response.body
     }
 
@@ -294,7 +313,7 @@ internal object CloudHttp {
             try { return rawOnce(method, url, headers, contentType, body) }
             catch (error: IOException) {
                 val transient = error is UnknownHostException || error is ConnectException || error is SocketTimeoutException || error.message.orEmpty().contains("resolve host", ignoreCase = true)
-                if (!transient || attempt == retryDelays.size) throw IOException("Network request failed after ${attempt + 1} attempts: ${error.message ?: error.javaClass.simpleName}", error)
+                if (!transient || attempt == retryDelays.size) { val target = URL(url); throw IOException("Network request failed; request=$method ${target.host}${target.path}; attempts=${attempt + 1}; request_bytes=${body?.size ?: 0}; ${error.message ?: error.javaClass.simpleName}", error) }
                 Thread.sleep(retryDelays[attempt])
             }
         }

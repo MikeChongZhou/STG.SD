@@ -436,6 +436,22 @@ internal sealed partial class BitmapRepository : IDisposable
         }
     }
 
+    public bool WeeklyCloudActionDue(DateTimeOffset now)
+    {
+        var today = DateOnly.FromDateTime(now.UtcDateTime);
+        var monday = today.AddDays(-(((int)today.DayOfWeek + 6) % 7));
+        lock (gate)
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT completed_at FROM maintenance_state WHERE action='weekly'";
+            var completed = command.ExecuteScalar() as string;
+            var parsed = DateTimeOffset.TryParse(completed, out var completedAt)
+                ? DateOnly.FromDateTime(completedAt.UtcDateTime)
+                : DateOnly.TryParse(completed, out var completedDay) ? completedDay : DateOnly.MinValue;
+            return parsed < monday;
+        }
+    }
+
     public void CompleteWeeklyAction(DateTimeOffset now)
     {
         lock (gate)

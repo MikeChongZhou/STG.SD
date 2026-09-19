@@ -15,15 +15,16 @@ final class AppModel: ObservableObject {
     @Published var statisticsSummary = UsageStatisticsSummary()
     @Published var syncStatus = "Sync is off."
     @Published var oneDriveAccountLabel = SharedEnvironment.defaults.string(forKey: "oneDriveAccountLabel") ?? "Not signed in"
-    @Published var oneDriveUserCode: String?
     @Published var googleDriveAccountLabel = SharedEnvironment.defaults.string(forKey: "googleDriveAccountLabel") ?? "Not signed in"
     @Published var iCloudAccountLabel = "Checking…"
     @Published private(set) var trackingHistoryPreparing = true
     @Published private(set) var verifiedSyncProvider: SyncProvider?
+    @Published private(set) var privateCloudConnectionInProgress = false
     private var repository: BitmapRepository?
     private var repositoryTask: Task<(BitmapRepository?, String?, Int), Never>?
     private let webAuthentication = IOSWebAuthenticationPresenter()
     private var syncInProgress = false
+    private var syncWarnings: [String] = []
     private var deferredStartupBegan = false
     private var firstFrameRecorded = false
     private static let verifiedSyncProviderKey = "privateCloudVerifiedProvider"
@@ -300,7 +301,12 @@ final class AppModel: ObservableObject {
         guard let repository = await readyRepository() else { return }
         guard !syncInProgress else { SharedEnvironment.diagnosticLog.record("sync request coalesced; another sync is running", category: "sync"); return }
         syncInProgress = true
+        syncWarnings = []
         defer { syncInProgress = false }
+        let progress: SyncProgressHandler = { [weak self] message in
+            self?.syncStatus = message
+            await Task.yield()
+        }
         let provider = settings.syncProvider ?? .none
         guard provider != .none else {
             syncStatus = "Sync is off."
@@ -310,33 +316,48 @@ final class AppModel: ObservableObject {
         if provider == .oneDrive {
             guard let clientID = oneDriveClientID else { syncStatus = "OneDrive isn’t configured in this build."; SharedEnvironment.diagnosticLog.record("sync blocked; provider=oneDrive; missing_client_id", category: "sync"); return }
             guard OneDriveCredentialStore.load(service: SharedEnvironment.oneDriveCredentialService, accessGroup: SharedEnvironment.keychainAccessGroup) != nil else { syncStatus = "Sign in to OneDrive to sync."; SharedEnvironment.diagnosticLog.record("sync blocked; provider=oneDrive; account_not_signed_in", category: "sync"); return }
-            syncStatus = "Syncing with OneDrive…"; SharedEnvironment.diagnosticLog.record("sync begin; provider=oneDrive; local_device=\(settings.deviceID.prefix(8))", category: "sync")
+            syncStatus = "Connecting to OneDrive…"; SharedEnvironment.diagnosticLog.record("sync begin; provider=oneDrive; local_device=\(settings.deviceID.prefix(8))", category: "sync")
             do {
-                let result = try await OneDriveSync(repository: repository, deviceID: settings.deviceID, clientID: clientID, credentialService: SharedEnvironment.oneDriveCredentialService, credentialAccessGroup: SharedEnvironment.keychainAccessGroup).synchronize(settings: settings)
-                syncStatus = "Synced: \(result.uploaded) uploaded, \(result.downloaded) downloaded"
+                let result = try await OneDriveSync(repository: repository, deviceID: settings.deviceID, clientID: clientID, credentialService: SharedEnvironment.oneDriveCredentialService, credentialAccessGroup: SharedEnvironment.keychainAccessGroup).synchronize(settings: settings, progress: progress)
                 markPrivateCloudVerified(.oneDrive)
                 SharedEnvironment.diagnosticLog.record("OneDrive sync complete; uploaded=\(result.uploaded); downloaded=\(result.downloaded); upload_cursor=\(result.uploadCursor ?? "none"); discovered=[\(result.discoveredDeviceIDs.map { String($0.prefix(8)) }.sorted().joined(separator: ","))]; download_cursors=[\(result.downloadCursors.sorted { $0.key < $1.key }.map { "\($0.key.prefix(8))=\($0.value)" }.joined(separator: ","))]", category: "sync")
+                result.warnings.forEach { SharedEnvironment.diagnosticLog.record($0, category: "sync-warning") }
                 await runWeeklyActionIfDue()
+                syncStatus = completionStatus(uploaded: result.uploaded, downloaded: result.downloaded)
                 await refresh()
-            } catch { syncStatus = "OneDrive sync failed. Try again."; SharedEnvironment.diagnosticLog.record("OneDrive sync failed; error=\(error.localizedDescription)", category: "sync") }
+            } catch { syncStatus = "OneDrive sync failed. Try again."; SharedEnvironment.diagnosticLog.record("sync failed; stage=incremental; provider=oneDrive; local_device=\(settings.deviceID.prefix(8)); \(DiagnosticLog.describe(error))", category: "sync") }
             return
         }
         if provider == .googleDrive {
             guard let clientID = googleDriveClientID else { syncStatus = "Google Drive isn’t configured in this build."; SharedEnvironment.diagnosticLog.record("sync blocked; provider=googleDrive; missing_client_id", category: "sync"); return }
             guard GoogleDriveCredentialStore.load(service: SharedEnvironment.googleDriveCredentialService, accessGroup: SharedEnvironment.keychainAccessGroup) != nil else { syncStatus = "Sign in to Google Drive to sync."; return }
-            syncStatus = "Syncing with Google Drive…"; SharedEnvironment.diagnosticLog.record("sync begin; provider=googleDrive; local_device=\(settings.deviceID.prefix(8))", category: "sync")
+            syncStatus = "Connecting to Google Drive…"; SharedEnvironment.diagnosticLog.record("sync begin; provider=googleDrive; local_device=\(settings.deviceID.prefix(8))", category: "sync")
             do {
-                let result = try await GoogleDriveSync(repository: repository, deviceID: settings.deviceID, clientID: clientID, credentialService: SharedEnvironment.googleDriveCredentialService, credentialAccessGroup: SharedEnvironment.keychainAccessGroup).synchronize(settings: settings)
-                syncStatus = "Synced: \(result.uploaded) uploaded, \(result.downloaded) downloaded"
+                let result = try await GoogleDriveSync(repository: repository, deviceID: settings.deviceID, clientID: clientID, credentialService: SharedEnvironment.googleDriveCredentialService, credentialAccessGroup: SharedEnvironment.keychainAccessGroup).synchronize(settings: settings, progress: progress)
                 markPrivateCloudVerified(.googleDrive)
                 SharedEnvironment.diagnosticLog.record("Google Drive sync complete; uploaded=\(result.uploaded); downloaded=\(result.downloaded); upload_cursor=\(result.uploadCursor ?? "none"); discovered=[\(result.discoveredDeviceIDs.map { String($0.prefix(8)) }.sorted().joined(separator: ","))]; download_cursors=[\(result.downloadCursors.sorted { $0.key < $1.key }.map { "\($0.key.prefix(8))=\($0.value)" }.joined(separator: ","))]", category: "sync")
+                result.warnings.forEach { SharedEnvironment.diagnosticLog.record($0, category: "sync-warning") }
                 await runWeeklyActionIfDue()
+                syncStatus = completionStatus(uploaded: result.uploaded, downloaded: result.downloaded)
                 await refresh()
-            } catch { syncStatus = "Google Drive sync failed. Try again."; SharedEnvironment.diagnosticLog.record("Google Drive sync failed; error=\(error.localizedDescription)", category: "sync") }
+            } catch {
+                let detail = error.localizedDescription
+                if detail.localizedCaseInsensitiveContains("invalid_grant") || detail.localizedCaseInsensitiveContains("expired or revoked") {
+                    GoogleDriveCredentialStore.remove(service: SharedEnvironment.googleDriveCredentialService, accessGroup: SharedEnvironment.keychainAccessGroup)
+                    googleDriveAccountLabel = "Not signed in"
+                    SharedEnvironment.defaults.removeObject(forKey: "googleDriveAccountLabel")
+                    clearPrivateCloudVerification(ifMatching: .googleDrive)
+                    syncStatus = "Google Drive authorization expired. Sign in again."
+                    SharedEnvironment.diagnosticLog.record("Google Drive credential cleared after authorization expired; stage=incremental; provider=googleDrive; \(DiagnosticLog.describe(error))", category: "sync")
+                } else {
+                    syncStatus = "Google Drive sync failed. Try again."
+                    SharedEnvironment.diagnosticLog.record("sync failed; stage=incremental; provider=googleDrive; local_device=\(settings.deviceID.prefix(8)); \(DiagnosticLog.describe(error))", category: "sync")
+                }
+            }
             return
         }
         guard provider == .iCloudDrive else { return }
-        syncStatus = "Syncing with iCloud Drive…"
+        syncStatus = "Connecting to iCloud Drive…"
         SharedEnvironment.diagnosticLog.record("sync begin; provider=iCloudDrive; local_device=\(settings.deviceID.prefix(8))", category: "sync")
         do {
             guard let folder = await Task.detached(priority: .utility, operation: { SharedEnvironment.cloudFolder() }).value else {
@@ -344,24 +365,24 @@ final class AppModel: ObservableObject {
             }
             iCloudAccountLabel = "Apple Account on This Device"
             let coordinator = CloudFolderSync(repository: repository, deviceID: settings.deviceID)
+            syncStatus = "Uploading device settings…"
             try await coordinator.uploadSettings(folder: folder, settings: settings)
-            let result = try await coordinator.incrementalSync(folder: folder, uploadCursorTarget: "iCloudDrive")
-            syncStatus = "Synced: \(result.uploaded) uploaded, \(result.downloaded) downloaded"
+            let result = try await coordinator.incrementalSync(folder: folder, uploadCursorTarget: "iCloudDrive", progress: progress)
             markPrivateCloudVerified(.iCloudDrive)
             let discovered = result.discoveredDeviceIDs.map { String($0.prefix(8)) }.sorted().joined(separator: ",")
             SharedEnvironment.diagnosticLog.record("sync complete; uploaded=\(result.uploaded); downloaded=\(result.downloaded); upload_cursor=\(result.uploadCursor ?? "none"); discovered=[\(discovered)]; download_cursors=[\(result.downloadCursors.sorted { $0.key < $1.key }.map { "\($0.key.prefix(8))=\($0.value)" }.joined(separator: ","))]", category: "sync")
+            result.warnings.forEach { SharedEnvironment.diagnosticLog.record($0, category: "sync-warning") }
             await runWeeklyActionIfDue()
+            syncStatus = completionStatus(uploaded: result.uploaded, downloaded: result.downloaded)
             await refresh()
         } catch {
             syncStatus = "Sync failed. Try again."
-            SharedEnvironment.diagnosticLog.record("iCloud Drive sync failed; error=\(error.localizedDescription)", category: "sync")
+            SharedEnvironment.diagnosticLog.record("sync failed; stage=incremental; provider=iCloudDrive; local_device=\(settings.deviceID.prefix(8)); \(DiagnosticLog.describe(error))", category: "sync")
         }
     }
 
     private func runWeeklyActionIfDue() async {
         guard let repository = await readyRepository() else { return }
-        do { guard try repository.weeklyActionDue() else { return } }
-        catch { SharedEnvironment.diagnosticLog.record("weekly action due check failed: \(error.localizedDescription)", category: "sync"); return }
         var calendar = Calendar(identifier: .iso8601); calendar.timeZone = STGTime.utc
         let today = calendar.startOfDay(for: .now)
         guard let currentWeek = calendar.dateInterval(of: .weekOfYear, for: today),
@@ -371,18 +392,43 @@ final class AppModel: ObservableObject {
         let totalCursorText = try? repository.latestOpenRouterWeekEnd()
         let totalStart = totalCursorText.flatMap(formatter.date(from:)).flatMap { calendar.date(byAdding: .day, value: 1, to: $0) } ?? first
         let start = totalStart
-        SharedEnvironment.diagnosticLog.record("weekly action begin; openrouter_start=\(formatter.string(from: start)); openrouter_end=\(formatter.string(from: lastSunday)); latest_week_cursor=\(totalCursorText ?? "none")", category: "sync")
-        do {
-            let values = start <= lastSunday ? try await OpenRouterTrackingService.shared.weeklyHistory(startDate: formatter.string(from: start), endDate: formatter.string(from: lastSunday)) : []
-            if start <= lastSunday && values.isEmpty { throw STGError.invalidDocument("OpenRouter returned no weekly model-activity rows; detail cursor was not advanced") }
-            try repository.upsertOpenRouterWeeks(values)
-            try repository.completeOpenRouterDetailWeek(through: formatter.string(from: lastSunday))
-            let previousMonday = calendar.date(byAdding: .day, value: -6, to: lastSunday) ?? lastSunday
-            let maintenance = try await performWeeklyCloudMaintenance(currentWeekStart: formatter.string(from: currentWeek.start), previousWeekStart: formatter.string(from: previousMonday), previousWeekEnd: formatter.string(from: lastSunday))
-            try repository.completeWeeklyAction(deviceID: settings.deviceID)
-            SharedEnvironment.diagnosticLog.record("weekly action complete; openrouter_rows=\(values.count); weeks=\(Set(values.map(\.weekStart)).count); bitmap_uploaded=\(maintenance.uploaded); daily_deleted=\(maintenance.deletedDaily); weekly_moved=\(maintenance.movedWeekly); completion_recorded=true", category: "sync")
-            await runYearlyActionIfDue()
-        } catch { SharedEnvironment.diagnosticLog.record("weekly action failed; completion_not_recorded=true; error=\(error.localizedDescription)", category: "sync") }
+        let cloudDue: Bool
+        do { cloudDue = try repository.weeklyCloudActionDue() }
+        catch { SharedEnvironment.diagnosticLog.record("weekly cloud due check failed; \(DiagnosticLog.describe(error))", category: "sync"); return }
+        let trackingDue = start <= lastSunday
+        guard cloudDue || trackingDue else { return }
+        SharedEnvironment.diagnosticLog.record("weekly action begin; cloud_due=\(cloudDue); tracking_due=\(trackingDue); openrouter_start=\(formatter.string(from: start)); openrouter_end=\(formatter.string(from: lastSunday)); latest_week_cursor=\(totalCursorText ?? "none")", category: "sync")
+        var cloudCompleted = false
+        if cloudDue {
+            syncStatus = "Updating weekly archive…"
+            do {
+                let previousMonday = calendar.date(byAdding: .day, value: -6, to: lastSunday) ?? lastSunday
+                let maintenance = try await performWeeklyCloudMaintenance(currentWeekStart: formatter.string(from: currentWeek.start), previousWeekStart: formatter.string(from: previousMonday), previousWeekEnd: formatter.string(from: lastSunday))
+                try repository.completeWeeklyAction(deviceID: settings.deviceID); cloudCompleted = true
+                SharedEnvironment.diagnosticLog.record("weekly cloud maintenance complete; bitmap_uploaded=\(maintenance.uploaded); daily_deleted=\(maintenance.deletedDaily); weekly_moved=\(maintenance.movedWeekly); history_ready=true; completion_recorded=true", category: "sync")
+            } catch {
+                syncWarnings.append("Weekly archive failed")
+                SharedEnvironment.diagnosticLog.record("weekly cloud maintenance failed; completion_not_recorded=true; \(DiagnosticLog.describe(error))", category: "sync")
+            }
+        }
+        if trackingDue {
+            syncStatus = "Updating tracking data…"
+            do {
+                let values = try await OpenRouterTrackingService.shared.weeklyHistory(startDate: formatter.string(from: start), endDate: formatter.string(from: lastSunday))
+                if values.isEmpty { throw STGError.invalidDocument("OpenRouter returned no weekly model-activity rows; detail cursor was not advanced") }
+                try repository.upsertOpenRouterWeeks(values); try repository.completeOpenRouterDetailWeek(through: formatter.string(from: lastSunday))
+                SharedEnvironment.diagnosticLog.record("weekly tracking complete; openrouter_rows=\(values.count); weeks=\(Set(values.map(\.weekStart)).count); completion_recorded=true", category: "sync")
+            } catch {
+                syncWarnings.append("Tracking update failed")
+                SharedEnvironment.diagnosticLog.record("weekly tracking failed; start=\(formatter.string(from: start)); end=\(formatter.string(from: lastSunday)); completion_not_recorded=true; \(DiagnosticLog.describe(error))", category: "sync")
+            }
+        }
+        if cloudCompleted { await runYearlyActionIfDue() }
+    }
+
+    private func completionStatus(uploaded: Int, downloaded: Int) -> String {
+        let base = "Synced · \(uploaded) activity files uploaded, \(downloaded) downloaded"
+        return syncWarnings.isEmpty ? base : base + " · " + syncWarnings.joined(separator: " · ")
     }
 
     private func performWeeklyCloudMaintenance(currentWeekStart: String, previousWeekStart: String, previousWeekEnd: String) async throws -> (uploaded: Int, deletedDaily: Int, movedWeekly: Int) {
@@ -422,7 +468,7 @@ final class AppModel: ObservableObject {
             }
             try repository.completeYearlyAction(deviceID: settings.deviceID)
             SharedEnvironment.diagnosticLog.record("yearly action complete; year=\(year); uploaded=\(result.uploaded); deleted_bitmaps=\(result.deletedBitmaps); deleted_weekly=\(result.deletedWeekly)", category: "sync")
-        } catch { SharedEnvironment.diagnosticLog.record("yearly action failed; year=\(year); error=\(error.localizedDescription)", category: "sync") }
+        } catch { SharedEnvironment.diagnosticLog.record("yearly action failed; year=\(year); stage=archive; \(DiagnosticLog.describe(error))", category: "sync") }
     }
 
     func openRouterWeeks(models: [String]) -> [OpenRouterWeeklyRankingRow] { (try? repository?.openRouterWeeks(models: models)) ?? [] }
@@ -434,18 +480,17 @@ final class AppModel: ObservableObject {
             syncStatus = "OneDrive isn’t configured in this build."
             SharedEnvironment.diagnosticLog.record("OneDrive sign-in blocked; missing_client_id", category: "sync"); return
         }
-        syncStatus = "Requesting a Microsoft sign-in code…"; SharedEnvironment.diagnosticLog.record("OneDrive sign-in begin", category: "sync")
+        guard !privateCloudConnectionInProgress else { return }
+        privateCloudConnectionInProgress = true
+        syncStatus = "Opening Microsoft sign-in…"; SharedEnvironment.diagnosticLog.record("OneDrive PKCE sign-in begin", category: "sync")
         Task {
+            defer { privateCloudConnectionInProgress = false }
             do {
                 let client = OneDriveClient(clientID: clientID)
-                let code = try await client.requestDeviceCode(); oneDriveUserCode = code.userCode
-                SharedEnvironment.diagnosticLog.record("OneDrive device code issued; expires_in=\(code.expiresIn)s; polling_interval=\(code.interval)s", category: "sync")
-                UIPasteboard.general.string = code.userCode
-                webAuthentication.present(url: code.verificationURL)
-                syncStatus = "Sign-in code \(code.userCode) copied. Complete sign-in in your browser."
-                let credential = try await client.waitForAuthorization(code)
+                let request = try await client.authorizationRequest(callbackScheme: oneDriveCallbackScheme)
+                let callback = try await webAuthentication.authenticate(url: request.authorizationURL, callbackScheme: request.callbackScheme)
+                let credential = try await client.credential(callbackURL: callback, request: request)
                 SharedEnvironment.diagnosticLog.record("OneDrive authorization complete; refresh_token_present=\(!credential.refreshToken.isEmpty)", category: "sync")
-                webAuthentication.cancel()
                 try OneDriveCredentialStore.save(credential, service: SharedEnvironment.oneDriveCredentialService, accessGroup: SharedEnvironment.keychainAccessGroup)
                 guard OneDriveCredentialStore.load(service: SharedEnvironment.oneDriveCredentialService, accessGroup: SharedEnvironment.keychainAccessGroup) != nil else {
                     throw STGError.invalidDocument("Microsoft credential was written but could not be read from the shared Keychain access group")
@@ -453,13 +498,13 @@ final class AppModel: ObservableObject {
                 SharedEnvironment.diagnosticLog.record("OneDrive credential stored; access_group=shared", category: "sync")
                 let account = try await client.account(using: credential)
                 SharedEnvironment.diagnosticLog.record("OneDrive account profile loaded", category: "sync")
-                oneDriveAccountLabel = "\(account.displayName) (\(account.email))"; oneDriveUserCode = nil
+                oneDriveAccountLabel = "\(account.displayName) (\(account.email))"
                 SharedEnvironment.defaults.set(oneDriveAccountLabel, forKey: "oneDriveAccountLabel")
                 syncStatus = "Signed in to OneDrive as \(oneDriveAccountLabel)."
                 SharedEnvironment.diagnosticLog.record("OneDrive sign-in complete; account=authorized", category: "sync")
                 await sync()
             } catch {
-                webAuthentication.cancel(); oneDriveUserCode = nil
+                webAuthentication.cancel()
                 let detail = error.localizedDescription
                 syncStatus = "OneDrive sign-in failed. Try again."
                 SharedEnvironment.diagnosticLog.record("OneDrive sign-in failed; detail=\(detail); type=\(String(reflecting: type(of: error)))", category: "sync")
@@ -485,8 +530,11 @@ final class AppModel: ObservableObject {
         guard let clientID = googleDriveClientID else {
             syncStatus = "Google Drive isn’t configured in this build."; SharedEnvironment.diagnosticLog.record("Google Drive sign-in blocked; missing_client_id", category: "sync"); return
         }
+        guard !privateCloudConnectionInProgress else { return }
+        privateCloudConnectionInProgress = true
         syncStatus = "Opening Google Drive sign-in…"; SharedEnvironment.diagnosticLog.record("Google Drive sign-in begin", category: "sync")
         Task {
+            defer { privateCloudConnectionInProgress = false }
             do {
                 let client = GoogleDriveClient(clientID: clientID)
                 let request = try await client.authorizationRequest(callbackScheme: googleCallbackScheme)
@@ -517,13 +565,26 @@ final class AppModel: ObservableObject {
         case .iCloudDrive:
             if FileManager.default.ubiquityIdentityToken != nil {
                 iCloudAccountLabel = "Apple Account on This Device"; syncStatus = "iCloud Drive is connected."
-                Task { await sync() }
+                beginPrivateCloudSync()
             } else {
                 iCloudAccountLabel = "Not signed in"; syncStatus = "Sign in to your Apple Account and turn on iCloud Drive in Settings."
                 openAppleAccountSettings()
             }
-        case .oneDrive: if OneDriveCredentialStore.load(service: SharedEnvironment.oneDriveCredentialService, accessGroup: SharedEnvironment.keychainAccessGroup) == nil { requestOneDriveSignIn() }
-        case .googleDrive: if GoogleDriveCredentialStore.load(service: SharedEnvironment.googleDriveCredentialService, accessGroup: SharedEnvironment.keychainAccessGroup) == nil { requestGoogleDriveSignIn() }
+        case .oneDrive:
+            if OneDriveCredentialStore.load(service: SharedEnvironment.oneDriveCredentialService, accessGroup: SharedEnvironment.keychainAccessGroup) == nil { requestOneDriveSignIn() }
+            else { beginPrivateCloudSync() }
+        case .googleDrive:
+            if GoogleDriveCredentialStore.load(service: SharedEnvironment.googleDriveCredentialService, accessGroup: SharedEnvironment.keychainAccessGroup) == nil { requestGoogleDriveSignIn() }
+            else { beginPrivateCloudSync() }
+        }
+    }
+
+    private func beginPrivateCloudSync() {
+        guard !privateCloudConnectionInProgress else { return }
+        privateCloudConnectionInProgress = true
+        Task {
+            defer { privateCloudConnectionInProgress = false }
+            await sync()
         }
     }
 
@@ -576,6 +637,8 @@ final class AppModel: ObservableObject {
         let identifier = clientID.hasSuffix(suffix) ? String(clientID.dropLast(suffix.count)) : clientID
         return "com.googleusercontent.apps.\(identifier)"
     }
+
+    private var oneDriveCallbackScheme: String { "msauth.com.timbertrail.screentimeguardian.ios" }
 
     func clearTodayEstimate() async {
         guard let repository = await readyRepository() else { return }

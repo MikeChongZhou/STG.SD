@@ -1,5 +1,14 @@
+import CryptoKit
 import Foundation
 import Security
+
+public struct OneDriveAuthorizationRequest: Sendable {
+    public var authorizationURL: URL
+    public var redirectURI: String
+    public var callbackScheme: String
+    public var state: String
+    public var codeVerifier: String
+}
 
 public struct OneDriveDeviceCode: Sendable {
     public var deviceCode: String
@@ -30,6 +39,42 @@ public actor OneDriveClient {
     public init(clientID: String, session: URLSession = .shared) {
         self.clientID = clientID.trimmingCharacters(in: .whitespacesAndNewlines)
         self.session = session
+    }
+
+    public func authorizationRequest(callbackScheme: String) throws -> OneDriveAuthorizationRequest {
+        guard !clientID.isEmpty else { throw STGError.invalidDocument("Microsoft OneDrive Client ID is missing from the app configuration") }
+        let verifier = try randomURLSafe(byteCount: 48)
+        let challenge = Data(SHA256.hash(data: Data(verifier.utf8))).base64URLEncodedString()
+        let state = try randomURLSafe(byteCount: 24)
+        let redirect = "\(callbackScheme)://auth"
+        var components = URLComponents(string: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize")!
+        components.queryItems = [
+            .init(name: "client_id", value: clientID), .init(name: "response_type", value: "code"),
+            .init(name: "redirect_uri", value: redirect), .init(name: "response_mode", value: "query"),
+            .init(name: "scope", value: scope), .init(name: "code_challenge", value: challenge),
+            .init(name: "code_challenge_method", value: "S256"), .init(name: "state", value: state),
+            .init(name: "prompt", value: "select_account")
+        ]
+        guard let url = components.url else { throw STGError.invalidDocument("Unable to construct Microsoft sign-in URL") }
+        return .init(authorizationURL: url, redirectURI: redirect, callbackScheme: callbackScheme, state: state, codeVerifier: verifier)
+    }
+
+    public func credential(callbackURL: URL, request authorization: OneDriveAuthorizationRequest) async throws -> OneDriveCredential {
+        guard let components = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false) else {
+            throw STGError.invalidDocument("Microsoft returned an invalid sign-in response")
+        }
+        let values = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+        if let error = values["error"] {
+            let detail = values["error_description"].flatMap { $0.isEmpty ? nil : $0 } ?? error
+            throw STGError.invalidDocument("Microsoft sign-in failed: \(detail)")
+        }
+        guard values["state"] == authorization.state else { throw STGError.invalidDocument("Microsoft sign-in state did not match") }
+        guard let code = values["code"], !code.isEmpty else { throw STGError.invalidDocument("Microsoft sign-in returned no authorization code") }
+        let data = try await postForm(url: URL(string: "https://login.microsoftonline.com/common/oauth2/v2.0/token")!, items: [
+            "client_id": clientID, "code": code, "code_verifier": authorization.codeVerifier,
+            "grant_type": "authorization_code", "redirect_uri": authorization.redirectURI, "scope": scope
+        ])
+        return try credential(from: data)
     }
 
     public func requestDeviceCode() async throws -> OneDriveDeviceCode {
@@ -88,7 +133,9 @@ public actor OneDriveClient {
 
     public func ensureFolder(name: String, using credential: OneDriveCredential) async throws -> String {
         if let existing = try await listFiles(using: credential).first(where: { $0.name == name }) { return existing.id }
-        var request = URLRequest(url: URL(string: "https://graph.microsoft.com/v1.0/me/drive/special/approot/children")!); request.httpMethod = "POST"
+        let rootData = try await graph(path: "/v1.0/me/drive/special/approot?$select=id,name", operation: "read App Folder identity", credential: credential)
+        let rootID = try JSONDecoder().decode(OneDriveFile.self, from: rootData).id
+        var request = URLRequest(url: URL(string: "https://graph.microsoft.com/v1.0/me/drive/items/\(rootID)/children")!); request.httpMethod = "POST"
         request.httpBody = try JSONSerialization.data(withJSONObject: ["name": name, "folder": [:], "@microsoft.graph.conflictBehavior": "replace"])
         request.setValue("application/json", forHTTPHeaderField: "Content-Type"); request.setValue("Bearer \(credential.accessToken)", forHTTPHeaderField: "Authorization")
         let (data, response) = try await session.data(for: request); try Self.validate(response, data: data, operation: "create App Folder subfolder")
@@ -193,7 +240,17 @@ public actor OneDriveClient {
 
     private func credential(from data: Data, fallbackRefreshToken: String = "") throws -> OneDriveCredential {
         let token = try JSONDecoder().decode(TokenResponse.self, from: data)
-        return OneDriveCredential(accessToken: token.accessToken, refreshToken: token.refreshToken ?? fallbackRefreshToken, expiresAt: Date().addingTimeInterval(TimeInterval(token.expiresIn)))
+        let refresh = token.refreshToken ?? fallbackRefreshToken
+        guard !refresh.isEmpty else { throw STGError.invalidDocument("Microsoft did not return an offline refresh token; sign in again") }
+        return OneDriveCredential(accessToken: token.accessToken, refreshToken: refresh, expiresAt: Date().addingTimeInterval(TimeInterval(token.expiresIn)))
+    }
+
+    private func randomURLSafe(byteCount: Int) throws -> String {
+        var bytes = [UInt8](repeating: 0, count: byteCount)
+        guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else {
+            throw STGError.invalidDocument("Unable to create Microsoft OAuth security nonce")
+        }
+        return Data(bytes).base64URLEncodedString()
     }
 
     private static func validate(_ response: URLResponse, data: Data, operation: String) throws {
@@ -207,6 +264,12 @@ public actor OneDriveClient {
             let requestIDSuffix = http.value(forHTTPHeaderField: "request-id").map { "; request_id=\($0)" } ?? ""
             throw STGError.invalidDocument("Microsoft \(operation) failed (HTTP \(http.statusCode)\(codeSuffix)\(requestIDSuffix)): \(message)")
         }
+    }
+}
+
+private extension Data {
+    func base64URLEncodedString() -> String {
+        base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
     }
 }
 

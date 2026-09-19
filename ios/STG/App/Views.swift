@@ -616,6 +616,8 @@ private struct IOSCloudSetupView: View {
     @State private var android = false
     @State private var windows = false
     @State private var china = false
+    @State private var attemptedConnection = false
+    @State private var completingVerifiedSetup = false
     private var recommendation: SyncProvider { (android || windows) ? (china ? .oneDrive : .googleDrive) : .iCloudDrive }
     var body: some View {
         NavigationStack {
@@ -636,29 +638,80 @@ private struct IOSCloudSetupView: View {
                     Text(model.syncStatus).font(.caption).foregroundStyle(.secondary)
                     if model.privateCloudSetupComplete {
                         Label("Private Cloud Ready", systemImage: "checkmark.seal.fill").foregroundStyle(.green)
+                    } else if model.privateCloudConnectionInProgress {
+                        Button("Connecting and Syncing…") { }
+                            .disabled(true)
                     } else if (model.settings.syncProvider ?? .none) != .none {
                         Text("Connect your account, then complete one sync.").font(.caption).foregroundStyle(.secondary)
-                        Button("Verify and Sync") { Task { await model.sync() } }
+                        if !requiresVerifiedConnection || attemptedConnection {
+                            Button("Verify and Sync") { retryConnection() }
+                        }
                     }
                 }
             }.navigationTitle("Private Cloud").toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }.disabled(model.privateCloudConnectionInProgress)
+                }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { model.save(); dismiss(); onDone?() }
-                        .disabled(requiresVerifiedConnection && !model.privateCloudSetupComplete)
+                    Button { model.save(); dismiss(); onDone?() } label: {
+                        HStack(spacing: 6) {
+                            if model.privateCloudConnectionInProgress { ProgressView().controlSize(.small) }
+                            Text("Done")
+                        }
+                    }
+                    .disabled(model.privateCloudConnectionInProgress || (requiresVerifiedConnection && !model.privateCloudSetupComplete))
                 }
             }
         }.onAppear { if (model.settings.syncProvider ?? SyncProvider.none) == SyncProvider.none { model.selectSyncProvider(recommendation) } }
             .onChange(of: android) { _, _ in model.selectSyncProvider(recommendation) }
             .onChange(of: windows) { _, _ in model.selectSyncProvider(recommendation) }
             .onChange(of: china) { _, _ in model.selectSyncProvider(recommendation) }
+            .onChange(of: model.privateCloudSetupComplete) { _, _ in finishVerifiedSetupIfReady() }
+            .onChange(of: model.privateCloudConnectionInProgress) { _, _ in finishVerifiedSetupIfReady() }
     }
     @ViewBuilder private var connection: some View {
         switch model.settings.syncProvider ?? .none {
         case .none: Text("No cloud account is connected.")
-        case .iCloudDrive: LabeledContent("Apple Account", value: model.iCloudAccountLabel); Button("Use iCloud Drive") { model.connect(to: .iCloudDrive) }; Button("Apple Account Settings") { model.openAppleAccountSettings() }
-        case .oneDrive: LabeledContent("Microsoft Account", value: model.oneDriveAccountLabel); if let code = model.oneDriveUserCode { Text("Sign-in code: \(code)").textSelection(.enabled) }; Button("Sign In") { model.requestOneDriveSignIn() }; if model.oneDriveAccountLabel != "Not signed in" { Button("Sign Out", role: .destructive) { model.signOutOneDrive() } }
-        case .googleDrive: LabeledContent("Google Account", value: model.googleDriveAccountLabel); Button("Sign In") { model.requestGoogleDriveSignIn() }; if model.googleDriveAccountLabel != "Not signed in" { Button("Sign Out", role: .destructive) { model.signOutGoogleDrive() } }
+        case .iCloudDrive:
+            LabeledContent("Apple Account", value: model.iCloudAccountLabel)
+            Button("Use iCloud Drive") { beginSignIn(to: .iCloudDrive) }.disabled(model.privateCloudConnectionInProgress)
+            Button("Apple Account Settings") { model.openAppleAccountSettings() }.disabled(model.privateCloudConnectionInProgress)
+        case .oneDrive:
+            LabeledContent("Microsoft Account", value: model.oneDriveAccountLabel)
+            Button("Sign In") { beginSignIn(to: .oneDrive) }.disabled(model.privateCloudConnectionInProgress)
+            if model.oneDriveAccountLabel != "Not signed in" { Button("Sign Out", role: .destructive) { model.signOutOneDrive() }.disabled(model.privateCloudConnectionInProgress) }
+        case .googleDrive:
+            LabeledContent("Google Account", value: model.googleDriveAccountLabel)
+            Button("Sign In") { beginSignIn(to: .googleDrive) }.disabled(model.privateCloudConnectionInProgress)
+            if model.googleDriveAccountLabel != "Not signed in" { Button("Sign Out", role: .destructive) { model.signOutGoogleDrive() }.disabled(model.privateCloudConnectionInProgress) }
+        }
+    }
+    private func beginSignIn(to provider: SyncProvider) {
+        guard provider != .none else { return }
+        attemptedConnection = true
+        switch provider {
+        case .oneDrive: model.requestOneDriveSignIn()
+        case .googleDrive: model.requestGoogleDriveSignIn()
+        case .iCloudDrive: model.connect(to: provider)
+        case .none: break
+        }
+    }
+    private func retryConnection() {
+        let provider = model.settings.syncProvider ?? .none
+        guard provider != .none else { return }
+        attemptedConnection = true
+        model.connect(to: provider)
+    }
+    private func finishVerifiedSetupIfReady() {
+        guard requiresVerifiedConnection, attemptedConnection, model.privateCloudSetupComplete,
+              !model.privateCloudConnectionInProgress, !completingVerifiedSetup else { return }
+        completingVerifiedSetup = true
+        Task {
+            try? await Task.sleep(for: .milliseconds(500))
+            guard model.privateCloudSetupComplete else { completingVerifiedSetup = false; return }
+            model.save()
+            dismiss()
+            onDone?()
         }
     }
 }
@@ -680,6 +733,7 @@ struct TrackingView: View {
     @ObservedObject var model: AppModel
     @State private var rows: [OpenRouterRankingRow] = []
     @State private var weeklyRows: [OpenRouterWeeklyRankingRow] = []
+    @State private var weeklyModels: [String] = []
     @State private var status = "Public data. No OpenRouter account or API key is required."
     @State private var viewIndex = 1
     @State private var customStart = Calendar.current.date(byAdding: .day, value: -7, to: .now) ?? .now
@@ -710,7 +764,11 @@ struct TrackingView: View {
                     Picker("Metric", selection: $metric) { ForEach(OpenRouterWeeklyMetric.allCases) { Text($0.label).tag($0) } }
                     Chart(weeklyRows) { row in
                         weeklyMarks(row)
-                    }.chartLegend(position: .bottom, alignment: .leading).frame(minHeight: 360)
+                    }
+                    .chartForegroundStyleScale(domain: weeklyModels, range: weeklyModelColors)
+                    .chartLegend(.hidden)
+                    .frame(height: 360)
+                    weeklyModelLegend
                     Text("Weekly data updates during the weekly sync.").font(.caption).foregroundStyle(.secondary)
                 }
                 Text(status).font(.caption).foregroundStyle(.secondary)
@@ -721,6 +779,27 @@ struct TrackingView: View {
             .onChange(of: metric) { _ in if viewIndex == 1 { loadWeeks() } }
             .onChange(of: model.trackingHistoryPreparing) { preparing in if !preparing && viewIndex == 1 { loadWeeks() } }
             .sheet(item: $trackingShare) { item in ActivityShareView(urls: item.urls) { _ in trackingShare = nil } }
+    }
+    private let weeklyModelColors: [Color] = [
+        .blue, .orange, .green, .red, .purple,
+        .pink, .teal, .indigo, .mint, .brown
+    ]
+    private var weeklyModelLegend: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(weeklyModels.enumerated()), id: \.element) { index, name in
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(weeklyModelColors[index % weeklyModelColors.count])
+                        .frame(width: 8, height: 8)
+                    Text(name).lineLimit(1)
+                }
+                .font(.caption2)
+                .accessibilityElement(children: .combine)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 2)
+        .accessibilityLabel("Models shown in weekly trends")
     }
     private var sortedRows: [OpenRouterRankingRow] { sortedOpenRouterRows(rows, by: sortField, direction: sortDirection) }
     @ChartContentBuilder private func weeklyMarks(_ row: OpenRouterWeeklyRankingRow) -> some ChartContent {
@@ -775,10 +854,12 @@ struct TrackingView: View {
     private func loadWeeks() {
         guard !model.trackingHistoryPreparing else {
             weeklyRows = []
+            weeklyModels = []
             status = "Preparing tracking history…"
             return
         }
         let models = model.latestOpenRouterTopModels(metric: metric)
+        weeklyModels = models
         weeklyRows = model.openRouterWeeks(models: models)
         status = weeklyRows.isEmpty ? "No weekly data is available for \(metric.label) yet." : "Showing \(metric.label) for the top \(models.count) models in the latest completed week."
     }

@@ -626,6 +626,21 @@ public final class BitmapRepository: @unchecked Sendable {
         }
     }
 
+    public func weeklyCloudActionDue(now: Date = .now) throws -> Bool {
+        var calendar = Calendar(identifier: .iso8601); calendar.timeZone = STGTime.utc
+        let today = calendar.startOfDay(for: now), monday = calendar.dateInterval(of: .weekOfYear, for: today)?.start ?? today
+        let formatter = DateFormatter(); formatter.calendar = calendar; formatter.timeZone = STGTime.utc; formatter.locale = Locale(identifier: "en_US_POSIX"); formatter.dateFormat = "yyyy-MM-dd"
+        let mondayKey = formatter.string(from: monday)
+        return try queue.sync {
+            var statement: OpaquePointer?
+            guard sqlite3_prepare_v2(database, "SELECT completed_at FROM maintenance_state WHERE action='weekly'", -1, &statement, nil) == SQLITE_OK else { throw error() }
+            defer { sqlite3_finalize(statement) }
+            var completed = ""
+            if sqlite3_step(statement) == SQLITE_ROW, let text = sqlite3_column_text(statement, 0) { completed = String(cString: text) }
+            return String(completed.prefix(10)) < mondayKey
+        }
+    }
+
     public func completeWeeklyAction(deviceID: String? = nil, at: Date = .now) throws {
         try queue.sync {
             let sql = "INSERT INTO maintenance_state(action,completed_at,updated_at) VALUES('weekly',?,?) ON CONFLICT(action) DO UPDATE SET completed_at=excluded.completed_at,updated_at=excluded.updated_at"

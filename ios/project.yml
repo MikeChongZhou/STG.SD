@@ -21,7 +21,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.timbertrail.screentimeguardian.ios.core
         GENERATE_INFOPLIST_FILE: YES
         MARKETING_VERSION: "1.1.8"
-        CURRENT_PROJECT_VERSION: "21"
+        CURRENT_PROJECT_VERSION: "23"
     dependencies:
       - sdk: libsqlite3.tbd
   STG:
@@ -46,6 +46,7 @@ targets:
     entitlements:
       path: STG/App/STG.entitlements
       properties:
+        com.apple.developer.device-information.user-assigned-device-name: true
         com.apple.developer.family-controls: true
         com.apple.security.application-groups:
           - group.com.timbertrail.screentimeguardian
@@ -62,7 +63,7 @@ targets:
       properties:
         CFBundleDisplayName: Screen Time Guardian
         CFBundleShortVersionString: "1.1.8"
-        CFBundleVersion: "21"
+        CFBundleVersion: "23"
         ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
         STGOneDriveClientID: "a4ff927c-e45a-413e-b5c3-45b026719171"
@@ -77,6 +78,9 @@ targets:
           - CFBundleURLName: STG Google OAuth
             CFBundleURLSchemes:
               - com.googleusercontent.apps.552360735383-alblvd6inepkvg6cni453j1t6pl6gf0g
+          - CFBundleURLName: STG Microsoft OAuth
+            CFBundleURLSchemes:
+              - msauth.com.timbertrail.screentimeguardian.ios
         BGTaskSchedulerPermittedIdentifiers:
           - com.timbertrail.screentimeguardian.ios.refresh
         UIBackgroundModes:
@@ -127,7 +131,7 @@ targets:
       properties:
         CFBundleDisplayName: STG Monitor
         CFBundleShortVersionString: "1.1.8"
-        CFBundleVersion: "21"
+        CFBundleVersion: "23"
         STGOneDriveClientID: "a4ff927c-e45a-413e-b5c3-45b026719171"
         STGKeychainAccessGroup: "$(AppIdentifierPrefix)group.com.timbertrail.screentimeguardian"
         STGGoogleClientID: "552360735383-alblvd6inepkvg6cni453j1t6pl6gf0g.apps.googleusercontent.com"

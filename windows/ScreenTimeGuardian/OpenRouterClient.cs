@@ -205,12 +205,16 @@ internal sealed class OpenRouterClient
         var tasks = candidates.Select(async candidate =>
         {
             await gate.WaitAsync(cancellationToken);
-            try { return await FetchDailyActivityAsync(candidate, startDate, endDate, cancellationToken); }
+            try { return (Days: await FetchDailyActivityAsync(candidate, startDate, endDate, cancellationToken), Error: (Exception?)null, Model: candidate.Permaslug); }
             catch (OperationCanceledException) { throw; }
-            catch { return Array.Empty<DailyUsage>(); }
+            catch (Exception error) { return (Days: (IReadOnlyList<DailyUsage>)Array.Empty<DailyUsage>(), Error: error, Model: candidate.Permaslug); }
             finally { gate.Release(); }
         }).ToArray();
-        var days = (await Task.WhenAll(tasks)).SelectMany(value => value).ToList();
+        var attempts = await Task.WhenAll(tasks);
+        var days = attempts.SelectMany(value => value.Days).ToList();
+        var failures = attempts.Where(value => value.Error is not null).ToList();
+        if (days.Count == 0 && failures.Count > 0)
+            throw new InvalidOperationException($"OpenRouter weekly activity failed for all {failures.Count} candidates; samples=[{string.Join(" | ", failures.Take(3).Select(value => $"model={value.Model}; {DiagnosticLog.Describe(value.Error!)}"))}]");
         Dictionary<string, Price> prices;
         try { prices = await FetchPricesAsync(candidates, cancellationToken); }
         catch (OperationCanceledException) { throw; }

@@ -38,6 +38,12 @@ public final class DiagnosticLog: @unchecked Sendable {
         }
     }
 
+    public static func describe(_ error: Error) -> String {
+        let value = error as NSError
+        let type = String(reflecting: Swift.type(of: error))
+        return "error_type=\(type); domain=\(value.domain); code=\(value.code); error=\(value.localizedDescription.replacingOccurrences(of: "\n", with: " "))"
+    }
+
     public func data() -> Data {
         queue.sync { combinedData() }
     }

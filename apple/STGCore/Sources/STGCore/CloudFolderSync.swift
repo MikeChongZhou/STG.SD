@@ -8,6 +8,7 @@ public actor CloudFolderSync {
         public var discoveredDeviceIDs: Set<String> = []
         public var downloadCursors: [String: String] = [:]
         public var uploadCursor: String?
+        public var warnings: [String] = []
     }
 
     private let repository: BitmapRepository
@@ -21,10 +22,13 @@ public actor CloudFolderSync {
         decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
     }
 
-    public func incrementalSync(folder: URL, now: Date = .now, days: Int = 14, uploadCursorTarget: String = "cloudFolder") throws -> Result {
+    public func incrementalSync(folder: URL, now: Date = .now, days: Int = 14, uploadCursorTarget: String = "cloudFolder", progress: SyncProgressHandler? = nil) async throws -> Result {
+        await progress?("Preparing cloud folders…")
         let sync = folder.appendingPathComponent("sync", isDirectory: true)
         try FileManager.default.createDirectory(at: sync, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: folder.appendingPathComponent("history", isDirectory: true), withIntermediateDirectories: true)
         var result = Result()
+        await progress?("Scanning remote devices…")
         let files = try FileManager.default.contentsOfDirectory(at: sync, includingPropertiesForKeys: nil)
         for file in files where file.pathExtension == "json" {
             if let id = Self.deviceID(from: file.lastPathComponent) { result.discoveredDeviceIDs.insert(id) }
@@ -35,13 +39,22 @@ public actor CloudFolderSync {
                 let document = try decoder.decode(SettingDocument.self, from: Data(contentsOf: file))
                 guard document.deviceID == Self.deviceID(from: file.lastPathComponent), document.deviceID != deviceID else { continue }
                 try repository.upsertDevice(document.deviceRecord)
-            } catch { continue }
+            } catch { result.warnings.append("settings_import_failed; file=\(file.lastPathComponent); \(DiagnosticLog.describe(error))"); continue }
         }
 
         let existingUploadCursor = try repository.incrementalUploadCursor(syncTarget: uploadCursorTarget)
         let downloadIDs = result.discoveredDeviceIDs.filter {
             $0 != "alldevices" && ($0 != deviceID || existingUploadCursor == nil)
         }
+        let totalDownloads = try downloadIDs.reduce(into: 0) { total, remoteID in
+            let cursor = remoteID == deviceID ? nil : try repository.incrementalDownloadCursor(remoteDeviceID: remoteID)
+            total += files.filter { file in
+                guard Self.deviceID(from: file.lastPathComponent) == remoteID,
+                      let date = Self.bitmapUTCDate(from: file.lastPathComponent) else { return false }
+                return cursor == nil || date >= cursor!
+            }.count
+        }
+        if totalDownloads == 0 { await progress?("Downloading device data — nothing new…") }
         for remoteID in downloadIDs {
             let restoringThisDevice = remoteID == deviceID
             let cursor: String?
@@ -54,6 +67,7 @@ public actor CloudFolderSync {
                 return (file, date)
             }.sorted { $0.1 < $1.1 }
             for (file, expectedDate) in candidates {
+                await progress?("Downloading device data — \(result.downloaded + 1) of \(totalDownloads)…")
                 do {
                     let document = try decoder.decode(BitmapDocument.self, from: Data(contentsOf: file))
                     guard document.deviceID == remoteID, document.utcDate == expectedDate else { throw STGError.invalidDocument("iCloud bitmap identity mismatch") }
@@ -68,13 +82,19 @@ public actor CloudFolderSync {
                         result.downloadCursors[remoteID] = expectedDate
                     }
                     result.downloaded += 1
-                } catch { break }
+                } catch { result.warnings.append("bitmap_import_failed; device=\(remoteID.prefix(8)); utc_date=\(expectedDate); file=\(file.lastPathComponent); cursor_not_advanced=true; \(DiagnosticLog.describe(error))"); break }
             }
         }
 
         let uploadKeys = try STGTime.incrementalUploadUTCDateKeys(cursor: existingUploadCursor, now: now, initialDays: days)
-        for key in uploadKeys {
-            guard let document = try repository.documentIfPresent(deviceID: deviceID, utcDate: key) else { continue }
+        let uploadItems = try uploadKeys.compactMap { key -> (String, BitmapDocument)? in
+            guard let document = try repository.documentIfPresent(deviceID: deviceID, utcDate: key) else { return nil }
+            return (key, document)
+        }
+        if uploadItems.isEmpty { await progress?("Uploading local changes — nothing new…") }
+        for (index, item) in uploadItems.enumerated() {
+            let (key, document) = item
+            await progress?("Uploading local changes — \(index + 1) of \(uploadItems.count)…")
             try atomicWrite(encoder.encode(document), to: sync.appendingPathComponent("\(deviceID)_bitmap_\(key).json"))
             try repository.saveIncrementalUploadCursor(syncTarget: uploadCursorTarget, latestUTCDate: key)
             result.uploadCursor = key
@@ -143,25 +163,39 @@ public actor CloudFolderSync {
     public func weeklyMaintenance(folder: URL, currentWeekStart: String, previousWeekStart: String, previousWeekEnd: String) throws -> (uploaded: Int, deletedDaily: Int, movedWeekly: Int) {
         let sync = folder.appendingPathComponent("sync", isDirectory: true), history = folder.appendingPathComponent("history", isDirectory: true)
         try FileManager.default.createDirectory(at: sync, withIntermediateDirectories: true); try FileManager.default.createDirectory(at: history, withIntermediateDirectories: true)
-        let archive = try repository.bitmapArchive(deviceID: deviceID, kind: "week", from: previousWeekStart, through: previousWeekEnd)
-        let weekName = "\(deviceID)_week_\(previousWeekStart)_\(previousWeekEnd).json"
-        try atomicWrite(encoder.encode(archive), to: sync.appendingPathComponent(weekName))
+        let initialFiles = try FileManager.default.contentsOfDirectory(at: sync, includingPropertiesForKeys: nil)
+        let dailyFiles = initialFiles.compactMap { file -> (url: URL, date: String, weekStart: String)? in
+            let name = file.lastPathComponent
+            guard Self.deviceID(from: name) == deviceID, let date = Self.bitmapUTCDate(from: name), date < currentWeekStart,
+                  let weekStart = Self.weekStart(containing: date) else { return nil }
+            return (file, date, weekStart)
+        }
+        let weekStarts = Set(dailyFiles.map(\.weekStart)).union([previousWeekStart]).sorted()
+        var uploaded = 0, deleted = 0
+        for weekStart in weekStarts {
+            guard let weekEnd = Self.weekEnd(fromStart: weekStart) else { continue }
+            let archive = try repository.bitmapArchive(deviceID: deviceID, kind: "week", from: weekStart, through: weekEnd)
+            let weekName = "\(deviceID)_week_\(weekStart)_\(weekEnd).json"
+            let data = try encoder.encode(archive)
+            try atomicWrite(data, to: sync.appendingPathComponent(weekName)); uploaded += 1
+            for daily in dailyFiles where daily.weekStart == weekStart {
+                try FileManager.default.removeItem(at: daily.url); deleted += 1
+            }
+            let checksum = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+            try repository.recordArchive(id: weekName, kind: "week", from: weekStart, through: weekEnd, cloudPath: "sync/\(weekName)", checksum: checksum, uploadedAt: .now, status: "uploaded")
+        }
         let archiveCutoff = Self.weekArchiveCutoff(previousWeekStart: previousWeekStart)
-        var deleted = 0, moved = 0
+        var moved = 0
         for file in try FileManager.default.contentsOfDirectory(at: sync, includingPropertiesForKeys: nil) {
             let name = file.lastPathComponent
-            if Self.deviceID(from: name) == deviceID, let date = Self.bitmapUTCDate(from: name), date < currentWeekStart {
-                try FileManager.default.removeItem(at: file); deleted += 1
-            } else if name.hasPrefix("\(deviceID)_week_"), name.hasSuffix(".json"), name != weekName,
+            if name.hasPrefix("\(deviceID)_week_"), name.hasSuffix(".json"),
                       let end = Self.weekEnd(from: name), end < archiveCutoff {
                 let destination = history.appendingPathComponent(name)
                 if FileManager.default.fileExists(atPath: destination.path) { try FileManager.default.removeItem(at: destination) }
                 try FileManager.default.moveItem(at: file, to: destination); moved += 1
             }
         }
-        let checksum = SHA256.hash(data: try encoder.encode(archive)).map { String(format: "%02x", $0) }.joined()
-        try repository.recordArchive(id: weekName, kind: "week", from: previousWeekStart, through: previousWeekEnd, cloudPath: "sync/\(weekName)", checksum: checksum, uploadedAt: .now, status: "uploaded")
-        return (1, deleted, moved)
+        return (uploaded, deleted, moved)
     }
 
     public func yearlyMaintenance(folder: URL, year: Int, trackingCleanupYear: Int) throws -> (uploaded: Int, deletedBitmaps: Int, deletedWeekly: Int) {
@@ -220,6 +254,22 @@ public actor CloudFolderSync {
         let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX"); formatter.timeZone = STGTime.utc; formatter.dateFormat = "yyyy-MM-dd"
         guard let start = formatter.date(from: previousWeekStart), let cutoff = Calendar(identifier: .gregorian).date(byAdding: .day, value: -7, to: start) else { return previousWeekStart }
         return formatter.string(from: cutoff)
+    }
+
+    public static func weekStart(containing date: String) -> String? {
+        let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX"); formatter.timeZone = STGTime.utc; formatter.dateFormat = "yyyy-MM-dd"
+        guard let value = formatter.date(from: date) else { return nil }
+        var calendar = Calendar(identifier: .iso8601); calendar.timeZone = STGTime.utc
+        guard let interval = calendar.dateInterval(of: .weekOfYear, for: value) else { return nil }
+        return formatter.string(from: interval.start)
+    }
+
+    public static func weekEnd(fromStart start: String) -> String? {
+        let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX"); formatter.timeZone = STGTime.utc; formatter.dateFormat = "yyyy-MM-dd"
+        guard let value = formatter.date(from: start) else { return nil }
+        var calendar = Calendar(identifier: .iso8601); calendar.timeZone = STGTime.utc
+        guard let end = calendar.date(byAdding: .day, value: 6, to: value) else { return nil }
+        return formatter.string(from: end)
     }
 
     private func atomicWrite(_ data: Data, to url: URL) throws {

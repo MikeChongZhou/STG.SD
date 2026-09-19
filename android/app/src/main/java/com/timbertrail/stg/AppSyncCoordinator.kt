@@ -11,7 +11,7 @@ object AppSyncCoordinator {
     private val executor = Executors.newSingleThreadExecutor()
     private val running = AtomicBoolean(false)
 
-    fun request(context: Context, trigger: String, completion: ((String) -> Unit)? = null) {
+    fun request(context: Context, trigger: String, progress: ((String) -> Unit)? = null, completion: ((String) -> Unit)? = null) {
         val appContext = context.applicationContext
         val log = DiagnosticLog.get(appContext)
         if (!running.compareAndSet(false, true)) {
@@ -28,15 +28,18 @@ object AppSyncCoordinator {
                     "Private cloud is not configured"
                 } else {
                     log.record("sync", "sync begin; trigger=$trigger; provider=${settings.cloudProvider}; local_device=${settings.deviceID.take(8)}")
-                    val result = RemoteCloudSync(database, settings, PrivateCloudDriveFactory.fromStore(appContext, settings.cloudProvider)).incremental()
+                    val providerName = when (settings.cloudProvider) { "onedrive" -> "OneDrive"; "google" -> "Google Drive"; else -> "private cloud" }
+                    progress?.invoke("Connecting to $providerName…")
+                    val result = RemoteCloudSync(database, settings, PrivateCloudDriveFactory.fromStore(appContext, settings.cloudProvider)).incremental { progress?.invoke(it) }
                     database.completeIncrementalSync(settings.deviceID)
-                    runWeeklyActionIfDue(appContext, database, settings, log)
+                    val weeklyWarning = runWeeklyActionIfDue(appContext, database, settings, log, progress)
                     val cursors = result.downloadCursors.entries.sortedBy { it.key }.joinToString { "${it.key.take(8)}=${it.value}" }
+                    result.warnings.forEach { log.record("sync-warning", it) }
                     log.record("sync", "sync complete; trigger=$trigger; provider=${settings.cloudProvider}; uploaded=${result.uploaded}; downloaded=${result.downloaded}; upload_cursor=${result.uploadCursor ?: "none"}; download_cursors=[$cursors]")
-                    "Uploaded ${result.uploaded}, downloaded ${result.downloaded}\nUpload cursor: ${result.uploadCursor ?: "none"}" + if (cursors.isEmpty()) "" else "\nLatest downloads: $cursors"
+                    "Synced · ${result.uploaded} activity files uploaded, ${result.downloaded} downloaded" + (weeklyWarning?.let { " · $it" } ?: "")
                 }
             } catch (error: Exception) {
-                log.record("sync", "sync failed; trigger=$trigger; provider=${settings.cloudProvider}; error=${error.message ?: error.javaClass.simpleName}")
+                log.record("sync", "sync failed; trigger=$trigger; provider=${settings.cloudProvider}; ${error.diagnosticSummary()}")
                 "Sync failed: ${error.message}"
             } finally {
                 database.close(); running.set(false)
@@ -53,28 +56,46 @@ object AppSyncCoordinator {
             try {
                 if (!PrivateCloudCredentials.isSignedIn(appContext, settings.cloudProvider)) log.record("sync", "quick upload skipped; trigger=$trigger; private_cloud_not_configured=true")
                 else { log.record("sync", "quick upload begin; trigger=$trigger; provider=${settings.cloudProvider}"); val files = RemoteCloudSync(database, settings, PrivateCloudDriveFactory.fromStore(appContext, settings.cloudProvider)).quickUpload(); log.record("sync", "quick upload complete; trigger=$trigger; files=$files") }
-            } catch (error: Exception) { log.record("sync", "quick upload failed; trigger=$trigger; error=${error.message ?: error.javaClass.simpleName}") }
+            } catch (error: Exception) { log.record("sync", "quick upload failed; trigger=$trigger; provider=${settings.cloudProvider}; ${error.diagnosticSummary()}") }
             finally { database.close(); running.set(false) }
         }
     }
 
-    private fun runWeeklyActionIfDue(context: Context, database: BitmapDatabase, settings: AppSettings, log: DiagnosticLog) {
+    private fun runWeeklyActionIfDue(context: Context, database: BitmapDatabase, settings: AppSettings, log: DiagnosticLog, progress: ((String) -> Unit)? = null): String? {
         val today = LocalDate.now(ZoneOffset.UTC)
         val monday = today.with(TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
         val lastSunday = monday.minusDays(1); val period = lastSunday.toString()
-        if (database.weeklyActionCompletedPeriod() == period) return
         val start = database.latestOpenRouterWeekEnd()?.let(LocalDate::parse)?.plusDays(1) ?: LocalDate.of(2025, 1, 1)
-        log.record("sync", "weekly action begin; openrouter_start=$start; openrouter_end=$lastSunday")
-        if (!start.isAfter(lastSunday)) {
-            val rows = OpenRouterClient().weeklyHistory(start, lastSunday)
-            check(rows.isNotEmpty()) { "OpenRouter returned no weekly model-activity rows; detail cursor was not advanced" }
-            database.saveOpenRouterWeeks(rows)
+        val cloudDue = database.weeklyActionCompletedPeriod() != period
+        val trackingDue = !start.isAfter(lastSunday)
+        if (!cloudDue && !trackingDue) return null
+        log.record("sync", "weekly action begin; cloud_due=$cloudDue; tracking_due=$trackingDue; openrouter_start=$start; openrouter_end=$lastSunday")
+        val warnings = mutableListOf<String>(); var cloudCompleted = false
+        if (cloudDue) {
+            progress?.invoke("Updating weekly archive…")
+            try {
+                val maintenance = RemoteCloudSync(database, settings, PrivateCloudDriveFactory.fromStore(context, settings.cloudProvider)).weeklyMaintenance(monday, monday.minusWeeks(1), lastSunday)
+                database.completeWeeklyAction(period); database.completeWeeklyActionState(settings.deviceID); cloudCompleted = true
+                log.record("sync", "weekly cloud maintenance complete; completed_period=$period; bitmap_uploaded=${maintenance.uploaded}; daily_deleted=${maintenance.deletedDaily}; weekly_moved=${maintenance.movedWeekly}; history_ready=true")
+            } catch (error: Exception) {
+                warnings += "Weekly archive failed"
+                log.record("sync", "weekly cloud maintenance failed; completed_period=$period; completion_not_recorded=true; ${error.diagnosticSummary()}")
+            }
         }
-        database.completeOpenRouterDetailWeek(period)
-        val maintenance = RemoteCloudSync(database, settings, PrivateCloudDriveFactory.fromStore(context, settings.cloudProvider)).weeklyMaintenance(monday, monday.minusWeeks(1), lastSunday)
-        database.completeWeeklyAction(period); database.completeWeeklyActionState(settings.deviceID)
-        log.record("sync", "weekly action complete; completed_period=$period; bitmap_uploaded=${maintenance.uploaded}; daily_deleted=${maintenance.deletedDaily}; weekly_moved=${maintenance.movedWeekly}")
-        runYearlyActionIfDue(context, database, settings, log)
+        if (trackingDue) {
+            progress?.invoke("Updating tracking data…")
+            try {
+                val rows = OpenRouterClient().weeklyHistory(start, lastSunday)
+                check(rows.isNotEmpty()) { "OpenRouter returned no weekly model-activity rows; detail cursor was not advanced" }
+                database.saveOpenRouterWeeks(rows); database.completeOpenRouterDetailWeek(period)
+                log.record("sync", "weekly tracking complete; openrouter_rows=${rows.size}; completion_recorded=true")
+            } catch (error: Exception) {
+                warnings += "Tracking update failed"
+                log.record("sync", "weekly tracking failed; start=$start; end=$lastSunday; completion_not_recorded=true; ${error.diagnosticSummary()}")
+            }
+        }
+        if (cloudCompleted) runYearlyActionIfDue(context, database, settings, log)
+        return warnings.takeIf { it.isNotEmpty() }?.joinToString(" · ")
     }
 
     private fun runYearlyActionIfDue(context: Context, database: BitmapDatabase, settings: AppSettings, log: DiagnosticLog) {

@@ -222,7 +222,7 @@ struct ReportView: View {
                 Button("Export CSV…") { exportReportCSV(text: reportCSV) }
             }
             HStack(spacing: 12) {
-                Picker("Report Type", selection: $mode) { Text("Daily").tag(0); Text("Multiple Days").tag(1); Text("Year by Week").tag(2); Text("Years by Month").tag(3) }.pickerStyle(.segmented).frame(width: 500)
+                reportModeButton("Daily", index: 0)
                 if mode == 0 {
                     Button { showDailyCalendar.toggle() } label: {
                         HStack(spacing: 7) { Image(systemName: "calendar"); Text(selectedDate.formatted(date: .numeric, time: .omitted)).monospacedDigit() }
@@ -230,7 +230,11 @@ struct ReportView: View {
                         DatePicker("Report date", selection: $selectedDate, displayedComponents: .date).datePickerStyle(.graphical).labelsHidden().padding(14)
                             .onChange(of: selectedDate) { _, _ in showDailyCalendar = false }
                     }
-                } else if mode == 1 {
+                }
+                reportModeButton("Multiple Days", index: 1)
+                reportModeButton("Year by Week", index: 2)
+                reportModeButton("Years by Month", index: 3)
+                if mode == 1 {
                     DatePicker("Start", selection: $rangeStart, displayedComponents: .date)
                     DatePicker("End", selection: $rangeEnd, displayedComponents: .date)
                 }
@@ -255,11 +259,13 @@ struct ReportView: View {
                     LazyVStack(alignment: .leading, spacing: 12) {
                         if mode == 0 {
                             ForEach(dailyBitmaps) { bitmap in
-                                let bitmapView = MinuteBitmapView(minutes: bitmap.minutes, rowHeight: 24)
                                 VStack(alignment: .leading, spacing: 4) {
                                     (Text("\(bitmap.displayName), \(duration(bitmap.usedMinutes)).  ").fontWeight(.semibold) + Text("Active intervals: \(usageIntervals(bitmap.minutes, timeZoneID: model.currentReportTimeZone))"))
                                         .font(.callout).textSelection(.enabled)
-                                    bitmapView.frame(height: bitmapView.preferredHeight, alignment: .topLeading)
+                                    if bitmap.usedMinutes > 0 {
+                                        let bitmapView = MinuteBitmapView(minutes: bitmap.minutes, rowHeight: 24, alignmentMinutes: dailyAlignmentMinutes)
+                                        bitmapView.frame(height: bitmapView.preferredHeight, alignment: .topLeading)
+                                    }
                                 }
                                 .frame(maxWidth: .infinity, alignment: .topLeading)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -304,6 +310,13 @@ struct ReportView: View {
     private func averageMetric(_ title: String, _ minutes: Double?) -> some View {
         HStack(spacing: 4) { Text(title).font(.caption2).foregroundStyle(.secondary); Text(minutes.map { duration(Int($0.rounded())) } ?? "—").font(.caption.bold()).monospacedDigit() }
     }
+    @ViewBuilder private func reportModeButton(_ title: String, index: Int) -> some View {
+        if mode == index {
+            Button(title) { mode = index }.buttonStyle(.borderedProminent)
+        } else {
+            Button(title) { mode = index }.buttonStyle(.bordered)
+        }
+    }
     private func reload() async { if mode == 0 { await reloadDaily() } else if mode == 1 { await reloadMultiple() } else { await reloadPeriod() } }
     private func reloadDaily() async { loading = true; dailyBitmaps = await model.reportDay(at: macReportInstant(selectedDate, zone: model.currentReportTimeZone)); loading = false }
     private func reloadMultiple() async { loading = true; multiDayPoints = await model.multiDayReport(from: macReportInstant(rangeStart, zone: model.currentReportTimeZone), through: macReportInstant(rangeEnd, zone: model.currentReportTimeZone)); loading = false }
@@ -317,11 +330,21 @@ struct ReportView: View {
     private var preferredContentHeight: CGFloat {
         guard mode == 0 else { return 720 }
         let cardsHeight = dailyBitmaps.reduce(CGFloat.zero) { total, bitmap in
-            let bitmapHeight = MinuteBitmapView(minutes: bitmap.minutes, rowHeight: 24).preferredHeight
+            let bitmapHeight = bitmap.usedMinutes > 0 ? MinuteBitmapView(minutes: bitmap.minutes, rowHeight: 24, alignmentMinutes: dailyAlignmentMinutes).preferredHeight : 0
             return total + bitmapHeight + 35
         }
         let gaps = CGFloat(max(0, dailyBitmaps.count - 1)) * 12
         return min(760, max(500, 162 + cardsHeight + gaps))
+    }
+    private var dailyAlignmentMinutes: [Bool] {
+        if let aggregate = dailyBitmaps.first(where: \.isAggregate) { return aggregate.minutes }
+        let count = dailyBitmaps.map(\.minutes.count).max() ?? 0
+        guard count > 0 else { return [] }
+        var combined = [Bool](repeating: false, count: count)
+        for bitmap in dailyBitmaps {
+            for index in 0..<min(count, bitmap.minutes.count) where bitmap.minutes[index] { combined[index] = true }
+        }
+        return combined
     }
     private var reportCSV: String {
         if mode == 1 { return (["date,device_id,device_name,minutes,report_timezone,estimated"] + multiDayPoints.map { "\($0.dateLabel),\($0.deviceID),\($0.displayName.replacingOccurrences(of: ",", with: " ")),\($0.minutes),\(model.currentReportTimeZone),\($0.estimated)" }).joined(separator: "\n") + "\n" }
@@ -346,6 +369,7 @@ private func macIntervalAverage(_ points: [DailyUsagePoint]) -> Int? {
 struct MinuteBitmapView: View {
     let minutes: [Bool]
     var rowHeight: CGFloat = 22
+    var alignmentMinutes: [Bool]? = nil
 
     var preferredHeight: CGFloat {
         let count = visibleSegments.count
@@ -440,11 +464,12 @@ struct MinuteBitmapView: View {
     }
 
     private var visibleSegments: [Segment] {
-        let count = min(minutes.count, 1_440)
+        let source = alignmentMinutes ?? minutes
+        let count = min(source.count, 1_440)
         var result: [Segment] = []
         var cursor = 0
         while cursor < count {
-            guard let firstActive = (cursor..<count).first(where: { minutes[$0] }) else { break }
+            guard let firstActive = (cursor..<count).first(where: { source[$0] }) else { break }
             let start = (firstActive / 60) * 60
             let end = min(start + 360, 1_440)
             result.append(Segment(startMinute: start, endMinute: end))

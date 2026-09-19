@@ -2,7 +2,7 @@ import Foundation
 import CryptoKit
 
 public actor GoogleDriveSync {
-    public struct Result: Sendable { public var uploaded = 0; public var downloaded = 0; public var discoveredDeviceIDs: Set<String> = []; public var downloadCursors: [String: String] = [:]; public var uploadCursor: String? }
+    public struct Result: Sendable { public var uploaded = 0; public var downloaded = 0; public var discoveredDeviceIDs: Set<String> = []; public var downloadCursors: [String: String] = [:]; public var uploadCursor: String?; public var warnings: [String] = [] }
     private let repository: BitmapRepository
     private let deviceID: String
     private let client: GoogleDriveClient
@@ -17,17 +17,22 @@ public actor GoogleDriveSync {
         decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
     }
 
-    public func synchronize(settings: STGSettings, now: Date = .now, days: Int = 14) async throws -> Result {
+    public func synchronize(settings: STGSettings, now: Date = .now, days: Int = 14, progress: SyncProgressHandler? = nil) async throws -> Result {
         var credential = try await validCredential()
+        await progress?("Preparing cloud folders…")
+        _ = try await client.ensureFolder(name: "history", using: credential)
         try repository.upsertDevice(SettingDocument(settings).deviceRecord)
+        await progress?("Scanning remote devices…")
         var files = try await client.listFiles(using: credential)
         var filesByName = Dictionary(uniqueKeysWithValues: files.map { ($0.name, $0.id) })
         let settingsName = "\(deviceID)_setting.json"
+        await progress?("Uploading device settings…")
         try await client.upload(name: settingsName, data: encoder.encode(SettingDocument(settings)), existingFileID: filesByName[settingsName], using: credential)
         var result = Result()
         let uploadTarget = "googleDrive"
         let existingUploadCursor = try repository.incrementalUploadCursor(syncTarget: uploadTarget)
         credential = try await validCredential()
+        await progress?("Scanning remote devices…")
         files = try await client.listFiles(using: credential)
         filesByName = Dictionary(uniqueKeysWithValues: files.map { ($0.name, $0.id) })
         for file in files where file.name.hasSuffix(".json") {
@@ -38,11 +43,20 @@ public actor GoogleDriveSync {
                 let document = try decoder.decode(SettingDocument.self, from: try await client.download(fileID: file.id, using: credential))
                 guard document.deviceID == CloudFolderSync.deviceID(from: file.name), document.deviceID != deviceID else { continue }
                 try repository.upsertDevice(document.deviceRecord)
-            } catch { continue }
+            } catch { result.warnings.append("settings_import_failed; provider=googleDrive; file=\(file.name); \(DiagnosticLog.describe(error))"); continue }
         }
         let downloadIDs = result.discoveredDeviceIDs.filter {
             $0 != "alldevices" && ($0 != deviceID || existingUploadCursor == nil)
         }
+        let totalDownloads = try downloadIDs.reduce(into: 0) { total, remoteID in
+            let cursor = remoteID == deviceID ? nil : try repository.incrementalDownloadCursor(remoteDeviceID: remoteID)
+            total += files.filter { file in
+                guard CloudFolderSync.deviceID(from: file.name) == remoteID,
+                      let date = CloudFolderSync.bitmapUTCDate(from: file.name) else { return false }
+                return cursor == nil || date >= cursor!
+            }.count
+        }
+        if totalDownloads == 0 { await progress?("Downloading device data — nothing new…") }
         for remoteID in downloadIDs {
             let restoringThisDevice = remoteID == deviceID
             let cursor: String?
@@ -55,6 +69,7 @@ public actor GoogleDriveSync {
                 return (file, date)
             }.sorted { $0.1 < $1.1 }
             for (file, expectedDate) in candidates {
+                await progress?("Downloading device data — \(result.downloaded + 1) of \(totalDownloads)…")
                 do {
                     let document = try decoder.decode(BitmapDocument.self, from: try await client.download(fileID: file.id, using: credential))
                     guard document.deviceID == remoteID, document.utcDate == expectedDate else { throw STGError.invalidDocument("Google Drive bitmap identity mismatch") }
@@ -69,13 +84,19 @@ public actor GoogleDriveSync {
                         result.downloadCursors[remoteID] = expectedDate
                     }
                     result.downloaded += 1
-                } catch { break }
+                } catch { result.warnings.append("bitmap_import_failed; provider=googleDrive; device=\(remoteID.prefix(8)); utc_date=\(expectedDate); file=\(file.name); cursor_not_advanced=true; \(DiagnosticLog.describe(error))"); break }
             }
         }
         let uploadKeys = try STGTime.incrementalUploadUTCDateKeys(cursor: existingUploadCursor, now: now, initialDays: days)
+        let uploadItems = try uploadKeys.compactMap { key -> (String, BitmapDocument)? in
+            guard let document = try repository.documentIfPresent(deviceID: deviceID, utcDate: key) else { return nil }
+            return (key, document)
+        }
         credential = try await validCredential()
-        for key in uploadKeys {
-            guard let document = try repository.documentIfPresent(deviceID: deviceID, utcDate: key) else { continue }
+        if uploadItems.isEmpty { await progress?("Uploading local changes — nothing new…") }
+        for (index, item) in uploadItems.enumerated() {
+            let (key, document) = item
+            await progress?("Uploading local changes — \(index + 1) of \(uploadItems.count)…")
             let name = "\(deviceID)_bitmap_\(key).json"
             try await client.upload(name: name, data: encoder.encode(document), existingFileID: filesByName[name], using: credential)
             try repository.saveIncrementalUploadCursor(syncTarget: uploadTarget, latestUTCDate: key)
@@ -141,20 +162,29 @@ public actor GoogleDriveSync {
 
     public func weeklyMaintenance(currentWeekStart: String, previousWeekStart: String, previousWeekEnd: String) async throws -> (uploaded: Int, deletedDaily: Int, movedWeekly: Int) {
         let credential = try await validCredential(), files = try await client.listFiles(using: credential), historyID = try await client.ensureFolder(name: "history", using: credential)
-        let archive = try repository.bitmapArchive(deviceID: deviceID, kind: "week", from: previousWeekStart, through: previousWeekEnd), name = "\(deviceID)_week_\(previousWeekStart)_\(previousWeekEnd).json", data = try encoder.encode(archive)
-        try await client.upload(name: name, data: data, existingFileID: files.first(where: { $0.name == name })?.id, using: credential)
+        let dailyFiles = files.compactMap { file -> (file: GoogleDriveFile, date: String, weekStart: String)? in
+            guard CloudFolderSync.deviceID(from: file.name) == deviceID, let date = CloudFolderSync.bitmapUTCDate(from: file.name), date < currentWeekStart,
+                  let weekStart = CloudFolderSync.weekStart(containing: date) else { return nil }
+            return (file, date, weekStart)
+        }
+        let weekStarts = Set(dailyFiles.map(\.weekStart)).union([previousWeekStart]).sorted()
+        var uploaded = 0, deleted = 0
+        for weekStart in weekStarts {
+            guard let weekEnd = CloudFolderSync.weekEnd(fromStart: weekStart) else { continue }
+            let archive = try repository.bitmapArchive(deviceID: deviceID, kind: "week", from: weekStart, through: weekEnd), name = "\(deviceID)_week_\(weekStart)_\(weekEnd).json", data = try encoder.encode(archive)
+            try await client.upload(name: name, data: data, existingFileID: files.first(where: { $0.name == name })?.id, using: credential); uploaded += 1
+            for daily in dailyFiles where daily.weekStart == weekStart { try await client.delete(fileID: daily.file.id, using: credential); deleted += 1 }
+            try repository.recordArchive(id: name, kind: "week", from: weekStart, through: weekEnd, cloudPath: "sync/\(name)", checksum: SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined(), uploadedAt: .now, status: "uploaded")
+        }
         let archiveCutoff = CloudFolderSync.weekArchiveCutoff(previousWeekStart: previousWeekStart)
-        var deleted = 0, moved = 0
+        var moved = 0
         let historyFiles = try await client.listFiles(parentID: historyID, using: credential)
-        for file in files {
-            if CloudFolderSync.deviceID(from: file.name) == deviceID, let date = CloudFolderSync.bitmapUTCDate(from: file.name), date < currentWeekStart {
-                try await client.delete(fileID: file.id, using: credential); deleted += 1
-            } else if file.name.hasPrefix("\(deviceID)_week_"), file.name != name, let end = CloudFolderSync.weekEnd(from: file.name), end < archiveCutoff {
+        for file in try await client.listFiles(using: credential) {
+            if file.name.hasPrefix("\(deviceID)_week_"), let end = CloudFolderSync.weekEnd(from: file.name), end < archiveCutoff {
                 let oldData = try await client.download(fileID: file.id, using: credential); try await client.upload(name: file.name, data: oldData, existingFileID: historyFiles.first(where: { $0.name == file.name })?.id, parentID: historyID, using: credential); try await client.delete(fileID: file.id, using: credential); moved += 1
             }
         }
-        try repository.recordArchive(id: name, kind: "week", from: previousWeekStart, through: previousWeekEnd, cloudPath: "sync/\(name)", checksum: SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined(), uploadedAt: .now, status: "uploaded")
-        return (1, deleted, moved)
+        return (uploaded, deleted, moved)
     }
 
     public func yearlyMaintenance(year: Int, trackingCleanupYear: Int) async throws -> (uploaded: Int, deletedBitmaps: Int, deletedWeekly: Int) {

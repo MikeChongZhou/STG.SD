@@ -31,6 +31,17 @@ internal sealed class DiagnosticLog
         }
     }
 
+    public static string Describe(Exception error)
+    {
+        var values = new List<string>(); Exception? current = error; var depth = 0;
+        while (current is not null && depth++ < 3)
+        {
+            values.Add($"error_type={current.GetType().FullName}; hresult=0x{current.HResult:X8}; error={current.Message.Replace(Environment.NewLine, " ")}");
+            current = current.InnerException;
+        }
+        return string.Join("; inner_", values);
+    }
+
     public string ExportCopy()
     {
         Record("diagnostics", "test log export requested");
