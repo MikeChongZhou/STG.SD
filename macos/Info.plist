@@ -9,12 +9,12 @@
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
 <key>CFBundleShortVersionString</key><string>1.1.8</string>
-<key>CFBundleVersion</key><string>21</string>
+<key>CFBundleVersion</key><string>23</string>
 <key>LSUIElement</key><true/>
 <key>NSHighResolutionCapable</key><true/>
 <key>STGOneDriveClientID</key><string>a4ff927c-e45a-413e-b5c3-45b026719171</string>
 <key>STGGoogleClientID</key><string>552360735383-030pcr7mduhf1d20kjslobh5dhacsg2o.apps.googleusercontent.com</string>
-<key>STGGoogleClientSecret</key><string></string>
+<key>STGGoogleClientSecret</key><string>$(STG_GOOGLE_CLIENT_SECRET)</string>
 <key>CFBundleURLTypes</key><array>
 <dict><key>CFBundleURLName</key><string>STG Google OAuth</string><key>CFBundleURLSchemes</key><array><string>com.googleusercontent.apps.552360735383-030pcr7mduhf1d20kjslobh5dhacsg2o</string></array></dict>
 <dict><key>CFBundleURLName</key><string>STG Microsoft OAuth</string><key>CFBundleURLSchemes</key><array><string>msauth.com.timbertrail.screentimeguardian.ios</string></array></dict>
