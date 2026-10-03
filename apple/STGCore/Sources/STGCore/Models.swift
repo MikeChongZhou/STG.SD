@@ -101,6 +101,35 @@ public struct STGSettings: Codable, Equatable, Sendable {
     public var dailyCloseCountdownMinutes = 3
     public var launchAtLogin = true
     public var meetingMode = false
+    // Optional storage preserves decoding of settings saved before notification options existed.
+    private var breakNotifications: Bool?
+    private var dailyNotifications: Bool?
+    private var eyeNotifications: Bool?
+    private var postureNotifications: Bool?
+    public var eyeNotificationsEnabled: Bool {
+        get { eyeNotifications ?? breakNotifications ?? true }
+        set { eyeNotifications = newValue }
+    }
+    public var postureNotificationsEnabled: Bool {
+        get { postureNotifications ?? breakNotifications ?? true }
+        set { postureNotifications = newValue }
+    }
+    public var dailyNotificationsEnabled: Bool {
+        get { dailyNotifications ?? true }
+        set { dailyNotifications = newValue }
+    }
+    public func notificationEnabled(for kind: ReminderKind) -> Bool {
+        switch kind {
+        case .eye: eyeNotificationsEnabled
+        case .posture: postureNotificationsEnabled
+        case .dailyLimit: dailyNotificationsEnabled
+        }
+    }
+    public func mobileReminderKind(dailyMinutes: Int, breakKind: ReminderKind) -> ReminderKind? {
+        if dailyNotificationsEnabled && dailyMinutes >= dailyPlanMinutes { return .dailyLimit }
+        let enabled = breakKind == .eye ? eyeNotificationsEnabled : postureNotificationsEnabled
+        return enabled ? breakKind : nil
+    }
     public var cloudFolderPath: String?
     /// Device-local sync selection. It is intentionally omitted from SettingDocument.
     public var syncProvider: SyncProvider?

@@ -93,7 +93,7 @@
 "Prices are effective weighted averages per 1M tokens, including cache and provider discounts. Revenue is estimated and is not official OpenRouter financial data." = "Prices are effective weighted averages per 1M tokens, including cache and provider discounts. Revenue is estimated and is not official OpenRouter financial data.";
 "Includes app activity, Screen Time, database, and sync events. Cloud files and credentials are never included." = "Includes app activity, Screen Time, database, and sync events. Cloud files and credentials are never included.";
 "Export App Data" = "Export App Data"; "Export Test Log" = "Export Test Log";
-"Version 1.1.8\nCopyright © 2026 Fairy Phoenix Foundation." = "Version 1.1.8\nCopyright © 2026 Fairy Phoenix Foundation.";
+"Version 1.1.9\nCopyright © 2026 Fairy Phoenix Foundation." = "Version 1.1.9\nCopyright © 2026 Fairy Phoenix Foundation.";
 "This app records minute-level estimates of screen use on this device or across all your devices, and reminds you to take breaks." = "This app records minute-level estimates of screen use on this device or across all your devices, and reminds you to take breaks.";
 "Privacy: Your screen-use data stays on this device and, if enabled, in the private cloud you choose. It is never sent to the app developer or any other service." = "Privacy: Your screen-use data stays on this device and, if enabled, in the private cloud you choose. It is never sent to the app developer or any other service.";
 "Accuracy: Apple does not make Screen Time data available to third-party apps. STG estimates usage from DeviceActivity data, so its totals may differ from those shown in Settings → Screen Time." = "Accuracy: Apple does not make Screen Time data available to third-party apps. STG estimates usage from DeviceActivity data, so its totals may differ from those shown in Settings → Screen Time.";
@@ -103,3 +103,11 @@
 "Monitoring Couldn’t Start" = "Monitoring Couldn’t Start"; "Try again. Details are available in the test log." = "Try again. Details are available in the test log.";
 "Selected: %d apps · %d websites" = "Selected: %d apps · %d websites"; "Selected: %d apps · %d websites · %d categories" = "Selected: %d apps · %d websites · %d categories";
 "Weekly data will appear after sync." = "Weekly data will appear after sync.";
+
+"Notification Options" = "Notification Options";
+"Daily Usage Notifications" = "Daily Usage Notifications";
+"Eye Break Notifications" = "Eye Break Notifications";
+"Posture Notifications" = "Posture Notifications";
+"Usage is still recorded when all options are off." = "Usage is still recorded when all options are off.";
+
+"— · No eligible completed days" = "— · No eligible completed days";

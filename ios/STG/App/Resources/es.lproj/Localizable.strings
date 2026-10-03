@@ -93,7 +93,7 @@
 "Prices are effective weighted averages per 1M tokens, including cache and provider discounts. Revenue is estimated and is not official OpenRouter financial data." = "Los precios son promedios efectivos ponderados por millón de tokens e incluyen caché y descuentos del proveedor. Los ingresos son una estimación, no datos financieros oficiales de OpenRouter.";
 "Includes app activity, Screen Time, database, and sync events. Cloud files and credentials are never included." = "Incluye actividad de la app, Tiempo de uso, base de datos y eventos de sincronización. Nunca incluye archivos ni credenciales de la nube.";
 "Export App Data" = "Exportar datos de la app"; "Export Test Log" = "Exportar registro de prueba";
-"Version 1.1.8\nCopyright © 2026 Fairy Phoenix Foundation." = "Versión 1.1.8\nCopyright © 2026 Fairy Phoenix Foundation.";
+"Version 1.1.9\nCopyright © 2026 Fairy Phoenix Foundation." = "Versión 1.1.9\nCopyright © 2026 Fairy Phoenix Foundation.";
 "This app records minute-level estimates of screen use on this device or across all your devices, and reminds you to take breaks." = "Esta app registra estimaciones por minuto del uso de pantalla en este dispositivo o en todos tus dispositivos y te recuerda descansar.";
 "Privacy: Your screen-use data stays on this device and, if enabled, in the private cloud you choose. It is never sent to the app developer or any other service." = "Privacidad: los datos permanecen en este dispositivo y, si lo activas, en la nube privada que elijas. Nunca se envían al desarrollador ni a otros servicios.";
 "Accuracy: Apple does not make Screen Time data available to third-party apps. STG estimates usage from DeviceActivity data, so its totals may differ from those shown in Settings → Screen Time." = "Precisión: Apple no ofrece los datos de Tiempo de uso a apps de terceros. STG estima el uso con DeviceActivity, por lo que los totales pueden diferir de Ajustes → Tiempo de uso.";
@@ -103,3 +103,11 @@
 "Monitoring Couldn’t Start" = "No se pudo iniciar el monitoreo"; "Try again. Details are available in the test log." = "Inténtalo de nuevo. Consulta el registro de prueba para ver los detalles.";
 "Selected: %d apps · %d websites" = "Seleccionado: %d apps · %d sitios web"; "Selected: %d apps · %d websites · %d categories" = "Seleccionado: %d apps · %d sitios web · %d categorías";
 "Weekly data will appear after sync." = "Los datos semanales aparecerán después de sincronizar.";
+
+"Notification Options" = "Opciones de notificación";
+"Daily Usage Notifications" = "Avisos de uso diario";
+"Eye Break Notifications" = "Avisos de descanso visual";
+"Posture Notifications" = "Avisos de cambio de postura";
+"Usage is still recorded when all options are off." = "El uso se sigue registrando aunque todas las opciones estén desactivadas.";
+
+"— · No eligible completed days" = "— · No hay días completos válidos";

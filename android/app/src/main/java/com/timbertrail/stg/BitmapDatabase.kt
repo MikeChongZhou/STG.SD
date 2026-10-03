@@ -301,7 +301,7 @@ class BitmapDatabase(context: Context) : SQLiteOpenHelper(prepareDatabase(contex
 
     @Synchronized fun refreshStatistics(settings: AppSettings, now: Instant = Instant.now()): Pair<java.time.LocalDate, java.time.LocalDate> {
         val zone = runCatching { java.time.ZoneId.of(settings.reportTimeZone) }.getOrDefault(java.time.ZoneId.systemDefault())
-        val end = now.atZone(zone).toLocalDate(); var last = 0L; var dirty: String? = null
+        val end = now.atZone(zone).toLocalDate(); migratePeriodAverages(end.toString()); var last = 0L; var dirty: String? = null
         readableDatabase.rawQuery("SELECT last_statistics_at,dirty_from_date FROM statistics_state WHERE id=1", null).use { if (it.moveToFirst()) { last = it.getLong(0); dirty = if (it.isNull(1)) null else it.getString(1) } }
         val candidates = mutableListOf<java.time.LocalDate>()
         if (last > 0) candidates += Instant.ofEpochSecond(last).atZone(zone).toLocalDate()
@@ -324,9 +324,9 @@ class BitmapDatabase(context: Context) : SQLiteOpenHelper(prepareDatabase(contex
             }
             weeks += date.get(weekFields.weekBasedYear()) to date.get(weekFields.weekOfWeekBasedYear()); months += date.year to date.monthValue; years += date.year; date = date.plusDays(1)
         }
-        weeks.forEach { (year, week) -> val monday = java.time.LocalDate.of(year, 1, 4).with(weekFields.weekOfWeekBasedYear(), week.toLong()).with(java.time.DayOfWeek.MONDAY); reportIDs.forEach { rebuildPeriod("weekly_statistics", it, monday, monday.plusDays(6), year, week, now.epochSecond) } }
-        months.forEach { (year, month) -> val first = java.time.LocalDate.of(year, month, 1); reportIDs.forEach { rebuildPeriod("monthly_statistics", it, first, first.with(java.time.temporal.TemporalAdjusters.lastDayOfMonth()), year, month, now.epochSecond) } }
-        years.forEach { year -> reportIDs.forEach { rebuildPeriod("yearly_statistics", it, java.time.LocalDate.of(year, 1, 1), java.time.LocalDate.of(year, 12, 31), year, null, now.epochSecond) } }
+        weeks.forEach { (year, week) -> val monday = java.time.LocalDate.of(year, 1, 4).with(weekFields.weekOfWeekBasedYear(), week.toLong()).with(java.time.DayOfWeek.MONDAY); reportIDs.forEach { rebuildPeriod("weekly_statistics", it, monday, monday.plusDays(6), year, week, now.epochSecond, end.toString()) } }
+        months.forEach { (year, month) -> val first = java.time.LocalDate.of(year, month, 1); reportIDs.forEach { rebuildPeriod("monthly_statistics", it, first, first.with(java.time.temporal.TemporalAdjusters.lastDayOfMonth()), year, month, now.epochSecond, end.toString()) } }
+        years.forEach { year -> reportIDs.forEach { rebuildPeriod("yearly_statistics", it, java.time.LocalDate.of(year, 1, 1), java.time.LocalDate.of(year, 12, 31), year, null, now.epochSecond, end.toString()) } }
         ensureStatisticsState(writableDatabase)
         writableDatabase.execSQL("UPDATE statistics_state SET last_statistics_at=?,dirty_from_date=NULL,updated_at=? WHERE id=1", arrayOf<Any>(now.epochSecond, now.epochSecond))
         ensureSyncState(writableDatabase, settings.deviceID)
@@ -351,15 +351,34 @@ class BitmapDatabase(context: Context) : SQLiteOpenHelper(prepareDatabase(contex
         return result
     }
 
-    private fun rebuildPeriod(table: String, deviceID: String, start: java.time.LocalDate, end: java.time.LocalDate, a: Int, b: Int?, now: Long) {
-        val rows = mutableListOf<Triple<Int, Int, Boolean>>(); readableDatabase.rawQuery("SELECT minutes,daily_limit_minutes,estimated FROM daily_statistics WHERE device_id=? AND report_date>=? AND report_date<=? ORDER BY report_date", arrayOf(deviceID, start.toString(), end.toString())).use { while (it.moveToNext()) rows += Triple(it.getInt(0), it.getInt(1), it.getInt(2) != 0) }
-        val included = rows.filter { it.first >= it.second * .60 }; val average = if (included.isEmpty()) 0.0 else included.map { it.first }.average(); val args = mutableListOf<Any>(deviceID, a); if (b != null) args.add(b); args.addAll(listOf(start.toString(), end.toString(), average, included.size, rows.size - included.size, now, if (rows.any { it.third }) 1 else 0))
+    private fun rebuildPeriod(table: String, deviceID: String, start: java.time.LocalDate, end: java.time.LocalDate, a: Int, b: Int?, now: Long, completedBefore: String) {
+        val rows = mutableListOf<Triple<Int, Int, Boolean>>(); readableDatabase.rawQuery("SELECT minutes,daily_limit_minutes,estimated FROM daily_statistics WHERE device_id=? AND report_date>=? AND report_date<=? AND report_date<? ORDER BY report_date", arrayOf(deviceID, start.toString(), end.toString(), completedBefore)).use { while (it.moveToNext()) rows += Triple(it.getInt(0), it.getInt(1), it.getInt(2) != 0) }
+        val included = rows.filter { deviceID != "alldevices" || it.first >= it.second * .60 }; val average = if (included.isEmpty()) 0.0 else included.map { it.first }.average(); val args = mutableListOf<Any>(deviceID, a); if (b != null) args.add(b); args.addAll(listOf(start.toString(), end.toString(), average, included.size, rows.size - included.size, now, if (rows.any { it.third }) 1 else 0))
         val sql = when (table) { "weekly_statistics" -> "INSERT OR REPLACE INTO weekly_statistics(device_id,iso_year,iso_week,period_start,period_end,average_daily_minutes,included_days,excluded_days,calculated_at,estimated) VALUES(?,?,?,?,?,?,?,?,?,?)"; "monthly_statistics" -> "INSERT OR REPLACE INTO monthly_statistics(device_id,year,month,period_start,period_end,average_daily_minutes,included_days,excluded_days,calculated_at,estimated) VALUES(?,?,?,?,?,?,?,?,?,?)"; else -> "INSERT OR REPLACE INTO yearly_statistics(device_id,year,period_start,period_end,average_daily_minutes,included_days,excluded_days,calculated_at,estimated) VALUES(?,?,?,?,?,?,?,?,?)" }
         writableDatabase.execSQL(sql, args.toTypedArray())
     }
 
+    private fun migratePeriodAverages(completedBefore: String) {
+        val db = writableDatabase
+        db.execSQL("CREATE TABLE IF NOT EXISTS statistics_rules(version INTEGER PRIMARY KEY)")
+        db.rawQuery("SELECT 1 FROM statistics_rules WHERE version=2", null).use { if (it.moveToFirst()) return }
+        db.beginTransaction()
+        try {
+            for (table in listOf("weekly_statistics", "monthly_statistics", "yearly_statistics")) {
+                db.execSQL("""
+                    UPDATE $table SET
+                    average_daily_minutes=COALESCE((SELECT AVG(minutes * 1.0) FROM daily_statistics d WHERE d.device_id=$table.device_id AND d.report_date>=$table.period_start AND d.report_date<=$table.period_end AND d.report_date<?1 AND (d.device_id<>'alldevices' OR d.minutes>=d.daily_limit_minutes*0.60)),0),
+                    included_days=(SELECT COUNT(*) FROM daily_statistics d WHERE d.device_id=$table.device_id AND d.report_date>=$table.period_start AND d.report_date<=$table.period_end AND d.report_date<?1 AND (d.device_id<>'alldevices' OR d.minutes>=d.daily_limit_minutes*0.60)),
+                    excluded_days=(SELECT COUNT(*) FROM daily_statistics d WHERE d.device_id=$table.device_id AND d.report_date>=$table.period_start AND d.report_date<=$table.period_end AND d.report_date<?1 AND NOT ((d.device_id<>'alldevices' OR d.minutes>=d.daily_limit_minutes*0.60)))
+                """.trimIndent(), arrayOf<Any>(completedBefore))
+            }
+            db.execSQL("INSERT INTO statistics_rules(version) VALUES(2)")
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+    }
+
     private fun periodAverage(table: String, a: Int, b: Int?): Double? {
-        val sql = when (table) { "weekly_statistics" -> "SELECT average_daily_minutes FROM weekly_statistics WHERE device_id='alldevices' AND iso_year=? AND iso_week=?"; "monthly_statistics" -> "SELECT average_daily_minutes FROM monthly_statistics WHERE device_id='alldevices' AND year=? AND month=?"; else -> "SELECT average_daily_minutes FROM yearly_statistics WHERE device_id='alldevices' AND year=?" }
+        val sql = when (table) { "weekly_statistics" -> "SELECT average_daily_minutes FROM weekly_statistics WHERE included_days>0 AND device_id='alldevices' AND iso_year=? AND iso_week=?"; "monthly_statistics" -> "SELECT average_daily_minutes FROM monthly_statistics WHERE included_days>0 AND device_id='alldevices' AND year=? AND month=?"; else -> "SELECT average_daily_minutes FROM yearly_statistics WHERE included_days>0 AND device_id='alldevices' AND year=?" }
         return readableDatabase.rawQuery(sql, if (b == null) arrayOf(a.toString()) else arrayOf(a.toString(), b.toString())).use { if (it.moveToFirst()) it.getDouble(0) else null }
     }
 }

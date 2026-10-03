@@ -62,8 +62,9 @@ internal partial class ReportForm : Window
     {
         var year = DateTime.Now.Year; var start = new DateOnly(year, 1, 1); var end = new DateOnly(year, 12, 31);
         var points = app.PeriodReport("week", start, end);
-        YearChart.Points = points.Select(value => new DailyUsagePoint(value.PeriodStart, value.DeviceID, value.DisplayName, (int)Math.Round(value.AverageDailyMinutes), value.DeviceID == "alldevices", value.Estimated)).ToList();
+        YearChart.Points = points.Where(value => value.IncludedDays > 0).Select(value => new DailyUsagePoint(value.PeriodStart, value.DeviceID, value.DisplayName, (int)Math.Round(value.AverageDailyMinutes), value.DeviceID == "alldevices", value.Estimated)).ToList();
         YearStatusLabel.Text = $"{year} · weekly average daily use · {points.Select(value => value.DeviceID).Distinct().Count()} lines{EstimatedSuffix(points.Any(value => value.Estimated))}";
+        YearStatusLabel.Text += string.Concat(points.Where(value => value.IncludedDays == 0).Select(value => $"\n{value.PeriodLabel} · {value.DisplayName}: —"));
         UpdateStatisticsSummary();
     }
 
@@ -71,8 +72,9 @@ internal partial class ReportForm : Window
     {
         var end = new DateOnly(DateTime.Now.Year, DateTime.Now.Month, 1).AddMonths(1).AddDays(-1); var start = end.AddYears(-2).AddDays(1);
         var points = app.PeriodReport("month", start, end);
-        MonthChart.Points = points.Select(value => new DailyUsagePoint(value.PeriodStart, value.DeviceID, value.DisplayName, (int)Math.Round(value.AverageDailyMinutes), value.DeviceID == "alldevices", value.Estimated)).ToList();
+        MonthChart.Points = points.Where(value => value.IncludedDays > 0).Select(value => new DailyUsagePoint(value.PeriodStart, value.DeviceID, value.DisplayName, (int)Math.Round(value.AverageDailyMinutes), value.DeviceID == "alldevices", value.Estimated)).ToList();
         MonthStatusLabel.Text = $"{start:yyyy-MM} – {end:yyyy-MM} · monthly average daily use · {points.Select(value => value.DeviceID).Distinct().Count()} lines{EstimatedSuffix(points.Any(value => value.Estimated))}";
+        MonthStatusLabel.Text += string.Concat(points.Where(value => value.IncludedDays == 0).Select(value => $"\n{value.PeriodLabel} · {value.DisplayName}: —"));
         UpdateStatisticsSummary();
     }
 

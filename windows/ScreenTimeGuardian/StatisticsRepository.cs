@@ -34,6 +34,7 @@ internal sealed partial class BitmapRepository
         {
             var now = value ?? DateTimeOffset.Now;
             var end = TimeModel.LocalDate(now, settings.ReportTimeZone);
+            MigratePeriodAverages(end);
             long last = 0; string? dirty = null;
             using (var state = connection.CreateCommand())
             {
@@ -75,16 +76,16 @@ internal sealed partial class BitmapRepository
             foreach (var period in weeks)
             {
                 var monday = DateOnly.FromDateTime(ISOWeek.ToDateTime(period.Year, period.Week, DayOfWeek.Monday));
-                foreach (var id in reportIDs) RebuildPeriod("weekly_statistics", id, monday, monday.AddDays(6), period.Year, period.Week, now);
+                foreach (var id in reportIDs) RebuildPeriod("weekly_statistics", id, monday, monday.AddDays(6), period.Year, period.Week, now, end);
             }
             foreach (var period in months)
             {
                 var first = new DateOnly(period.Year, period.Month, 1); var lastDay = first.AddMonths(1).AddDays(-1);
-                foreach (var id in reportIDs) RebuildPeriod("monthly_statistics", id, first, lastDay, period.Year, period.Month, now);
+                foreach (var id in reportIDs) RebuildPeriod("monthly_statistics", id, first, lastDay, period.Year, period.Month, now, end);
             }
             foreach (var year in years)
             {
-                foreach (var id in reportIDs) RebuildPeriod("yearly_statistics", id, new DateOnly(year, 1, 1), new DateOnly(year, 12, 31), year, null, now);
+                foreach (var id in reportIDs) RebuildPeriod("yearly_statistics", id, new DateOnly(year, 1, 1), new DateOnly(year, 12, 31), year, null, now, end);
             }
             using (var transaction = connection.BeginTransaction())
             {
@@ -167,11 +168,12 @@ internal sealed partial class BitmapRepository
         command.Parameters.AddWithValue("$id", deviceID); command.Parameters.AddWithValue("$date", date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)); command.Parameters.AddWithValue("$minutes", minutes); command.Parameters.AddWithValue("$limit", limit); command.Parameters.AddWithValue("$source", sourceUpdated == DateTimeOffset.MinValue ? 0 : sourceUpdated.ToUnixTimeSeconds()); command.Parameters.AddWithValue("$calculated", calculated.ToUnixTimeSeconds()); command.Parameters.AddWithValue("$estimated", estimated ? 1 : 0); command.ExecuteNonQuery();
     }
 
-    private void RebuildPeriod(string table, string deviceID, DateOnly start, DateOnly end, int a, int? b, DateTimeOffset now)
+    private void RebuildPeriod(string table, string deviceID, DateOnly start, DateOnly end, int a, int? b, DateTimeOffset now, DateOnly completedBefore)
     {
-        using var query = connection.CreateCommand(); query.CommandText = "SELECT minutes,daily_limit_minutes,estimated FROM daily_statistics WHERE device_id=$id AND report_date>=$start AND report_date<=$end ORDER BY report_date"; query.Parameters.AddWithValue("$id", deviceID); query.Parameters.AddWithValue("$start", $"{start:yyyy-MM-dd}"); query.Parameters.AddWithValue("$end", $"{end:yyyy-MM-dd}");
+        using var query = connection.CreateCommand(); query.CommandText = "SELECT minutes,daily_limit_minutes,estimated FROM daily_statistics WHERE device_id=$id AND report_date>=$start AND report_date<=$end AND report_date<$today ORDER BY report_date"; query.Parameters.AddWithValue("$id", deviceID); query.Parameters.AddWithValue("$start", $"{start:yyyy-MM-dd}"); query.Parameters.AddWithValue("$end", $"{end:yyyy-MM-dd}");
+        query.Parameters.AddWithValue("$today", completedBefore.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
         using var reader = query.ExecuteReader(); var rows = new List<(int Minutes, int Limit, bool Estimated)>(); while (reader.Read()) rows.Add((reader.GetInt32(0), reader.GetInt32(1), reader.GetInt32(2) != 0)); reader.Close();
-        var included = rows.Where(row => row.Minutes >= row.Limit * .60).ToList(); var average = included.Count == 0 ? 0 : included.Average(row => row.Minutes); var estimated = rows.Any(row => row.Estimated);
+        var included = rows.Where(row => deviceID != "alldevices" || row.Minutes >= row.Limit * .60).ToList(); var average = included.Count == 0 ? 0 : included.Average(row => row.Minutes); var estimated = rows.Any(row => row.Estimated);
         using var command = connection.CreateCommand();
         command.CommandText = table switch
         {
@@ -182,11 +184,34 @@ internal sealed partial class BitmapRepository
         command.Parameters.AddWithValue("$id", deviceID); command.Parameters.AddWithValue("$a", a); if (b is not null) command.Parameters.AddWithValue("$b", b.Value); command.Parameters.AddWithValue("$start", $"{start:yyyy-MM-dd}"); command.Parameters.AddWithValue("$end", $"{end:yyyy-MM-dd}"); command.Parameters.AddWithValue("$average", average); command.Parameters.AddWithValue("$included", included.Count); command.Parameters.AddWithValue("$excluded", rows.Count - included.Count); command.Parameters.AddWithValue("$time", now.ToUnixTimeSeconds()); command.Parameters.AddWithValue("$estimated", estimated ? 1 : 0); command.ExecuteNonQuery();
     }
 
+    private void MigratePeriodAverages(DateOnly completedBefore)
+    {
+        using var create = connection.CreateCommand();
+        create.CommandText = "CREATE TABLE IF NOT EXISTS statistics_rules(version INTEGER PRIMARY KEY)"; create.ExecuteNonQuery();
+        using var check = connection.CreateCommand(); check.CommandText = "SELECT 1 FROM statistics_rules WHERE version=2";
+        if (check.ExecuteScalar() is not null) return;
+        using var transaction = connection.BeginTransaction();
+        foreach (var table in new[] { "weekly_statistics", "monthly_statistics", "yearly_statistics" })
+        {
+            using var command = connection.CreateCommand(); command.Transaction = transaction;
+            command.CommandText = $"""
+                UPDATE {table} SET
+                average_daily_minutes=COALESCE((SELECT AVG(minutes * 1.0) FROM daily_statistics d WHERE d.device_id={table}.device_id AND d.report_date>={table}.period_start AND d.report_date<={table}.period_end AND d.report_date<$today AND (d.device_id<>'alldevices' OR d.minutes>=d.daily_limit_minutes*0.60)),0),
+                included_days=(SELECT COUNT(*) FROM daily_statistics d WHERE d.device_id={table}.device_id AND d.report_date>={table}.period_start AND d.report_date<={table}.period_end AND d.report_date<$today AND (d.device_id<>'alldevices' OR d.minutes>=d.daily_limit_minutes*0.60)),
+                excluded_days=(SELECT COUNT(*) FROM daily_statistics d WHERE d.device_id={table}.device_id AND d.report_date>={table}.period_start AND d.report_date<={table}.period_end AND d.report_date<$today AND NOT ((d.device_id<>'alldevices' OR d.minutes>=d.daily_limit_minutes*0.60)))
+                """;
+            command.Parameters.AddWithValue("$today", completedBefore.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+            command.ExecuteNonQuery();
+        }
+        Execute("INSERT INTO statistics_rules(version) VALUES(2)", transaction);
+        transaction.Commit();
+    }
+
     private double? PeriodAverage(string table, string deviceID, int a, int? b)
     {
         lock (gate)
         {
-            using var command = connection.CreateCommand(); command.CommandText = table switch { "weekly_statistics" => "SELECT average_daily_minutes FROM weekly_statistics WHERE device_id=$id AND iso_year=$a AND iso_week=$b", "monthly_statistics" => "SELECT average_daily_minutes FROM monthly_statistics WHERE device_id=$id AND year=$a AND month=$b", _ => "SELECT average_daily_minutes FROM yearly_statistics WHERE device_id=$id AND year=$a" };
+            using var command = connection.CreateCommand(); command.CommandText = table switch { "weekly_statistics" => "SELECT average_daily_minutes FROM weekly_statistics WHERE included_days>0 AND device_id=$id AND iso_year=$a AND iso_week=$b", "monthly_statistics" => "SELECT average_daily_minutes FROM monthly_statistics WHERE included_days>0 AND device_id=$id AND year=$a AND month=$b", _ => "SELECT average_daily_minutes FROM yearly_statistics WHERE included_days>0 AND device_id=$id AND year=$a" };
             command.Parameters.AddWithValue("$id", deviceID); command.Parameters.AddWithValue("$a", a); if (b is not null) command.Parameters.AddWithValue("$b", b.Value); var value = command.ExecuteScalar(); return value is null || value is DBNull ? null : Convert.ToDouble(value, CultureInfo.InvariantCulture);
         }
     }

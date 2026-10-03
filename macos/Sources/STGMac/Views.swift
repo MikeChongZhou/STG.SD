@@ -16,7 +16,7 @@ struct DashboardView: View {
                     card("Report", "All Devices: \(duration(model.allMinutes))\nThis Mac: \(duration(model.localMinutes))", "chart.bar.fill") { open(.report) }
                     card("Tracking", "Latest week · Top models\n\(model.latestTrackingTopTwo)", "waveform.path.ecg") { open(.tracking) }
                     card("Settings", "Daily Limit: \(duration(model.settings.dailyPlanMinutes))\n\(meetingStatus)", "gearshape.fill") { open(.settings) }
-                    card("About", "Version 1.1.8\nLocal + private cloud", "info.circle.fill") { open(.about) }
+                    card("About", "Version 1.1.9\nLocal + private cloud", "info.circle.fill") { open(.about) }
                 }
                 HStack {
                     Circle().fill(model.isScreenAvailable ? .green : .gray).frame(width: 8)
@@ -62,6 +62,14 @@ struct SettingsView: View {
                             GridRow { Text("Eye break").foregroundStyle(.secondary); Stepper("\(draft.eyeCloseCountdownMinutes) minutes", value: $draft.eyeCloseCountdownMinutes, in: 0...10).fixedSize() }
                             GridRow { Text("Posture").foregroundStyle(.secondary); Stepper("\(draft.postureCloseCountdownMinutes) minutes", value: $draft.postureCloseCountdownMinutes, in: 0...10).fixedSize() }
                             GridRow { Text("Daily Limit").foregroundStyle(.secondary); Stepper("\(draft.dailyCloseCountdownMinutes) minutes", value: $draft.dailyCloseCountdownMinutes, in: 0...10).fixedSize() }
+                        }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
+                    }
+                    GroupBox("Notification Options") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Toggle("Eye Break Notifications", isOn: $draft.eyeNotificationsEnabled)
+                            Toggle("Posture Notifications", isOn: $draft.postureNotificationsEnabled)
+                            Toggle("Daily Usage Notifications", isOn: $draft.dailyNotificationsEnabled)
+                            Text("Usage is still recorded when all options are off.").font(.caption).foregroundStyle(.secondary)
                         }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
                     }
                     GroupBox("General") {
@@ -202,6 +210,7 @@ struct ReportView: View {
     @State private var dailyBitmaps: [DeviceDayBitmap] = []
     @State private var multiDayPoints: [DailyUsagePoint] = []
     @State private var periodPoints: [DailyUsagePoint] = []
+    @State private var unavailablePeriods: [PeriodUsagePoint] = []
     @State private var loading = false
     @State private var showDailyCalendar = false
     init(model: AppModel, preferredContentHeightChanged: @escaping (CGFloat) -> Void = { _ in }) {
@@ -280,6 +289,13 @@ struct ReportView: View {
                                 .frame(height: max(360, viewport.size.height - 30)).padding().background(.quaternary.opacity(0.25), in: RoundedRectangle(cornerRadius: 12))
                             if let average = macIntervalAverage(multiDayPoints) { Text("Interval average: \(duration(average)) per day").font(.caption).foregroundStyle(.secondary) }
                         } else {
+                            if !unavailablePeriods.isEmpty {
+                                DisclosureGroup("— · No eligible completed days") {
+                                    ForEach(unavailablePeriods) { value in
+                                        Text("\(value.periodLabel) · \(value.displayName): —").font(.caption)
+                                    }
+                                }
+                            }
                             Chart(periodPoints) { point in
                                 LineMark(x: .value("Period", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName)).symbol(by: .value("Device", point.displayName))
                                 PointMark(x: .value("Period", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName))
@@ -324,7 +340,9 @@ struct ReportView: View {
         loading = true
         let calendar = Calendar.current, now = Date()
         let start = mode == 2 ? (calendar.date(from: DateComponents(year: calendar.component(.year, from: now), month: 1, day: 1)) ?? now) : (calendar.date(byAdding: .year, value: -2, to: now) ?? now)
-        periodPoints = (await model.periodReport(kind: mode == 2 ? "week" : "month", from: start, through: now)).compactMap(macPeriodChartPoint)
+        let values = await model.periodReport(kind: mode == 2 ? "week" : "month", from: start, through: now)
+        unavailablePeriods = values.filter { $0.includedDays == 0 }
+        periodPoints = values.compactMap(macPeriodChartPoint)
         loading = false
     }
     private var preferredContentHeight: CGFloat {
@@ -356,6 +374,7 @@ struct ReportView: View {
 }
 
 private func macPeriodChartPoint(_ value: PeriodUsagePoint) -> DailyUsagePoint? {
+    guard value.includedDays > 0 else { return nil }
     let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX"); formatter.dateFormat = "yyyy-MM-dd"
     guard let date = formatter.date(from: value.periodStart) else { return nil }
     return DailyUsagePoint(date: date, dateLabel: value.periodLabel, deviceID: value.deviceID, displayName: value.displayName, minutes: Int(value.averageDailyMinutes.rounded()), isAggregate: value.deviceID == "alldevices", estimated: value.estimated)
@@ -490,7 +509,7 @@ struct AboutView: View {
             VStack(alignment: .leading, spacing: 14) {
                 HStack { Spacer(); Image(systemName: "shield.lefthalf.filled").font(.system(size: 56)).foregroundStyle(.blue); Spacer() }
                 Text("Screen Time Guardian").font(.title.bold()).frame(maxWidth: .infinity)
-                Text("Version 1.1.8\nCopyright © 2026 Fairy Phoenix Foundation.")
+                Text("Version 1.1.9\nCopyright © 2026 Fairy Phoenix Foundation.")
                 Text("This app records minute-level estimates of screen use, either on this Mac alone or across your devices, and reminds you to take breaks.")
                 Text("Privacy: Your screen-use data remains on this Mac and, if enabled, in your chosen private-cloud account. STG does not send it to the developer or anyone else.")
                 Text("Accuracy: STG estimates screen use from macOS activity signals, so its totals may differ from other system usage statistics.")
@@ -538,12 +557,12 @@ struct TrackingView: View {
                 ScrollView([.horizontal, .vertical]) {
                     Chart(weeklyRows) { row in
                         if let value = metric.value(row) {
-                            LineMark(x: .value("Week", row.weekStart), y: .value(metric.label, value))
+                            LineMark(x: .value("Week", trackingISOWeekLabel(row.weekStart)), y: .value(metric.label, value))
                                 .foregroundStyle(by: .value("Model", row.modelPermaslug))
-                            PointMark(x: .value("Week", row.weekStart), y: .value(metric.label, value))
+                            PointMark(x: .value("Week", trackingISOWeekLabel(row.weekStart)), y: .value(metric.label, value))
                                 .foregroundStyle(by: .value("Model", row.modelPermaslug))
                         }
-                    }.chartLegend(position: .trailing, alignment: .top).frame(minWidth: 980, minHeight: 460).padding()
+                    }.chartLegend(position: .trailing, alignment: .top).frame(width: weeklyChartWidth, height: 460).padding()
                 }.background(.quaternary.opacity(0.2), in: RoundedRectangle(cornerRadius: 8))
             }
             Text(status).font(.caption).foregroundStyle(.secondary)
@@ -556,6 +575,9 @@ struct TrackingView: View {
             .onChange(of: metric) { _, _ in if viewIndex == 1 { loadWeeks() } }
     }
     private var sortedRows: [OpenRouterRankingRow] { sortedOpenRouterRows(rows, by: sortField, direction: sortDirection) }
+    private var weeklyChartWidth: CGFloat {
+        max(980, CGFloat(Set(weeklyRows.map(\.weekStart)).count) * 72 + 300)
+    }
     private var trackingHeader: some View {
         HStack(spacing: 0) {
             trackingHeaderButton("Rank", .rank, 58); trackingHeaderButton("Model", .model, 250)
@@ -590,6 +612,16 @@ struct TrackingView: View {
         weeklyRows = model.openRouterWeeks(models: models)
         status = weeklyRows.isEmpty ? "No saved weekly data contains \(metric.label). The weekly action will add it when OpenRouter publishes that field." : "Showing all saved weeks for the latest completed week's \(metric.label) Top \(models.count)."
     }
+}
+
+private func trackingISOWeekLabel(_ dateText: String) -> String {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.calendar = Calendar(identifier: .iso8601)
+    formatter.dateFormat = "yyyy-MM-dd"
+    guard let date = formatter.date(from: dateText) else { return dateText }
+    let components = formatter.calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
+    return String(format: "%04d-W%02d", components.yearForWeekOfYear ?? 0, components.weekOfYear ?? 0)
 }
 
 struct ReminderView: View {

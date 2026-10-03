@@ -183,6 +183,7 @@ final class STGApplication: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func showReminder(_ originalDecision: ReminderDecision) {
+        guard model.settings.notificationEnabled(for: originalDecision.kind) else { return }
         var decision = originalDecision
         let detection = MeetingDetector.detect()
         if model.settings.meetingMode || detection.isInMeeting { decision.silent = true }

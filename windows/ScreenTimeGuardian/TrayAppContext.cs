@@ -222,14 +222,17 @@ internal sealed class TrayAppContext : IDisposable
         continuous = 0; var priorReminder = lastReminder ?? "none"; var followsEyeReminder = lastReminder == "eye"; string? kind = null;
         if (followsEyeReminder)
         {
-            if (AllMinutes > Settings.DailyPlanMinutes) { lastEye = now; lastPosture = now; lastReminder = "posture"; kind = "daily"; }
-            else if ((now - lastPosture).TotalMinutes >= 37) { lastEye = now; lastPosture = now; lastReminder = "posture"; kind = "posture"; }
+            if (Settings.DailyNotificationsEnabled && AllMinutes > Settings.DailyPlanMinutes) { lastEye = now; lastPosture = now; lastReminder = "posture"; kind = "daily"; }
+            else if (Settings.PostureNotificationsEnabled && (now - lastPosture).TotalMinutes >= 37) { lastEye = now; lastPosture = now; lastReminder = "posture"; kind = "posture"; }
+            else if (!Settings.PostureNotificationsEnabled) lastReminder = "posture";
         }
         else
         {
-            if (AllMinutes > Settings.DailyPlanMinutes) { lastEye = now; lastPosture = now; lastReminder = "eye"; kind = "daily"; }
-            else if ((now - lastEye).TotalMinutes >= 17) { lastEye = now; lastReminder = "eye"; kind = "eye"; }
+            if (Settings.DailyNotificationsEnabled && AllMinutes > Settings.DailyPlanMinutes) { lastEye = now; lastPosture = now; lastReminder = "eye"; kind = "daily"; }
+            else if (Settings.EyeNotificationsEnabled && (now - lastEye).TotalMinutes >= 17) { lastEye = now; lastReminder = "eye"; kind = "eye"; }
+            else if (!Settings.EyeNotificationsEnabled) lastReminder = "eye";
         }
+        if (kind is null && lastReminder != priorReminder) repository.SaveReminderState(Settings.DeviceID, new(lastEye, lastPosture, lastReminder), now);
         if (kind is not null)
         {
             repository.SaveReminderState(Settings.DeviceID, new(lastEye, lastPosture, lastReminder), now);

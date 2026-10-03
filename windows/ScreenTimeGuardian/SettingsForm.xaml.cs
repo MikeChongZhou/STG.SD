@@ -17,6 +17,10 @@ internal partial class SettingsForm : System.Windows.Window
         PlanHourBox.SelectionChanged += Draft_Changed; PlanMinuteBox.SelectionChanged += Draft_Changed;
         EyeCountdownBox.SelectionChanged += Draft_Changed; PostureCountdownBox.SelectionChanged += Draft_Changed; DailyCountdownBox.SelectionChanged += Draft_Changed;
         StartupBox.Checked += Draft_Changed; StartupBox.Unchecked += Draft_Changed; MeetingModeBox.Checked += Draft_Changed; MeetingModeBox.Unchecked += Draft_Changed;
+        EyeNotificationsBox.IsChecked = app.Settings.EyeNotificationsEnabled;
+        PostureNotificationsBox.IsChecked = app.Settings.PostureNotificationsEnabled;
+        DailyNotificationsBox.IsChecked = app.Settings.DailyNotificationsEnabled;
+        foreach (var box in new[] { EyeNotificationsBox, PostureNotificationsBox, DailyNotificationsBox }) { box.Checked += Draft_Changed; box.Unchecked += Draft_Changed; }
         UpdateCloud(); app.StateChanged += OnStateChanged; Closing += SettingsForm_Closing; Closed += (_, _) => app.StateChanged -= OnStateChanged;
     }
     private void Draft_Changed(object sender, System.Windows.RoutedEventArgs e) => SaveButton.IsEnabled = HasUnsavedChanges();
@@ -38,6 +42,9 @@ internal partial class SettingsForm : System.Windows.Window
     {
         var hours = PlanHourBox.SelectedItem as int? ?? 10; var minutes = PlanMinuteBox.SelectedItem as int? ?? 0; var plan = hours * 60 + minutes;
         if (plan is < 20 or > 1440) { System.Windows.MessageBox.Show(this, "The daily limit must be between 0h 20m and 24h 0m.", "Invalid Daily Limit", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning); return false; }
+        app.Settings.EyeNotificationsEnabled = EyeNotificationsBox.IsChecked == true;
+        app.Settings.PostureNotificationsEnabled = PostureNotificationsBox.IsChecked == true;
+        app.Settings.DailyNotificationsEnabled = DailyNotificationsBox.IsChecked == true;
         app.Settings.DailyPlanMinutes = plan; app.Settings.LaunchAtLogin = StartupBox.IsChecked == true; app.Settings.MeetingMode = MeetingModeBox.IsChecked == true;
         app.Settings.EyeCountdown = EyeCountdownBox.SelectedItem as int? ?? 1; app.Settings.PostureCountdown = PostureCountdownBox.SelectedItem as int? ?? 2; app.Settings.DailyCountdown = DailyCountdownBox.SelectedItem as int? ?? 3; app.SaveSettings(); return true;
     }
@@ -45,6 +52,9 @@ internal partial class SettingsForm : System.Windows.Window
     {
         var hours = PlanHourBox.SelectedItem as int? ?? 10; var minutes = PlanMinuteBox.SelectedItem as int? ?? 0;
         return hours * 60 + minutes != app.Settings.DailyPlanMinutes
+            || (EyeNotificationsBox.IsChecked == true) != app.Settings.EyeNotificationsEnabled
+            || (PostureNotificationsBox.IsChecked == true) != app.Settings.PostureNotificationsEnabled
+            || (DailyNotificationsBox.IsChecked == true) != app.Settings.DailyNotificationsEnabled
             || StartupBox.IsChecked == true != app.Settings.LaunchAtLogin
             || MeetingModeBox.IsChecked == true != app.Settings.MeetingMode
             || (EyeCountdownBox.SelectedItem as int? ?? 1) != app.Settings.EyeCountdown

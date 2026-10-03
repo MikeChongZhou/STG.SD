@@ -131,7 +131,7 @@ class OpenRouterClient {
     private fun get(url: String): JSONObject {
         val connection = URL(url).openConnection() as HttpURLConnection
         connection.setRequestProperty("Referer", "https://openrouter.ai/rankings")
-        connection.setRequestProperty("User-Agent", "Screen-Time-Guardian-Android/1.1.8")
+        connection.setRequestProperty("User-Agent", "Screen-Time-Guardian-Android/1.1.9")
         connection.setRequestProperty("Accept", "application/json")
         connection.connectTimeout = 15_000; connection.readTimeout = 30_000
         val code = connection.responseCode

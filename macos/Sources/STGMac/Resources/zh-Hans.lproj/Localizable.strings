@@ -27,8 +27,16 @@
 "Export lifecycle, screen-use, reminder, database, and synchronization events without cloud credentials." = "导出生命周期、屏幕用时、提醒、数据库和同步事件，不包含云端凭据。";
 "through the latest completed UTC day" = "至最近一个完整 UTC 日期"; "Updated by the weekly action in incremental sync" = "由增量同步中的周动作更新";
 "Prices are OpenRouter's observed effective weighted prices (including cache and provider discounts). Revenue is an estimate, not OpenRouter financial reporting." = "价格为 OpenRouter 观测到的实际支付加权价格，包含缓存和提供商折扣。收入为估算值，不代表 OpenRouter 财务数据。";
-"Version 1.1.8\nCopyright © 2026 Fairy Phoenix Foundation." = "版本 1.1.8\n版权所有 © 2026 Fairy Phoenix Foundation。";
+"Version 1.1.9\nCopyright © 2026 Fairy Phoenix Foundation." = "版本 1.1.9\n版权所有 © 2026 Fairy Phoenix Foundation。";
 "This app records minute-level estimates of screen use, either on this Mac alone or across your devices, and reminds you to take breaks." = "本 App 记录本 Mac 或您的所有设备的分钟级屏幕用时估算值，并提醒您休息。";
 "Privacy: Your screen-use data remains on this Mac and, if enabled, in your chosen private-cloud account. STG does not send it to the developer or anyone else." = "隐私：屏幕用时数据仅保存在本 Mac 和您选择的私人云中，不会发送给开发者或任何第三方。";
 "Accuracy: STG estimates screen use from macOS activity signals, so its totals may differ from other system usage statistics." = "准确性：STG 根据 macOS 活动信号估算屏幕用时，结果可能与其他系统统计不同。";
 "This app includes SQLite and open-source components from Apple’s Swift project. Their original copyright notices and license terms are preserved. All rights remain with their respective owners. STG claims no ownership of these components." = "本 App 包含 SQLite 和 Apple Swift 项目的开源组件，并保留其原始版权与许可条款。所有权利归各自所有者，STG 不主张拥有这些组件。";
+
+"Notification Options" = "通知选项";
+"Eye Break Notifications" = "用眼休息通知";
+"Posture Notifications" = "姿势切换通知";
+"Daily Usage Notifications" = "全天用时通知";
+"Usage is still recorded when all options are off." = "关闭所有选项后仍会记录用时。";
+
+"— · No eligible completed days" = "— · 无符合条件的已结束日期";

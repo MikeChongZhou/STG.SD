@@ -43,11 +43,12 @@ public struct ReminderEngine: Sendable {
         let followsEyeReminder = state.lastReminder == .eye
 
         if followsEyeReminder {
-            if allDeviceDailyMinutes > settings.dailyPlanMinutes {
+            if settings.dailyNotificationsEnabled && allDeviceDailyMinutes > settings.dailyPlanMinutes {
                 state.lastEyeAt = now; state.lastPostureAt = now
                 state.lastReminder = .posture
                 return .init(kind: .dailyLimit, usedMinutes: allDeviceDailyMinutes, closeCountdownMinutes: settings.dailyCloseCountdownMinutes, silent: silent)
             }
+            guard settings.postureNotificationsEnabled else { state.lastReminder = .posture; return nil }
             if now.timeIntervalSince(state.lastPostureAt) >= 37 * 60 {
                 state.lastEyeAt = now; state.lastPostureAt = now
                 state.lastReminder = .posture
@@ -56,11 +57,12 @@ public struct ReminderEngine: Sendable {
             return nil
         }
 
-        if allDeviceDailyMinutes > settings.dailyPlanMinutes {
+        if settings.dailyNotificationsEnabled && allDeviceDailyMinutes > settings.dailyPlanMinutes {
             state.lastEyeAt = now; state.lastPostureAt = now
             state.lastReminder = .eye
             return .init(kind: .dailyLimit, usedMinutes: allDeviceDailyMinutes, closeCountdownMinutes: settings.dailyCloseCountdownMinutes, silent: silent)
         }
+        guard settings.eyeNotificationsEnabled else { state.lastReminder = .eye; return nil }
         if now.timeIntervalSince(state.lastEyeAt) >= 17 * 60 {
             state.lastEyeAt = now
             state.lastReminder = .eye

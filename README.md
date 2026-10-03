@@ -1,6 +1,6 @@
 # Screen Time Guardian
 
-Screen Time Guardian (STG) 1.1.8 is a native, local-first screen-time record and reminder app for all your devices, including macOS, iOS/iPadOS, Windows, and Android.
+Screen Time Guardian (STG) 1.1.9 is a native, local-first screen-time record and reminder app for all your devices, including macOS, iOS/iPadOS, Windows, and Android.
 
 No data is shared with the developer or any third party.
 

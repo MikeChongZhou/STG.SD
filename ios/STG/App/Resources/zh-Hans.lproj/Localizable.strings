@@ -93,7 +93,7 @@
 "Prices are effective weighted averages per 1M tokens, including cache and provider discounts. Revenue is estimated and is not official OpenRouter financial data." = "价格为每百万 Token 的实际支付加权平均价，包含缓存和提供商折扣。收入为估算值，不代表 OpenRouter 官方财务数据。";
 "Includes app activity, Screen Time, database, and sync events. Cloud files and credentials are never included." = "包含 App 活动、屏幕使用时间、数据库和同步事件；绝不包含云端文件或凭据。";
 "Export App Data" = "导出 App 数据"; "Export Test Log" = "导出测试日志";
-"Version 1.1.8\nCopyright © 2026 Fairy Phoenix Foundation." = "版本 1.1.8\n版权所有 © 2026 Fairy Phoenix Foundation。";
+"Version 1.1.9\nCopyright © 2026 Fairy Phoenix Foundation." = "版本 1.1.9\n版权所有 © 2026 Fairy Phoenix Foundation。";
 "This app records minute-level estimates of screen use on this device or across all your devices, and reminds you to take breaks." = "本 App 记录本设备或您的所有设备的分钟级屏幕用时估算值，并提醒您休息。";
 "Privacy: Your screen-use data stays on this device and, if enabled, in the private cloud you choose. It is never sent to the app developer or any other service." = "隐私：屏幕用时数据仅保存在本设备和您选择的私人云中，不会发送给 App 开发者或任何其他服务。";
 "Accuracy: Apple does not make Screen Time data available to third-party apps. STG estimates usage from DeviceActivity data, so its totals may differ from those shown in Settings → Screen Time." = "准确性：Apple 不向第三方 App 提供屏幕使用时间数据。STG 根据 DeviceActivity 数据估算用时，因此可能与“设置 → 屏幕使用时间”中的数据不同。";
@@ -103,3 +103,11 @@
 "Monitoring Couldn’t Start" = "无法启动监控"; "Try again. Details are available in the test log." = "请重试；详情可在测试日志中查看。";
 "Selected: %d apps · %d websites" = "已选择：%d 个 App · %d 个网站"; "Selected: %d apps · %d websites · %d categories" = "已选择：%d 个 App · %d 个网站 · %d 个类别";
 "Weekly data will appear after sync." = "同步后将显示每周数据。";
+
+"Notification Options" = "通知选项";
+"Daily Usage Notifications" = "全天用时通知";
+"Eye Break Notifications" = "用眼休息通知";
+"Posture Notifications" = "姿势切换通知";
+"Usage is still recorded when all options are off." = "关闭所有选项后仍会记录用时。";
+
+"— · No eligible completed days" = "— · 无符合条件的已结束日期";

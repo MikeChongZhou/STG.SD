@@ -28,7 +28,7 @@ Google Drive requires a Google OAuth native client ID in each target's `STGGoogl
 
 ## Android
 
-Install Android Studio/JDK 17 and run `bash scripts/build_android.sh`. The debug APK is written to `dist/android/ScreenTimeGuardian-1.1.8-debug.apk` and supports Android 9 (API 28) or later.
+Install Android Studio/JDK 17 and run `bash scripts/build_android.sh`. The debug APK is written to `dist/android/ScreenTimeGuardian-1.1.9-debug.apk` and supports Android 9 (API 28) or later.
 
 On first use grant notifications, overlay/full-screen reminder access, and Usage Access, then optionally complete private-cloud setup. Android does not use a folder picker: OneDrive uses OAuth/PKCE with `Files.ReadWrite.AppFolder` and Microsoft Graph App Folder; Google Drive uses OAuth/PKCE with the Google Desktop client registration and the hidden `appDataFolder`. The app verifies the account and completes an initial sync before saving the provider. Access and refresh tokens are encrypted with Android Keystore, and logs never include tokens or account addresses. For Google builds, provide `STG_GOOGLE_CLIENT_SECRET` either as an environment variable or as the same key in the Git-ignored `android/local.properties`; Gradle injects it into `BuildConfig` without writing it to tracked source files. The `local.properties` option is required when launching directly from Android Studio unless Android Studio itself was started with that environment variable.
 

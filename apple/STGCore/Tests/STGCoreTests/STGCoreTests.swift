@@ -1,7 +1,120 @@
 import XCTest
+import SQLite3
 @testable import STGCore
 
 final class STGCoreTests: XCTestCase {
+    func testPeriodAveragesUseActualDeviceMinutesAndExcludeToday() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let repository = try BitmapRepository(url: folder.appendingPathComponent("stg.sqlite"), importsBundledOpenRouterSeed: false, installsBundledDatabaseTemplate: false)
+        for (date, minutes) in [("2026-10-01", 120), ("2026-10-02", 60), ("2026-10-03", 800)] {
+            var bitmap = MinuteBitmap()
+            for minute in 0..<minutes { bitmap[minute] = true }
+            try repository.upsert(deviceID: "iphone", utcDate: date, bitmap: bitmap)
+        }
+        let now = ISO8601DateFormatter().date(from: "2026-10-03T20:00:00Z")!
+        _ = try repository.refreshStatistics(localDeviceID: "iphone", localDeviceName: "iPhone", localDeviceKind: .ios, dailyLimitMinutes: 600, timeZoneID: "UTC", now: now)
+        let rows = try repository.periodUsage(kind: "month", from: "2026-10-01", through: "2026-10-31")
+        let phone = try XCTUnwrap(rows.first { $0.deviceID == "iphone" })
+        XCTAssertEqual(phone.averageDailyMinutes, 90)
+        XCTAssertEqual(phone.includedDays, 2)
+        XCTAssertEqual(phone.excludedDays, 0)
+        let aggregate = try XCTUnwrap(rows.first { $0.deviceID == "alldevices" })
+        XCTAssertEqual(aggregate.includedDays, 0)
+        XCTAssertEqual(aggregate.excludedDays, 2)
+        XCTAssertNil(try repository.statisticsSummary(reference: now, timeZoneID: "UTC").thisMonthAverageMinutes)
+    }
+
+    func testLegacyPeriodCacheRecomputedFromRetainedDailyRecords() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("stg.sqlite")
+        let repository = try BitmapRepository(url: url, importsBundledOpenRouterSeed: false, installsBundledDatabaseTemplate: false)
+        var db: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(url.path, &db), SQLITE_OK)
+        defer { sqlite3_close(db) }
+        let fixture = """
+        INSERT INTO device VALUES('iphone','iPhone','ios',0);
+        INSERT INTO daily_statistics VALUES('iphone','2026-09-01',120,600,0,0,1),('iphone','2026-09-02',0,600,0,0,1),('iphone','2026-09-03',360,600,0,0,1);
+        INSERT INTO weekly_statistics VALUES('iphone',2026,36,'2026-08-31','2026-09-06',0,0,3,0,1);
+        INSERT INTO monthly_statistics VALUES('iphone',2026,9,'2026-09-01','2026-09-30',0,0,3,0,1);
+        INSERT INTO yearly_statistics VALUES('iphone',2026,'2026-01-01','2026-12-31',0,0,3,0,1);
+        """
+        XCTAssertEqual(sqlite3_exec(db, fixture, nil, nil, nil), SQLITE_OK)
+        let now = ISO8601DateFormatter().date(from: "2026-10-03T20:00:00Z")!
+        _ = try repository.refreshStatistics(localDeviceID: "iphone", localDeviceName: "iPhone", localDeviceKind: .ios, dailyLimitMinutes: 600, timeZoneID: "UTC", now: now)
+        for kind in ["week", "month"] {
+            let rows = try repository.periodUsage(kind: kind, from: "2026-09-01", through: "2026-09-03")
+            let phone = try XCTUnwrap(rows.first { $0.deviceID == "iphone" })
+            XCTAssertEqual(phone.averageDailyMinutes, 160)
+            XCTAssertEqual(phone.includedDays, 3)
+            XCTAssertEqual(phone.excludedDays, 0)
+        }
+        XCTAssertEqual(try repository.statisticsSummary(reference: now, timeZoneID: "UTC", deviceID: "iphone").thisYearAverageMinutes, 160)
+    }
+
+    func testMobileNotificationOptionsAndLegacySettings() throws {
+        var settings = STGSettings(deviceID: "test", deviceName: "Phone", deviceKind: .ios)
+        let legacy = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(STGSettings.self, from: legacy)
+        XCTAssertTrue(decoded.eyeNotificationsEnabled)
+        XCTAssertTrue(decoded.postureNotificationsEnabled)
+        XCTAssertTrue(decoded.dailyNotificationsEnabled)
+        var document = try XCTUnwrap(JSONSerialization.jsonObject(with: legacy) as? [String: Any])
+        document["breakNotifications"] = false
+        let migrated = try JSONDecoder().decode(STGSettings.self, from: JSONSerialization.data(withJSONObject: document))
+        XCTAssertFalse(migrated.eyeNotificationsEnabled)
+        XCTAssertFalse(migrated.postureNotificationsEnabled)
+        var updated = migrated
+        updated.eyeNotificationsEnabled = true
+        let saved = try JSONDecoder().decode(STGSettings.self, from: JSONEncoder().encode(updated))
+        XCTAssertTrue(saved.eyeNotificationsEnabled)
+        XCTAssertFalse(saved.postureNotificationsEnabled)
+        for eye in [false, true] {
+            for posture in [false, true] {
+                for daily in [false, true] {
+                    settings.eyeNotificationsEnabled = eye
+                    settings.postureNotificationsEnabled = posture
+                    settings.dailyNotificationsEnabled = daily
+                    let restored = try JSONDecoder().decode(STGSettings.self, from: JSONEncoder().encode(settings))
+                    XCTAssertEqual(restored.eyeNotificationsEnabled, eye)
+                    XCTAssertEqual(restored.postureNotificationsEnabled, posture)
+                    XCTAssertEqual(restored.dailyNotificationsEnabled, daily)
+                    for kind in [ReminderKind.eye, .posture] {
+                        let enabled = kind == .eye ? eye : posture
+                        XCTAssertEqual(restored.mobileReminderKind(dailyMinutes: 20, breakKind: kind), enabled ? kind : nil)
+                        XCTAssertEqual(restored.mobileReminderKind(dailyMinutes: 601, breakKind: kind), daily ? .dailyLimit : (enabled ? kind : nil))
+                    }
+                }
+            }
+        }
+    }
+
+    func testDesktopNotificationOptionsKeepAlternatingWhenDisabled() {
+        let engine = ReminderEngine()
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        for eye in [false, true] {
+            for posture in [false, true] {
+                for daily in [false, true] {
+                    for overLimit in [false, true] {
+                        var settings = STGSettings(deviceID: "test", deviceName: "Mac", deviceKind: .macos)
+                        settings.eyeNotificationsEnabled = eye
+                        settings.postureNotificationsEnabled = posture
+                        settings.dailyNotificationsEnabled = daily
+                        var state = ReminderState(lastReminder: .posture)
+                        var kinds: [ReminderKind] = []
+                        for minute in 1...80 {
+                            let result = engine.evaluate(active: true, now: start.addingTimeInterval(Double(minute * 60)), localMinuteIsSet: true, allDeviceDailyMinutes: overLimit ? 601 : 80, settings: settings, state: &state)
+                            if let result { kinds.append(result.kind) }
+                        }
+                        let expected: [ReminderKind] = daily && overLimit ? [.dailyLimit, .dailyLimit, .dailyLimit, .dailyLimit] : [eye ? .eye : nil, posture ? .posture : nil, eye ? .eye : nil, posture ? .posture : nil].compactMap { $0 }
+                        XCTAssertEqual(kinds, expected)
+                    }
+                }
+            }
+        }
+    }
+
     func testBitmapVector() throws {
         var bitmap = MinuteBitmap()
         [0, 1, 7, 8, 719, 1439].forEach { bitmap[$0] = true }

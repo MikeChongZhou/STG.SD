@@ -45,12 +45,16 @@ class UsageMonitorService : Service() {
         if (continuous >= 20) {
             continuous = 0
             if (lastReminder == "eye") {
-                if (used >= settings.dailyPlanMinutes) { kind = "daily"; lastReminder = "posture"; lastEye = elapsed; lastPosture = elapsed }
-                else if (elapsed - lastPosture >= 37 * 60) { kind = "posture"; lastReminder = "posture"; lastEye = elapsed; lastPosture = elapsed }
+                if (settings.dailyNotificationsEnabled && used >= settings.dailyPlanMinutes) { kind = "daily"; lastReminder = "posture"; lastEye = elapsed; lastPosture = elapsed }
+                else if (settings.postureNotificationsEnabled && elapsed - lastPosture >= 37 * 60) { kind = "posture"; lastReminder = "posture"; lastEye = elapsed; lastPosture = elapsed }
+                else if (!settings.postureNotificationsEnabled) { lastReminder = "posture" }
             } else {
-                if (used >= settings.dailyPlanMinutes) { kind = "daily"; lastReminder = "eye"; lastEye = elapsed; lastPosture = elapsed }
-                else if (elapsed - lastEye >= 17 * 60) { kind = "eye"; lastReminder = "eye"; lastEye = elapsed }
+                if (settings.dailyNotificationsEnabled && used >= settings.dailyPlanMinutes) { kind = "daily"; lastReminder = "eye"; lastEye = elapsed; lastPosture = elapsed }
+                else if (settings.eyeNotificationsEnabled && elapsed - lastEye >= 17 * 60) { kind = "eye"; lastReminder = "eye"; lastEye = elapsed }
+                else if (!settings.eyeNotificationsEnabled) { lastReminder = "eye" }
             }
+            // Advance disabled slots too, so the other reminder keeps its cadence after restart.
+            if (lastReminder != previousSlot && kind == null) database.saveReminderState(settings.deviceID, AndroidReminderState(lastEye, lastPosture, lastReminder))
         }
         if (kind != null) { database.saveReminderState(settings.deviceID, AndroidReminderState(lastEye, lastPosture, lastReminder)); diagnosticLog.record("reminder", "reminder selected; kind=$kind; previous_slot=$previousSlot; next_slot=$lastReminder; used=${used}m; continuous=${continuous}m; state_saved=true"); showReminder(kind, used, settings); diagnosticLog.record("sync", "incremental sync requested; trigger=reminder; kind=$kind"); AppSyncCoordinator.request(this, "reminder:$kind") }
         database.updateRuntimeState(settings.deviceID, continuous, localUsed, used, now.atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString(), elapsed)

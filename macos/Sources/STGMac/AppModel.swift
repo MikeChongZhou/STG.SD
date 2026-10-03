@@ -487,10 +487,11 @@ final class AppModel: ObservableObject {
             let priorLastEye = reminderState.lastEyeAt
             let priorLastPosture = reminderState.lastPostureAt
             let priorLastReminder = reminderState.lastReminder
-            if let decision = reminderEngine.evaluate(active: isScreenAvailable, now: now, localMinuteIsSet: previousWasUsed, allDeviceDailyMinutes: allMinutes, settings: settings, state: &reminderState) {
-                if reminderState.lastEyeAt != priorLastEye || reminderState.lastPostureAt != priorLastPosture || reminderState.lastReminder != priorLastReminder {
-                    try repository.saveReminderState(deviceID: settings.deviceID, state: reminderState, updatedAt: now)
-                }
+            let decision = reminderEngine.evaluate(active: isScreenAvailable, now: now, localMinuteIsSet: previousWasUsed, allDeviceDailyMinutes: allMinutes, settings: settings, state: &reminderState)
+            if reminderState.lastEyeAt != priorLastEye || reminderState.lastPostureAt != priorLastPosture || reminderState.lastReminder != priorLastReminder {
+                try repository.saveReminderState(deviceID: settings.deviceID, state: reminderState, updatedAt: now)
+            }
+            if let decision {
                 diagnosticLog.record("reminder; kind=\(decision.kind.rawValue); previous_slot=\(priorLastReminder?.rawValue ?? "none"); next_slot=\(reminderState.lastReminder?.rawValue ?? "none"); all_used=\(decision.usedMinutes)m; local_used=\(localMinutes)m; countdown=\(decision.closeCountdownMinutes)m; silent=\(decision.silent)", category: "reminder")
                 lastReminder = decision
                 NotificationCenter.default.post(name: .stgReminder, object: decision)
@@ -736,4 +737,6 @@ extension SyncProvider {
     }
 }
 
-extension Notification.Name { static let stgReminder = Notification.Name("STGReminder") }
+extension Notification.Name {
+    static let stgReminder = Notification.Name("STGReminder")
+}

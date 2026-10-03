@@ -182,7 +182,9 @@ final class MonitorExtension: DeviceActivityMonitor {
                 localDate: formatter.string(from: now),
                 at: now
             )
-            let kind: ReminderKind = all >= settings.dailyPlanMinutes ? .dailyLimit : (threshold % 40 == 0 ? .posture : .eye)
+            // Reload after sync so a preference saved while this callback awaited is respected.
+            let notificationSettings = try SharedEnvironment.loadMonitorSettings()
+            guard let kind = notificationSettings.mobileReminderKind(dailyMinutes: all, breakKind: threshold % 40 == 0 ? .posture : .eye) else { return }
             SharedEnvironment.diagnosticLog.record("threshold reminder prepared; generation=\(generation); device=\(settings.deviceID.prefix(8)); threshold=\(threshold)m; stored_aggregate=\(all)m; reminder=\(kind.rawValue); silent=\(settings.meetingMode)", category: "monitor")
             await post(generation: generation, threshold: threshold, kind: kind, minutes: all, silent: settings.meetingMode)
         } catch {

@@ -17,8 +17,8 @@ android {
         applicationId = "com.timbertrail.stg"
         minSdk = 28
         targetSdk = 36
-        versionCode = 9
-        versionName = "1.1.8"
+        versionCode = 10
+        versionName = "1.1.9"
         val googleSecret = providers.environmentVariable("STG_GOOGLE_CLIENT_SECRET")
             .orElse(localProperties.getProperty("STG_GOOGLE_CLIENT_SECRET", "")).get()
             .replace("\\", "\\\\").replace("\"", "\\\"")

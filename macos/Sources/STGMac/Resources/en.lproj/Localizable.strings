@@ -27,8 +27,16 @@
 "Export lifecycle, screen-use, reminder, database, and synchronization events without cloud credentials." = "Export lifecycle, screen-use, reminder, database, and synchronization events without cloud credentials.";
 "through the latest completed UTC day" = "through the latest completed UTC day"; "Updated by the weekly action in incremental sync" = "Updated by the weekly action in incremental sync";
 "Prices are OpenRouter's observed effective weighted prices (including cache and provider discounts). Revenue is an estimate, not OpenRouter financial reporting." = "Prices are OpenRouter's observed effective weighted prices (including cache and provider discounts). Revenue is an estimate, not OpenRouter financial reporting.";
-"Version 1.1.8\nCopyright © 2026 Fairy Phoenix Foundation." = "Version 1.1.8\nCopyright © 2026 Fairy Phoenix Foundation.";
+"Version 1.1.9\nCopyright © 2026 Fairy Phoenix Foundation." = "Version 1.1.9\nCopyright © 2026 Fairy Phoenix Foundation.";
 "This app records minute-level estimates of screen use, either on this Mac alone or across your devices, and reminds you to take breaks." = "This app records minute-level estimates of screen use, either on this Mac alone or across your devices, and reminds you to take breaks.";
 "Privacy: Your screen-use data remains on this Mac and, if enabled, in your chosen private-cloud account. STG does not send it to the developer or anyone else." = "Privacy: Your screen-use data remains on this Mac and, if enabled, in your chosen private-cloud account. STG does not send it to the developer or anyone else.";
 "Accuracy: STG estimates screen use from macOS activity signals, so its totals may differ from other system usage statistics." = "Accuracy: STG estimates screen use from macOS activity signals, so its totals may differ from other system usage statistics.";
 "This app includes SQLite and open-source components from Apple’s Swift project. Their original copyright notices and license terms are preserved. All rights remain with their respective owners. STG claims no ownership of these components." = "This app includes SQLite and open-source components from Apple’s Swift project. Their original copyright notices and license terms are preserved. All rights remain with their respective owners. STG claims no ownership of these components.";
+
+"Notification Options" = "Notification Options";
+"Eye Break Notifications" = "Eye Break Notifications";
+"Posture Notifications" = "Posture Notifications";
+"Daily Usage Notifications" = "Daily Usage Notifications";
+"Usage is still recorded when all options are off." = "Usage is still recorded when all options are off.";
+
+"— · No eligible completed days" = "— · No eligible completed days";

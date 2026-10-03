@@ -14,6 +14,8 @@ internal static class L
         ["Screen Time Guardian"] = "AppTitle", ["Screen Time Guardian Settings"] = "SettingsTitle", ["STG Report"] = "ReportTitle",
         ["Report"] = "Report", ["Tracking"] = "Tracking", ["Settings"] = "Settings", ["About"] = "About", ["Close"] = "Close", ["Close Window"] = "Close",
         ["Save"] = "Save", ["Back"] = "Back", ["Finish"] = "Finish", ["Not Now"] = "NotNow", ["Sync Now"] = "SyncNow",
+        ["Minutes:"] = "Minutes", ["Cancel"] = "Cancel",
+        ["Notification Options"] = "NotificationOptions", ["Eye Break Notifications"] = "EyeNotifications", ["Posture Notifications"] = "PostureNotifications", ["Daily Usage Notifications"] = "DailyNotifications", ["Usage is still recorded when all options are off."] = "NotificationsRecordingDetail",
         ["Daily"] = "Daily", ["Daily report"] = "Daily", ["Multiple Days"] = "MultipleDays", ["Year by Week"] = "YearByWeek", ["Years by Month"] = "YearsByMonth",
         ["Daily Limit"] = "DailyLimit", ["All Devices: "] = "AllDevices", ["This PC: "] = "ThisPC", ["Latest week · Top models"] = "LatestTopModels",
         ["PRIVATE CLOUD"] = "PrivateCloud", ["Current cloud"] = "CurrentCloud", ["Configure…"] = "Configure", ["GENERAL"] = "General", ["REMINDERS"] = "Reminders",
@@ -31,7 +33,7 @@ internal static class L
         ["Your screen-use data remains on this PC and, if enabled, in your chosen private-cloud account. STG does not send it to the developer or anyone else."] = "AboutPrivacy",
         ["STG estimates screen use from Windows activity signals, so its totals may differ from other system usage statistics."] = "AboutAccuracy",
         ["This app includes SQLite and open-source components from Microsoft .NET. Their original copyright notices and license terms are preserved. All rights remain with their respective owners. STG claims no ownership of these components."] = "AboutThirdPartyBody",
-        ["Privacy: "] = "Privacy", ["Accuracy: "] = "Accuracy", ["Version 1.1.8"] = "Version", ["Local + private cloud"] = "LocalPrivateCloud",
+        ["Privacy: "] = "Privacy", ["Accuracy: "] = "Accuracy", ["Version 1.1.9"] = "Version", ["Local + private cloud"] = "LocalPrivateCloud",
         ["Step {0} of {1}"] = "StepOf", ["Private-cloud sync combines screen-use records from your own devices. You can skip this and configure it later."] = "CloudOnboardingDetail", ["Automatic startup keeps minute recording and reminders available after you sign in."] = "StartupOnboardingDetail",
         ["Eye Break"] = "EyeBreak", ["Posture Break"] = "PostureBreak", ["Daily Limit Reached"] = "DailyLimitReached", ["Look 20 feet away for 20 seconds."] = "EyeBreakBody", ["Stand or walk for 4 minutes and rest your eyes."] = "PostureBreakBody", ["You've used your screen for {0}. Take a 5-minute walk."] = "DailyLimitBody", ["Meeting mode: this reminder can be closed immediately."] = "MeetingClose", ["Close available in {0}s"] = "CloseAvailable", ["You can close this reminder now."] = "CanCloseNow"
         ,["On"] = "On", ["Off"] = "Off", ["Single-device mode"] = "SingleDeviceMode", ["Off — single device"] = "OffSingleDevice", ["Not signed in"] = "NotSignedIn", ["Connected through {0}"] = "ConnectedThrough", ["No account — this PC only"] = "NoAccountThisPC", ["Open iCloud for Windows, sign in, and turn on iCloud Drive"] = "OpenICloud", ["Check iCloud Drive…"] = "CheckICloud", ["Reconnect account…"] = "ReconnectAccount"

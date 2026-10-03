@@ -61,13 +61,13 @@
             <TabItem Header="Year by Week">
                 <Grid Margin="4,8,4,4"><Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                     <Border Style="{StaticResource Card}" Padding="8" Margin="0"><ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"><local:UsageLineChartControl x:Name="YearChart" MinWidth="980" MinHeight="390"/></ScrollViewer></Border>
-                    <TextBlock x:Name="YearStatusLabel" Grid.Row="1" Foreground="{StaticResource MutedBrush}" Margin="2,7,0,0" FontSize="12"/>
+                    <TextBlock TextWrapping="Wrap" MaxHeight="100" x:Name="YearStatusLabel" Grid.Row="1" Foreground="{StaticResource MutedBrush}" Margin="2,7,0,0" FontSize="12"/>
                 </Grid>
             </TabItem>
             <TabItem Header="Years by Month">
                 <Grid Margin="4,8,4,4"><Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                     <Border Style="{StaticResource Card}" Padding="8" Margin="0"><ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"><local:UsageLineChartControl x:Name="MonthChart" MinWidth="980" MinHeight="390"/></ScrollViewer></Border>
-                    <TextBlock x:Name="MonthStatusLabel" Grid.Row="1" Foreground="{StaticResource MutedBrush}" Margin="2,7,0,0" FontSize="12"/>
+                    <TextBlock TextWrapping="Wrap" MaxHeight="100" x:Name="MonthStatusLabel" Grid.Row="1" Foreground="{StaticResource MutedBrush}" Margin="2,7,0,0" FontSize="12"/>
                 </Grid>
             </TabItem>
         </TabControl>

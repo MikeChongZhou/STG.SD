@@ -73,7 +73,7 @@ internal sealed class OpenRouterClient
     {
         http = httpClient ?? new HttpClient();
         http.Timeout = TimeSpan.FromSeconds(45);
-        http.DefaultRequestHeaders.UserAgent.ParseAdd("Screen-Time-Guardian/1.1.8");
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("Screen-Time-Guardian/1.1.9");
         http.DefaultRequestHeaders.Accept.Add(
             new MediaTypeWithQualityHeaderValue("application/json"));
         http.DefaultRequestHeaders.Referrer = new Uri("https://openrouter.ai/rankings");

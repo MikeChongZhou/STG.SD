@@ -744,6 +744,7 @@ public final class BitmapRepository: @unchecked Sendable {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: timeZoneID) ?? .current
         let end = calendar.startOfDay(for: now)
+        try migratePeriodAverages(completedBefore: Self.statisticsDateFormatter(timeZone: calendar.timeZone).string(from: now))
         let state = try statisticsCursor()
         var candidates: [Date] = []
         if state.lastStatisticsAt > 0 {
@@ -1108,14 +1109,15 @@ public final class BitmapRepository: @unchecked Sendable {
         let end = formatter.string(from: inclusiveEnd)
         let values: [(minutes: Int, limit: Int, estimated: Bool)] = try queue.sync {
             var statement: OpaquePointer?
-            guard sqlite3_prepare_v2(database, "SELECT minutes,daily_limit_minutes,estimated FROM daily_statistics WHERE device_id=? AND report_date>=? AND report_date<=? ORDER BY report_date", -1, &statement, nil) == SQLITE_OK else { throw error() }
+            guard sqlite3_prepare_v2(database, "SELECT minutes,daily_limit_minutes,estimated FROM daily_statistics WHERE device_id=? AND report_date>=? AND report_date<=? AND report_date<? ORDER BY report_date", -1, &statement, nil) == SQLITE_OK else { throw error() }
             defer { sqlite3_finalize(statement) }
             bind(deviceID, at: 1, to: statement); bind(start, at: 2, to: statement); bind(end, at: 3, to: statement)
+            bind(formatter.string(from: now), at: 4, to: statement)
             var rows: [(Int, Int, Bool)] = []
             while sqlite3_step(statement) == SQLITE_ROW { rows.append((Int(sqlite3_column_int(statement, 0)), Int(sqlite3_column_int(statement, 1)), sqlite3_column_int(statement, 2) != 0)) }
             return rows
         }
-        let included = values.filter { Double($0.minutes) >= Double($0.limit) * 0.60 }
+        let included = values.filter { deviceID != "alldevices" || Double($0.minutes) >= Double($0.limit) * 0.60 }
         let average = included.isEmpty ? 0 : Double(included.reduce(0) { $0 + $1.minutes }) / Double(included.count)
         let estimated = values.contains(where: \.estimated)
         try queue.sync {
@@ -1151,6 +1153,38 @@ public final class BitmapRepository: @unchecked Sendable {
         }
     }
 
+    private func migratePeriodAverages(completedBefore: String) throws {
+        try queue.sync {
+            try execute("CREATE TABLE IF NOT EXISTS statistics_rules(version INTEGER PRIMARY KEY)")
+            var statement: OpaquePointer?
+            guard sqlite3_prepare_v2(database, "SELECT 1 FROM statistics_rules WHERE version=2", -1, &statement, nil) == SQLITE_OK else { throw error() }
+            let migrated = sqlite3_step(statement) == SQLITE_ROW
+            sqlite3_finalize(statement)
+            guard !migrated else { return }
+            try execute("BEGIN IMMEDIATE")
+            do {
+                for table in ["weekly_statistics", "monthly_statistics", "yearly_statistics"] {
+                    let sql = """
+                    UPDATE \(table) SET
+                    average_daily_minutes=COALESCE((SELECT AVG(minutes * 1.0) FROM daily_statistics d WHERE d.device_id=\(table).device_id AND d.report_date>=\(table).period_start AND d.report_date<=\(table).period_end AND d.report_date<?1 AND (d.device_id<>'alldevices' OR d.minutes>=d.daily_limit_minutes*0.60)),0),
+                    included_days=(SELECT COUNT(*) FROM daily_statistics d WHERE d.device_id=\(table).device_id AND d.report_date>=\(table).period_start AND d.report_date<=\(table).period_end AND d.report_date<?1 AND (d.device_id<>'alldevices' OR d.minutes>=d.daily_limit_minutes*0.60)),
+                    excluded_days=(SELECT COUNT(*) FROM daily_statistics d WHERE d.device_id=\(table).device_id AND d.report_date>=\(table).period_start AND d.report_date<=\(table).period_end AND d.report_date<?1 AND NOT ((d.device_id<>'alldevices' OR d.minutes>=d.daily_limit_minutes*0.60)))
+                    """
+                    var update: OpaquePointer?
+                    guard sqlite3_prepare_v2(database, sql, -1, &update, nil) == SQLITE_OK else { throw error() }
+                    defer { sqlite3_finalize(update) }
+                    bind(completedBefore, at: 1, to: update)
+                    guard sqlite3_step(update) == SQLITE_DONE else { throw error() }
+                }
+                try execute("INSERT INTO statistics_rules(version) VALUES(2)")
+                try execute("COMMIT")
+            } catch {
+                try? execute("ROLLBACK")
+                throw error
+            }
+        }
+    }
+
     private func periodAverage(table: String, deviceID: String, a: Int, b: Int?) throws -> Double? {
         try queue.sync {
             let columns: String
@@ -1159,7 +1193,7 @@ public final class BitmapRepository: @unchecked Sendable {
             else if table == "yearly_statistics" { columns = "year=?" }
             else { throw STGError.database("invalid statistics table") }
             var statement: OpaquePointer?
-            guard sqlite3_prepare_v2(database, "SELECT average_daily_minutes FROM \(table) WHERE device_id=? AND \(columns)", -1, &statement, nil) == SQLITE_OK else { throw error() }
+            guard sqlite3_prepare_v2(database, "SELECT average_daily_minutes FROM \(table) WHERE device_id=? AND \(columns) AND included_days>0", -1, &statement, nil) == SQLITE_OK else { throw error() }
             defer { sqlite3_finalize(statement) }
             bind(deviceID, at: 1, to: statement); sqlite3_bind_int(statement, 2, Int32(a)); if let b { sqlite3_bind_int(statement, 3, Int32(b)) }
             guard sqlite3_step(statement) == SQLITE_ROW else { return nil }

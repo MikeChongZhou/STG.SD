@@ -249,6 +249,7 @@ struct ReportView: View {
     @State private var dailyBitmaps: [DeviceDayBitmap] = []
     @State private var multiDayPoints: [DailyUsagePoint] = []
     @State private var periodPoints: [DailyUsagePoint] = []
+    @State private var unavailablePeriods: [PeriodUsagePoint] = []
     @State private var loading = false
     var body: some View {
         ScrollView {
@@ -301,6 +302,13 @@ struct ReportView: View {
                         PointMark(x: .value("Period", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName))
                     }.chartYAxis { AxisMarks(position: .leading) { value in AxisGridLine(); AxisTick(); AxisValueLabel { if let minutes = value.as(Int.self) { Text(duration(minutes)) } } } }
                         .chartLegend(position: .bottom, alignment: .leading, spacing: 8).frame(minHeight: 320)
+                    if !unavailablePeriods.isEmpty {
+                        DisclosureGroup("— · No eligible completed days") {
+                            ForEach(unavailablePeriods) { value in
+                                Text("\(value.periodLabel) · \(value.displayName): —").font(.caption)
+                            }
+                        }
+                    }
                     if periodPoints.isEmpty && !loading { ContentUnavailableView("No Statistics for This Period", systemImage: "chart.xyaxis.line") }
                 }
                 if model.statisticsSummary.containsEstimatedIOSData {
@@ -334,6 +342,7 @@ struct ReportView: View {
         let calendar = Calendar.current, now = Date()
         let start = mode == 2 ? (calendar.date(from: DateComponents(year: calendar.component(.year, from: now), month: 1, day: 1)) ?? now) : (calendar.date(byAdding: .year, value: -2, to: now) ?? now)
         let values = await model.periodReport(kind: mode == 2 ? "week" : "month", from: start, through: now)
+        unavailablePeriods = values.filter { $0.includedDays == 0 }
         periodPoints = values.compactMap(periodChartPoint)
         loading = false
     }
@@ -354,6 +363,7 @@ struct ReportView: View {
 }
 
 private func periodChartPoint(_ value: PeriodUsagePoint) -> DailyUsagePoint? {
+    guard value.includedDays > 0 else { return nil }
     let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX"); formatter.dateFormat = "yyyy-MM-dd"
     guard let date = formatter.date(from: value.periodStart) else { return nil }
     return DailyUsagePoint(date: date, dateLabel: value.periodLabel, deviceID: value.deviceID, displayName: value.displayName, minutes: Int(value.averageDailyMinutes.rounded()), isAggregate: value.deviceID == "alldevices", estimated: value.estimated)
@@ -528,6 +538,12 @@ struct SettingsView: View {
                 Text(settingsSelectionSummary).font(.footnote).foregroundStyle(.secondary)
                 Button("Change Apps and Websites") { showActivityPicker = true }
                 Text("Select individual apps or websites. Categories aren’t supported because they may reduce accuracy.").font(.footnote).foregroundStyle(.secondary)
+            }
+            Section("Notification Options") {
+                Toggle("Eye Break Notifications", isOn: $draft.eyeNotificationsEnabled)
+                Toggle("Posture Notifications", isOn: $draft.postureNotificationsEnabled)
+                Toggle("Daily Usage Notifications", isOn: $draft.dailyNotificationsEnabled)
+                Text("Usage is still recorded when all options are off.").font(.footnote).foregroundStyle(.secondary)
             }
             Section("Notifications") { Button("Notification Settings") { UIApplication.shared.open(URL(string: UIApplication.openNotificationSettingsURLString)!) } }
             Section("Diagnostics") {
@@ -762,12 +778,14 @@ struct TrackingView: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Picker("Metric", selection: $metric) { ForEach(OpenRouterWeeklyMetric.allCases) { Text($0.label).tag($0) } }
-                    Chart(weeklyRows) { row in
-                        weeklyMarks(row)
+                    ScrollView(.horizontal) {
+                        Chart(weeklyRows) { row in
+                            weeklyMarks(row)
+                        }
+                        .chartForegroundStyleScale(domain: weeklyModels, range: weeklyModelColors)
+                        .chartLegend(.hidden)
+                        .frame(minWidth: weeklyChartWidth, minHeight: 360)
                     }
-                    .chartForegroundStyleScale(domain: weeklyModels, range: weeklyModelColors)
-                    .chartLegend(.hidden)
-                    .frame(height: 360)
                     weeklyModelLegend
                     Text("Weekly data updates during the weekly sync.").font(.caption).foregroundStyle(.secondary)
                 }
@@ -784,6 +802,9 @@ struct TrackingView: View {
         .blue, .orange, .green, .red, .purple,
         .pink, .teal, .indigo, .mint, .brown
     ]
+    private var weeklyChartWidth: CGFloat {
+        max(320, CGFloat(Set(weeklyRows.map(\.weekStart)).count) * 72)
+    }
     private var weeklyModelLegend: some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(weeklyModels.enumerated()), id: \.element) { index, name in
@@ -804,9 +825,9 @@ struct TrackingView: View {
     private var sortedRows: [OpenRouterRankingRow] { sortedOpenRouterRows(rows, by: sortField, direction: sortDirection) }
     @ChartContentBuilder private func weeklyMarks(_ row: OpenRouterWeeklyRankingRow) -> some ChartContent {
         if let value = metric.value(row) {
-            LineMark(x: .value("Week", row.weekStart), y: .value(metric.label, value))
+            LineMark(x: .value("Week", trackingISOWeekLabel(row.weekStart)), y: .value(metric.label, value))
                 .foregroundStyle(by: .value("Model", row.modelPermaslug))
-            PointMark(x: .value("Week", row.weekStart), y: .value(metric.label, value))
+            PointMark(x: .value("Week", trackingISOWeekLabel(row.weekStart)), y: .value(metric.label, value))
                 .foregroundStyle(by: .value("Model", row.modelPermaslug))
         }
     }
@@ -873,13 +894,23 @@ struct TrackingView: View {
     }
 }
 
+private func trackingISOWeekLabel(_ dateText: String) -> String {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.calendar = Calendar(identifier: .iso8601)
+    formatter.dateFormat = "yyyy-MM-dd"
+    guard let date = formatter.date(from: dateText) else { return dateText }
+    let components = formatter.calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
+    return String(format: "%04d-W%02d", components.yearForWeekOfYear ?? 0, components.weekOfYear ?? 0)
+}
+
 struct AboutView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 HStack { Spacer(); Image(systemName: "shield.lefthalf.filled").font(.system(size: 64)).foregroundStyle(.blue); Spacer() }
                 Text("Screen Time Guardian").font(.title.bold()).frame(maxWidth: .infinity)
-                Text("Version 1.1.8\nCopyright © 2026 Fairy Phoenix Foundation.")
+                Text("Version 1.1.9\nCopyright © 2026 Fairy Phoenix Foundation.")
                 Text("This app records minute-level estimates of screen use on this device or across all your devices, and reminds you to take breaks.")
                 Text("Privacy: Your screen-use data stays on this device and, if enabled, in the private cloud you choose. It is never sent to the app developer or any other service.")
                 Text("Accuracy: Apple does not make Screen Time data available to third-party apps. STG estimates usage from DeviceActivity data, so its totals may differ from those shown in Settings → Screen Time.")

@@ -16,6 +16,9 @@ internal sealed class AppSettings
     [JsonPropertyName("daily_close_countdown_minutes")] public int DailyCountdown { get; set; } = 3;
     [JsonPropertyName("launch_at_login")] public bool LaunchAtLogin { get; set; } = true;
     [JsonPropertyName("meeting_mode")] public bool MeetingMode { get; set; }
+    [JsonPropertyName("eye_notifications_enabled")] public bool EyeNotificationsEnabled { get; set; } = true;
+    [JsonPropertyName("posture_notifications_enabled")] public bool PostureNotificationsEnabled { get; set; } = true;
+    [JsonPropertyName("daily_notifications_enabled")] public bool DailyNotificationsEnabled { get; set; } = true;
     [JsonIgnore] public SyncProvider SyncProvider { get; set; } = SyncProvider.None;
     [JsonIgnore] public bool OnboardingComplete { get; set; }
     [JsonPropertyName("updated_at")] public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
