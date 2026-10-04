@@ -173,7 +173,11 @@ public actor CloudFolderSync {
         let sync = folder.appendingPathComponent("sync", isDirectory: true)
         try FileManager.default.createDirectory(at: sync, withIntermediateDirectories: true)
         try repository.upsertDevice(SettingDocument(settings).deviceRecord)
-        try atomicWrite(encoder.encode(SettingDocument(settings)), to: sync.appendingPathComponent("\(deviceID)_setting.json"))
+        let destination = sync.appendingPathComponent("\(deviceID)_setting.json")
+        if FileManager.default.fileExists(atPath: destination.path),
+           let modifiedAt = try destination.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+           modifiedAt >= settings.updatedAt { return }
+        try atomicWrite(encoder.encode(SettingDocument(settings)), to: destination)
     }
 
     public func weeklyMaintenance(folder: URL, currentWeekStart: String, previousWeekStart: String, previousWeekEnd: String) throws -> (uploaded: Int, deletedDaily: Int, movedWeekly: Int) {

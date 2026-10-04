@@ -21,15 +21,19 @@ public actor OneDriveSync {
         var credential = try await validCredential()
         await progress?("Preparing cloud folders…")
         try repository.upsertDevice(SettingDocument(settings).deviceRecord)
-        await progress?("Uploading device settings…")
-        try await client.upload(name: "\(deviceID)_setting.json", data: encoder.encode(SettingDocument(settings)), using: credential)
+        await progress?("Scanning remote devices…")
+        let files = try await client.listFiles(using: credential)
+        let settingsName = "\(deviceID)_setting.json"
+        let remoteSettings = files.first { $0.name == settingsName }
+        if remoteSettings == nil || remoteSettings?.modifiedAt == nil || remoteSettings!.modifiedAt! < settings.updatedAt {
+            await progress?("Uploading device settings…")
+            try await client.upload(name: settingsName, data: encoder.encode(SettingDocument(settings)), using: credential)
+        }
         var result = Result()
         let uploadTarget = "oneDrive"
         let existingUploadCursor = try repository.incrementalUploadCursor(syncTarget: uploadTarget)
         let lastSync = try repository.lastIncrementalSync(deviceID: deviceID)
         credential = try await validCredential()
-        await progress?("Scanning remote devices…")
-        let files = try await client.listFiles(using: credential)
         let knownDevices = Dictionary(uniqueKeysWithValues: try repository.deviceRecords().map { ($0.deviceID, $0) })
         for file in files where file.name.hasSuffix(".json") {
             if let id = CloudFolderSync.deviceID(from: file.name) { result.discoveredDeviceIDs.insert(id) }

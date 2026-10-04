@@ -251,6 +251,7 @@ struct ReportView: View {
     @State private var periodPoints: [DailyUsagePoint] = []
     @State private var unavailablePeriods: [PeriodUsagePoint] = []
     @State private var loading = false
+    @State private var expandedIntervalIDs: Set<String> = []
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
@@ -276,7 +277,14 @@ struct ReportView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack { Text(bitmap.displayName).bold(); Spacer(); Text(duration(bitmap.usedMinutes)).monospacedDigit() }
                             MinuteBitmapView(minutes: bitmap.minutes)
-                            Text("Active intervals: \(usageIntervals(bitmap.minutes, timeZoneID: model.currentReportTimeZone))").font(.caption).textSelection(.enabled)
+                            let intervalID = "\(bitmap.deviceID)-\(selectedDate.timeIntervalSince1970)"
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text("Active intervals: \(usageIntervals(bitmap.minutes, timeZoneID: model.currentReportTimeZone))")
+                                    .font(.caption).textSelection(.enabled).lineLimit(expandedIntervalIDs.contains(intervalID) ? nil : 1)
+                                Spacer(minLength: 0)
+                                Button { if expandedIntervalIDs.contains(intervalID) { expandedIntervalIDs.remove(intervalID) } else { expandedIntervalIDs.insert(intervalID) } } label: { Image(systemName: expandedIntervalIDs.contains(intervalID) ? "chevron.up" : "chevron.down") }
+                                    .buttonStyle(.plain).accessibilityLabel(expandedIntervalIDs.contains(intervalID) ? "Collapse active intervals" : "Show all active intervals")
+                            }
                         }.padding().background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
                     }
                 } else if mode == 1 {

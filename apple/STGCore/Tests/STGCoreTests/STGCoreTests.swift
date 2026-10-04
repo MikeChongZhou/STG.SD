@@ -636,6 +636,30 @@ final class STGCoreTests: XCTestCase {
         XCTAssertEqual(record.updatedAt, newerModifiedAt)
     }
 
+    func testCloudFolderSettingsUploadSkipsUnchangedLocalSettings() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let cloud = folder.appendingPathComponent("cloud", isDirectory: true)
+        let repository = try BitmapRepository(url: folder.appendingPathComponent("local.sqlite"))
+        let localTime = Date().addingTimeInterval(-60)
+        var settings = STGSettings(deviceID: "local", deviceName: "Local phone", deviceKind: .ios)
+        settings.updatedAt = localTime
+        let synchronizer = CloudFolderSync(repository: repository, deviceID: "local")
+
+        try await synchronizer.uploadSettings(folder: cloud, settings: settings)
+        let settingURL = cloud.appendingPathComponent("sync/local_setting.json")
+        let cloudTime = try XCTUnwrap(try settingURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
+        try await synchronizer.uploadSettings(folder: cloud, settings: settings)
+        let unchangedTime = try XCTUnwrap(try settingURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
+        XCTAssertEqual(unchangedTime, cloudTime)
+
+        settings.updatedAt = cloudTime.addingTimeInterval(60)
+        try await synchronizer.uploadSettings(folder: cloud, settings: settings)
+        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+        let document = try decoder.decode(SettingDocument.self, from: Data(contentsOf: settingURL))
+        XCTAssertLessThan(abs(document.updatedAt.timeIntervalSince(settings.updatedAt)), 1)
+    }
+
     func testCloudFolderSyncDownloadsRemoteBitmapOnlyWhenFileIsNewerThanLastSync() async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }

@@ -25,8 +25,11 @@ public actor GoogleDriveSync {
         let files = try await client.listFiles(using: credential)
         let filesByName = Dictionary(uniqueKeysWithValues: files.map { ($0.name, $0.id) })
         let settingsName = "\(deviceID)_setting.json"
-        await progress?("Uploading device settings…")
-        try await client.upload(name: settingsName, data: encoder.encode(SettingDocument(settings)), existingFileID: filesByName[settingsName], using: credential)
+        let remoteSettings = files.first { $0.name == settingsName }
+        if remoteSettings == nil || remoteSettings?.modifiedAt == nil || remoteSettings!.modifiedAt! < settings.updatedAt {
+            await progress?("Uploading device settings…")
+            try await client.upload(name: settingsName, data: encoder.encode(SettingDocument(settings)), existingFileID: filesByName[settingsName], using: credential)
+        }
         var result = Result()
         let uploadTarget = "googleDrive"
         let existingUploadCursor = try repository.incrementalUploadCursor(syncTarget: uploadTarget)
