@@ -784,6 +784,15 @@ struct TrackingView: View {
                         }
                         .chartForegroundStyleScale(domain: weeklyModels, range: weeklyModelColors)
                         .chartLegend(.hidden)
+                        .chartXAxis {
+                            AxisMarks(values: weeklyAxisWeeks) { value in
+                                AxisGridLine()
+                                AxisTick()
+                                AxisValueLabel {
+                                    if let week = value.as(String.self) { Text(weeklyAxisLabel(week)) }
+                                }
+                            }
+                        }
                         .frame(minWidth: weeklyChartWidth, minHeight: 360)
                     }
                     weeklyModelLegend
@@ -804,6 +813,15 @@ struct TrackingView: View {
     ]
     private var weeklyChartWidth: CGFloat {
         max(320, CGFloat(Set(weeklyRows.map(\.weekStart)).count) * 72)
+    }
+    private var weeklyAxisWeeks: [String] {
+        Array(Set(weeklyRows.map { trackingISOWeekLabel($0.weekStart) })).sorted()
+    }
+    private func weeklyAxisLabel(_ week: String) -> String {
+        guard let index = weeklyAxisWeeks.firstIndex(of: week) else { return week }
+        let previousYear = index > 0 ? String(weeklyAxisWeeks[index - 1].prefix(4)) : nil
+        let includeYear = index == 0 || index == weeklyAxisWeeks.count - 1 || String(week.prefix(4)) != previousYear
+        return includeYear ? week : String(week.dropFirst(5))
     }
     private var weeklyModelLegend: some View {
         VStack(alignment: .leading, spacing: 8) {

@@ -562,7 +562,18 @@ struct TrackingView: View {
                             PointMark(x: .value("Week", trackingISOWeekLabel(row.weekStart)), y: .value(metric.label, value))
                                 .foregroundStyle(by: .value("Model", row.modelPermaslug))
                         }
-                    }.chartLegend(position: .trailing, alignment: .top).frame(width: weeklyChartWidth, height: 460).padding()
+                    }
+                    .chartLegend(position: .trailing, alignment: .top)
+                    .chartXAxis {
+                        AxisMarks(values: weeklyAxisWeeks) { value in
+                            AxisGridLine()
+                            AxisTick()
+                            AxisValueLabel {
+                                if let week = value.as(String.self) { Text(weeklyAxisLabel(week)) }
+                            }
+                        }
+                    }
+                    .frame(width: weeklyChartWidth, height: 460).padding()
                 }.background(.quaternary.opacity(0.2), in: RoundedRectangle(cornerRadius: 8))
             }
             Text(status).font(.caption).foregroundStyle(.secondary)
@@ -577,6 +588,15 @@ struct TrackingView: View {
     private var sortedRows: [OpenRouterRankingRow] { sortedOpenRouterRows(rows, by: sortField, direction: sortDirection) }
     private var weeklyChartWidth: CGFloat {
         max(980, CGFloat(Set(weeklyRows.map(\.weekStart)).count) * 72 + 300)
+    }
+    private var weeklyAxisWeeks: [String] {
+        Array(Set(weeklyRows.map { trackingISOWeekLabel($0.weekStart) })).sorted()
+    }
+    private func weeklyAxisLabel(_ week: String) -> String {
+        guard let index = weeklyAxisWeeks.firstIndex(of: week) else { return week }
+        let previousYear = index > 0 ? String(weeklyAxisWeeks[index - 1].prefix(4)) : nil
+        let includeYear = index == 0 || index == weeklyAxisWeeks.count - 1 || String(week.prefix(4)) != previousYear
+        return includeYear ? week : String(week.dropFirst(5))
     }
     private var trackingHeader: some View {
         HStack(spacing: 0) {

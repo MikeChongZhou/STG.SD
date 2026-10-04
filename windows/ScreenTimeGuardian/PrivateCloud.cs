@@ -76,6 +76,7 @@ internal sealed class PrivateCloudSync(BitmapRepository repository, AppSettings 
         var warnings = new List<string>();
         var uploadTarget = settings.SyncProvider.ToString();
         var existingUploadCursor = repository.IncrementalUploadCursor(uploadTarget);
+        var lastSync = repository.LastIncrementalSync(settings.DeviceID);
 
         foreach (var file in remoteFiles.Where(value => value.Name.EndsWith("_setting.json", StringComparison.Ordinal)))
         {
@@ -99,7 +100,8 @@ internal sealed class PrivateCloudSync(BitmapRepository repository, AppSettings 
         var totalDownloads = downloadIDs.Sum(remoteID =>
         {
             var cursor = remoteID.Equals(settings.DeviceID, StringComparison.OrdinalIgnoreCase) ? null : repository.IncrementalDownloadCursor(remoteID);
-            return remoteFiles.Count(file => ParseDevice(file.Name)?.Equals(remoteID, StringComparison.OrdinalIgnoreCase) == true && ParseBitmapDate(file.Name) is string date && (cursor is null || string.CompareOrdinal(date, cursor) >= 0));
+            var restoringThisDevice = remoteID.Equals(settings.DeviceID, StringComparison.OrdinalIgnoreCase);
+            return remoteFiles.Count(file => ParseDevice(file.Name)?.Equals(remoteID, StringComparison.OrdinalIgnoreCase) == true && ParseBitmapDate(file.Name) is string date && (cursor is null || string.CompareOrdinal(date, cursor) >= 0) && (restoringThisDevice || lastSync is null || file.ModifiedAt is null || file.ModifiedAt > lastSync));
         });
         if (totalDownloads == 0) progress?.Invoke("Downloading device data — nothing new…");
         foreach (var remoteID in downloadIDs)
@@ -108,7 +110,7 @@ internal sealed class PrivateCloudSync(BitmapRepository repository, AppSettings 
             var cursor = restoringThisDevice ? null : repository.IncrementalDownloadCursor(remoteID);
             var candidates = remoteFiles
                 .Select(file => (File: file, Device: ParseDevice(file.Name), Date: ParseBitmapDate(file.Name)))
-                .Where(value => value.Device?.Equals(remoteID, StringComparison.OrdinalIgnoreCase) == true && value.Date is not null && (cursor is null || string.CompareOrdinal(value.Date, cursor) >= 0))
+                .Where(value => value.Device?.Equals(remoteID, StringComparison.OrdinalIgnoreCase) == true && value.Date is not null && (cursor is null || string.CompareOrdinal(value.Date, cursor) >= 0) && (restoringThisDevice || lastSync is null || value.File.ModifiedAt is null || value.File.ModifiedAt > lastSync))
                 .OrderBy(value => value.Date, StringComparer.Ordinal);
             foreach (var candidate in candidates)
             {

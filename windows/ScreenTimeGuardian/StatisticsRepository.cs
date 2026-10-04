@@ -14,6 +14,17 @@ internal sealed record StatisticsDailyPoint(DateOnly Date, string DeviceID, stri
 internal sealed partial class BitmapRepository
 {
     public void CompleteIncrementalSync(string deviceID, DateTimeOffset? at = null) => UpdateSyncTime(deviceID, "last_incremental_sync_at", at ?? DateTimeOffset.UtcNow);
+
+    public DateTimeOffset? LastIncrementalSync(string deviceID)
+    {
+        lock (gate)
+        {
+            using var command = connection.CreateCommand(); command.CommandText = "SELECT last_incremental_sync_at FROM sync_state WHERE device_id=$id";
+            command.Parameters.AddWithValue("$id", deviceID);
+            var value = command.ExecuteScalar();
+            return value is long seconds && seconds > 0 ? DateTimeOffset.FromUnixTimeSeconds(seconds) : null;
+        }
+    }
     public void CompleteQuickUpload(string deviceID, DateTimeOffset? at = null) => UpdateSyncTime(deviceID, "last_quick_upload_at", at ?? DateTimeOffset.UtcNow);
     public void CompleteYearlyAction(string deviceID, DateTimeOffset? at = null) => UpdateSyncTime(deviceID, "last_yearly_action_at", at ?? DateTimeOffset.UtcNow);
 

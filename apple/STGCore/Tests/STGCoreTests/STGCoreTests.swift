@@ -636,6 +636,34 @@ final class STGCoreTests: XCTestCase {
         XCTAssertEqual(record.updatedAt, newerModifiedAt)
     }
 
+    func testCloudFolderSyncDownloadsRemoteBitmapOnlyWhenFileIsNewerThanLastSync() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let cloud = folder.appendingPathComponent("cloud", isDirectory: true)
+        let remoteRepository = try BitmapRepository(url: folder.appendingPathComponent("remote.sqlite"))
+        let localRepository = try BitmapRepository(url: folder.appendingPathComponent("local.sqlite"))
+        let bitmapTime = ISO8601DateFormatter().date(from: "2026-08-25T12:00:00Z")!
+        let firstSyncTime = ISO8601DateFormatter().date(from: "2026-08-25T13:00:00Z")!
+        let newerFileTime = ISO8601DateFormatter().date(from: "2026-08-25T14:00:00Z")!
+        XCTAssertTrue(try remoteRepository.mark(deviceID: "remote", instant: bitmapTime))
+        let seeded = try await CloudFolderSync(repository: remoteRepository, deviceID: "remote").quickUpload(folder: cloud, utcDates: ["2026-08-25"])
+        XCTAssertEqual(seeded, 1)
+
+        let sync = cloud.appendingPathComponent("sync", isDirectory: true)
+        let remoteBitmap = sync.appendingPathComponent("remote_bitmap_2026-08-25.json")
+        try FileManager.default.setAttributes([.modificationDate: bitmapTime], ofItemAtPath: remoteBitmap.path)
+        let first = try await CloudFolderSync(repository: localRepository, deviceID: "local").incrementalSync(folder: cloud, now: firstSyncTime)
+        XCTAssertEqual(first.downloaded, 1)
+        XCTAssertEqual(try localRepository.lastIncrementalSync(deviceID: "local"), firstSyncTime)
+
+        let second = try await CloudFolderSync(repository: localRepository, deviceID: "local").incrementalSync(folder: cloud, now: firstSyncTime.addingTimeInterval(60))
+        XCTAssertEqual(second.downloaded, 0)
+
+        try FileManager.default.setAttributes([.modificationDate: newerFileTime], ofItemAtPath: remoteBitmap.path)
+        let third = try await CloudFolderSync(repository: localRepository, deviceID: "local").incrementalSync(folder: cloud, now: newerFileTime.addingTimeInterval(60))
+        XCTAssertEqual(third.downloaded, 1)
+    }
+
     func testInitialCloudFolderSyncRestoresSameDeviceBeforeUpload() async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }

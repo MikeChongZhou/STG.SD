@@ -30,6 +30,7 @@ public actor GoogleDriveSync {
         var result = Result()
         let uploadTarget = "googleDrive"
         let existingUploadCursor = try repository.incrementalUploadCursor(syncTarget: uploadTarget)
+        let lastSync = try repository.lastIncrementalSync(deviceID: deviceID)
         credential = try await validCredential()
         let knownDevices = Dictionary(uniqueKeysWithValues: try repository.deviceRecords().map { ($0.deviceID, $0) })
         for file in files where file.name.hasSuffix(".json") {
@@ -51,10 +52,12 @@ public actor GoogleDriveSync {
             $0 != "alldevices" && ($0 != deviceID || existingUploadCursor == nil)
         }
         let totalDownloads = try downloadIDs.reduce(into: 0) { total, remoteID in
+            let restoringThisDevice = remoteID == deviceID
             let cursor = remoteID == deviceID ? nil : try repository.incrementalDownloadCursor(remoteDeviceID: remoteID)
             total += files.filter { file in
                 guard CloudFolderSync.deviceID(from: file.name) == remoteID,
-                      let date = CloudFolderSync.bitmapUTCDate(from: file.name) else { return false }
+                      let date = CloudFolderSync.bitmapUTCDate(from: file.name),
+                      restoringThisDevice || lastSync == nil || file.modifiedAt == nil || file.modifiedAt! > lastSync! else { return false }
                 return cursor == nil || date >= cursor!
             }.count
         }
@@ -67,7 +70,8 @@ public actor GoogleDriveSync {
             let candidates = files.compactMap { file -> (GoogleDriveFile, String)? in
                 guard CloudFolderSync.deviceID(from: file.name) == remoteID,
                       let date = CloudFolderSync.bitmapUTCDate(from: file.name),
-                      cursor == nil || date >= cursor! else { return nil }
+                      cursor == nil || date >= cursor!,
+                      restoringThisDevice || lastSync == nil || file.modifiedAt == nil || file.modifiedAt! > lastSync! else { return nil }
                 return (file, date)
             }.sorted { $0.1 < $1.1 }
             for (file, expectedDate) in candidates {

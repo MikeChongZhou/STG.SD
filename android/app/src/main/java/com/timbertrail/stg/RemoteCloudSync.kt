@@ -24,6 +24,7 @@ internal class RemoteCloudSync(private val database: BitmapDatabase, private val
         database.upsertDevice(AndroidDeviceRecord(settings.deviceID, settings.deviceName, "android", settings.updatedAt))
         val uploadTarget = settings.cloudProvider
         val existingUploadCursor = database.incrementalUploadCursor(uploadTarget)
+        val lastSync = database.lastIncrementalSync(settings.deviceID)
 
         files.filter { it.name.endsWith("_setting.json") }.forEach { file ->
             runCatching {
@@ -40,10 +41,11 @@ internal class RemoteCloudSync(private val database: BitmapDatabase, private val
 
         val downloadIDs = devices.filter { it != "alldevices" && (it != settings.deviceID || existingUploadCursor == null) }
         val candidatesByDevice = downloadIDs.associateWith { remoteID ->
+            val restoringThisDevice = remoteID == settings.deviceID
             val cursor = if (remoteID == settings.deviceID) null else database.incrementalDownloadCursor(remoteID)
             files.mapNotNull { file ->
                 val date = parseBitmapDate(file.name) ?: return@mapNotNull null
-                if (parseDevice(file.name) == remoteID && (cursor == null || date >= cursor)) file to date else null
+                if (parseDevice(file.name) == remoteID && (cursor == null || date >= cursor) && (restoringThisDevice || lastSync == null || file.modifiedAt == null || file.modifiedAt > lastSync)) file to date else null
             }.sortedBy { it.second }
         }
         val totalDownloads = candidatesByDevice.values.sumOf { it.size }

@@ -265,6 +265,7 @@ class BitmapDatabase(context: Context) : SQLiteOpenHelper(prepareDatabase(contex
     @Synchronized fun completeWeeklyAction(period: String) { writableDatabase.execSQL("INSERT OR REPLACE INTO maintenance_state(action,completed_at,updated_at) VALUES('weekly',?,?)", arrayOf<Any>(period, nowSeconds())) }
     @Synchronized fun completeOpenRouterDetailWeek(period: String) { writableDatabase.execSQL("INSERT OR REPLACE INTO maintenance_state(action,completed_at,updated_at) VALUES('openrouter_detail',?,?)", arrayOf<Any>(period, nowSeconds())) }
     @Synchronized fun completeIncrementalSync(deviceID: String) { updateSyncTime(deviceID, "last_incremental_sync_at") }
+    @Synchronized fun lastIncrementalSync(deviceID: String): Long? = readableDatabase.query("sync_state", arrayOf("last_incremental_sync_at"), "device_id=?", arrayOf(deviceID), null, null, null).use { if (it.moveToFirst() && it.getLong(0) > 0) it.getLong(0) else null }
     @Synchronized fun completeQuickUpload(deviceID: String) { updateSyncTime(deviceID, "last_quick_upload_at") }
     @Synchronized fun completeYearlyAction(deviceID: String) { updateSyncTime(deviceID, "last_yearly_action_at") }
     @Synchronized fun completeWeeklyActionState(deviceID: String) { updateSyncTime(deviceID, "last_weekly_action_at") }

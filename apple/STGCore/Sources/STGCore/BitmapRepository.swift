@@ -493,6 +493,18 @@ public final class BitmapRepository: @unchecked Sendable {
         try queue.sync { try updateSyncStateFieldUnlocked(deviceID: deviceID, field: "last_incremental_sync_at", at: at) }
     }
 
+    public func lastIncrementalSync(deviceID: String) throws -> Date? {
+        try queue.sync {
+            var statement: OpaquePointer?
+            guard sqlite3_prepare_v2(database, "SELECT last_incremental_sync_at FROM sync_state WHERE device_id=?", -1, &statement, nil) == SQLITE_OK else { throw error() }
+            defer { sqlite3_finalize(statement) }
+            bind(deviceID, at: 1, to: statement)
+            guard sqlite3_step(statement) == SQLITE_ROW else { return nil }
+            let seconds = sqlite3_column_int64(statement, 0)
+            return seconds > 0 ? Date(timeIntervalSince1970: TimeInterval(seconds)) : nil
+        }
+    }
+
     public func completeStatistics(deviceID: String, at: Date = .now) throws {
         try queue.sync { try updateSyncStateFieldUnlocked(deviceID: deviceID, field: "last_statistics_at", at: at) }
     }
