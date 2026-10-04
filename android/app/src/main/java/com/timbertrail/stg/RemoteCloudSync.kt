@@ -13,11 +13,11 @@ internal class RemoteCloudSync(private val database: BitmapDatabase, private val
 
     fun incremental(progress: (String) -> Unit = {}): Result {
         progress("Preparing cloud folders…")
-        drive.listFolder("history")
         progress("Scanning remote devices…")
         var files = drive.list()
         var byName = files.associateBy { it.name }
         val devices = files.mapNotNull { parseDevice(it.name) }.toSet()
+        val knownDevices = database.devices()
         var uploaded = 0; var downloaded = 0
         val warnings = mutableListOf<String>()
         val cursors = linkedMapOf<String, String>()
@@ -29,9 +29,12 @@ internal class RemoteCloudSync(private val database: BitmapDatabase, private val
             runCatching {
                 val remoteID = parseDevice(file.name) ?: return@runCatching
                 if (remoteID == settings.deviceID) return@runCatching
+                if (file.modifiedAt != null && knownDevices[remoteID]?.updatedAt?.let { file.modifiedAt <= it } == true) return@runCatching
+                progress("Updating device information…")
                 val json = JSONObject(drive.download(file.id).decodeToString())
                 if (json.getString("device_id") != remoteID) return@runCatching
-                database.upsertDevice(AndroidDeviceRecord(remoteID, json.optString("device_name", "Other device"), json.optString("device_kind", "android"), runCatching { Instant.parse(json.getString("updated_at")).epochSecond }.getOrDefault(Instant.now().epochSecond)))
+                val contentTime = runCatching { Instant.parse(json.getString("updated_at")).epochSecond }.getOrDefault(Instant.now().epochSecond)
+                database.upsertDevice(AndroidDeviceRecord(remoteID, json.optString("device_name", "Other device"), json.optString("device_kind", "android"), file.modifiedAt ?: contentTime))
             }.onFailure { warnings += "settings_import_failed; provider=${settings.cloudProvider}; file=${file.name}; ${it.diagnosticSummary()}" }
         }
 

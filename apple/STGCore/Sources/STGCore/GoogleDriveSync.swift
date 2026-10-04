@@ -20,11 +20,10 @@ public actor GoogleDriveSync {
     public func synchronize(settings: STGSettings, now: Date = .now, days: Int = 14, progress: SyncProgressHandler? = nil) async throws -> Result {
         var credential = try await validCredential()
         await progress?("Preparing cloud folders…")
-        _ = try await client.ensureFolder(name: "history", using: credential)
         try repository.upsertDevice(SettingDocument(settings).deviceRecord)
         await progress?("Scanning remote devices…")
-        var files = try await client.listFiles(using: credential)
-        var filesByName = Dictionary(uniqueKeysWithValues: files.map { ($0.name, $0.id) })
+        let files = try await client.listFiles(using: credential)
+        let filesByName = Dictionary(uniqueKeysWithValues: files.map { ($0.name, $0.id) })
         let settingsName = "\(deviceID)_setting.json"
         await progress?("Uploading device settings…")
         try await client.upload(name: settingsName, data: encoder.encode(SettingDocument(settings)), existingFileID: filesByName[settingsName], using: credential)
@@ -32,17 +31,20 @@ public actor GoogleDriveSync {
         let uploadTarget = "googleDrive"
         let existingUploadCursor = try repository.incrementalUploadCursor(syncTarget: uploadTarget)
         credential = try await validCredential()
-        await progress?("Scanning remote devices…")
-        files = try await client.listFiles(using: credential)
-        filesByName = Dictionary(uniqueKeysWithValues: files.map { ($0.name, $0.id) })
+        let knownDevices = Dictionary(uniqueKeysWithValues: try repository.deviceRecords().map { ($0.deviceID, $0) })
         for file in files where file.name.hasSuffix(".json") {
             if let id = CloudFolderSync.deviceID(from: file.name) { result.discoveredDeviceIDs.insert(id) }
         }
         for file in files where file.name.hasSuffix("_setting.json") {
             do {
+                guard let remoteID = CloudFolderSync.deviceID(from: file.name), remoteID != deviceID else { continue }
+                if let modifiedAt = file.modifiedAt, let known = knownDevices[remoteID], modifiedAt <= known.updatedAt { continue }
+                await progress?("Updating device information…")
                 let document = try decoder.decode(SettingDocument.self, from: try await client.download(fileID: file.id, using: credential))
-                guard document.deviceID == CloudFolderSync.deviceID(from: file.name), document.deviceID != deviceID else { continue }
-                try repository.upsertDevice(document.deviceRecord)
+                guard document.deviceID == remoteID else { continue }
+                var record = document.deviceRecord
+                record.updatedAt = file.modifiedAt ?? document.updatedAt
+                try repository.upsertDevice(record)
             } catch { result.warnings.append("settings_import_failed; provider=googleDrive; file=\(file.name); \(DiagnosticLog.describe(error))"); continue }
         }
         let downloadIDs = result.discoveredDeviceIDs.filter {

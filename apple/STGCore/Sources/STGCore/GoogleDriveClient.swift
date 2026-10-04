@@ -24,6 +24,14 @@ public struct GoogleDriveAccount: Sendable {
 public struct GoogleDriveFile: Decodable, Sendable {
     public var id: String
     public var name: String
+    public var modifiedTime: String?
+
+    public var modifiedAt: Date? {
+        guard let modifiedTime else { return nil }
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: modifiedTime) ?? ISO8601DateFormatter().date(from: modifiedTime)
+    }
 }
 
 public actor GoogleDriveClient {
@@ -101,7 +109,7 @@ public actor GoogleDriveClient {
         }
         if let parentID { query += " and '\(parentID)' in parents" }
         components.queryItems = [
-            .init(name: "spaces", value: "appDataFolder"), .init(name: "fields", value: "files(id,name)"),
+            .init(name: "spaces", value: "appDataFolder"), .init(name: "fields", value: "files(id,name,modifiedTime)"),
             .init(name: "pageSize", value: "1000"), .init(name: "q", value: query)
         ]
         let data = try await authorizedRequest(url: components.url!, credential: credential)

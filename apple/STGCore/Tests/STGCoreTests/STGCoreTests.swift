@@ -601,6 +601,41 @@ final class STGCoreTests: XCTestCase {
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(at: sync, includingPropertiesForKeys: nil).filter { $0.lastPathComponent.contains("_bitmap_") }.count, 0)
     }
 
+    func testCloudFolderSyncSkipsUnchangedRemoteDeviceSettings() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let cloud = folder.appendingPathComponent("cloud", isDirectory: true)
+        let sync = cloud.appendingPathComponent("sync", isDirectory: true)
+        try FileManager.default.createDirectory(at: sync, withIntermediateDirectories: true)
+        let repository = try BitmapRepository(url: folder.appendingPathComponent("local.sqlite"))
+        let remoteModifiedAt = ISO8601DateFormatter().date(from: "2026-10-03T12:00:00Z")!
+        var remoteSettings = STGSettings(deviceID: "remote", deviceName: "Remote phone", deviceKind: .ios)
+        remoteSettings.updatedAt = remoteModifiedAt.addingTimeInterval(-60)
+        let remoteURL = sync.appendingPathComponent("remote_setting.json")
+        let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
+        try encoder.encode(SettingDocument(remoteSettings)).write(to: remoteURL)
+        try FileManager.default.setAttributes([.modificationDate: remoteModifiedAt], ofItemAtPath: remoteURL.path)
+
+        _ = try await CloudFolderSync(repository: repository, deviceID: "local").incrementalSync(folder: cloud, now: remoteModifiedAt)
+        var record = try XCTUnwrap(repository.deviceRecords().first { $0.deviceID == "remote" })
+        XCTAssertEqual(record.name, "Remote phone")
+        XCTAssertEqual(record.updatedAt, remoteModifiedAt)
+
+        remoteSettings.deviceName = "Changed without a newer file date"
+        try encoder.encode(SettingDocument(remoteSettings)).write(to: remoteURL)
+        try FileManager.default.setAttributes([.modificationDate: remoteModifiedAt], ofItemAtPath: remoteURL.path)
+        _ = try await CloudFolderSync(repository: repository, deviceID: "local").incrementalSync(folder: cloud, now: remoteModifiedAt.addingTimeInterval(60))
+        record = try XCTUnwrap(repository.deviceRecords().first { $0.deviceID == "remote" })
+        XCTAssertEqual(record.name, "Remote phone")
+
+        let newerModifiedAt = remoteModifiedAt.addingTimeInterval(120)
+        try FileManager.default.setAttributes([.modificationDate: newerModifiedAt], ofItemAtPath: remoteURL.path)
+        _ = try await CloudFolderSync(repository: repository, deviceID: "local").incrementalSync(folder: cloud, now: newerModifiedAt)
+        record = try XCTUnwrap(repository.deviceRecords().first { $0.deviceID == "remote" })
+        XCTAssertEqual(record.name, "Changed without a newer file date")
+        XCTAssertEqual(record.updatedAt, newerModifiedAt)
+    }
+
     func testInitialCloudFolderSyncRestoresSameDeviceBeforeUpload() async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }

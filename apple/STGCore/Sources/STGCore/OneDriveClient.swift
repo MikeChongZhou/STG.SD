@@ -276,6 +276,14 @@ private extension Data {
 public struct OneDriveFile: Decodable, Sendable {
     public var id: String
     public var name: String
+    public var lastModifiedDateTime: String?
+
+    public var modifiedAt: Date? {
+        guard let lastModifiedDateTime else { return nil }
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: lastModifiedDateTime) ?? ISO8601DateFormatter().date(from: lastModifiedDateTime)
+    }
 }
 
 public enum OneDriveCredentialStore {

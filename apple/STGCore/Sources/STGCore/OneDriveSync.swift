@@ -20,7 +20,6 @@ public actor OneDriveSync {
     public func synchronize(settings: STGSettings, now: Date = .now, days: Int = 14, progress: SyncProgressHandler? = nil) async throws -> Result {
         var credential = try await validCredential()
         await progress?("Preparing cloud folders…")
-        _ = try await client.ensureFolder(name: "history", using: credential)
         try repository.upsertDevice(SettingDocument(settings).deviceRecord)
         await progress?("Uploading device settings…")
         try await client.upload(name: "\(deviceID)_setting.json", data: encoder.encode(SettingDocument(settings)), using: credential)
@@ -30,14 +29,20 @@ public actor OneDriveSync {
         credential = try await validCredential()
         await progress?("Scanning remote devices…")
         let files = try await client.listFiles(using: credential)
+        let knownDevices = Dictionary(uniqueKeysWithValues: try repository.deviceRecords().map { ($0.deviceID, $0) })
         for file in files where file.name.hasSuffix(".json") {
             if let id = CloudFolderSync.deviceID(from: file.name) { result.discoveredDeviceIDs.insert(id) }
         }
         for file in files where file.name.hasSuffix("_setting.json") {
             do {
+                guard let remoteID = CloudFolderSync.deviceID(from: file.name), remoteID != deviceID else { continue }
+                if let modifiedAt = file.modifiedAt, let known = knownDevices[remoteID], modifiedAt <= known.updatedAt { continue }
+                await progress?("Updating device information…")
                 let document = try decoder.decode(SettingDocument.self, from: try await client.download(fileID: file.id, using: credential))
-                guard document.deviceID == CloudFolderSync.deviceID(from: file.name), document.deviceID != deviceID else { continue }
-                try repository.upsertDevice(document.deviceRecord)
+                guard document.deviceID == remoteID else { continue }
+                var record = document.deviceRecord
+                record.updatedAt = file.modifiedAt ?? document.updatedAt
+                try repository.upsertDevice(record)
             } catch { result.warnings.append("settings_import_failed; provider=oneDrive; file=\(file.name); \(DiagnosticLog.describe(error))"); continue }
         }
         let downloadIDs = result.discoveredDeviceIDs.filter {

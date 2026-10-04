@@ -76,7 +76,7 @@ internal object PrivateCloudCredentials {
     fun clearOneDriveRequest(context: Context) = SecureStore(context).put("onedrive-oauth-request", "")
 }
 
-internal data class RemoteFile(val id: String, val name: String)
+internal data class RemoteFile(val id: String, val name: String, val modifiedAt: Long? = null)
 
 internal interface PrivateCloudDrive {
     var credential: CloudCredential
@@ -205,7 +205,9 @@ internal class OneDriveCloudDrive(private val context: Context, override var cre
 
     private fun files(data: ByteArray): List<RemoteFile> {
         val values = JSONObject(data.decodeToString()).optJSONArray("value") ?: JSONArray()
-        return (0 until values.length()).map { values.getJSONObject(it) }.map { RemoteFile(it.getString("id"), it.getString("name")) }
+        return (0 until values.length()).map { values.getJSONObject(it) }.map {
+            RemoteFile(it.getString("id"), it.getString("name"), it.optString("lastModifiedDateTime").takeIf(String::isNotBlank)?.let { value -> Instant.parse(value).epochSecond })
+        }
     }
 }
 
@@ -262,9 +264,11 @@ internal class GoogleCloudDrive(private val context: Context, override var crede
 
     private fun listFiles(parent: String?): List<RemoteFile> {
         var query = "trashed = false"; if (parent != null) query += " and '$parent' in parents"
-        val url = CloudHttp.url("https://www.googleapis.com/drive/v3/files", mapOf("spaces" to "appDataFolder", "fields" to "files(id,name)", "pageSize" to "1000", "q" to query))
+        val url = CloudHttp.url("https://www.googleapis.com/drive/v3/files", mapOf("spaces" to "appDataFolder", "fields" to "files(id,name,modifiedTime)", "pageSize" to "1000", "q" to query))
         val files = JSONObject(authorized("GET", url).decodeToString()).optJSONArray("files") ?: JSONArray()
-        return (0 until files.length()).map { files.getJSONObject(it) }.map { RemoteFile(it.getString("id"), it.getString("name")) }
+        return (0 until files.length()).map { files.getJSONObject(it) }.map {
+            RemoteFile(it.getString("id"), it.getString("name"), it.optString("modifiedTime").takeIf(String::isNotBlank)?.let { value -> Instant.parse(value).epochSecond })
+        }
     }
 
     private fun ensureFolder(name: String): String {

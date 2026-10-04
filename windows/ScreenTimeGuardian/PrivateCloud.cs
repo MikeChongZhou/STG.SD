@@ -27,7 +27,7 @@ internal static class CloudConfiguration
 }
 
 internal sealed record CloudSyncResult(int Uploaded, int Downloaded, IReadOnlySet<string> Devices, IReadOnlyDictionary<string, string> DownloadCursors, string? UploadCursor, IReadOnlyList<string> Warnings);
-internal sealed record RemoteFile(string ID, string Name);
+internal sealed record RemoteFile(string ID, string Name, DateTimeOffset? ModifiedAt = null);
 internal sealed record BitmapDocument(
     [property: JsonPropertyName("device_id")] string DeviceID,
     [property: JsonPropertyName("utc_date")] string UtcDate,
@@ -67,11 +67,11 @@ internal sealed class PrivateCloudSync(BitmapRepository repository, AppSettings 
     public async Task<CloudSyncResult> IncrementalAsync(CancellationToken token = default, Action<string>? progress = null)
     {
         progress?.Invoke("Preparing cloud folders…");
-        _ = await drive.ListFolderAsync("history", token);
         progress?.Invoke("Scanning remote devices…");
         var remoteFiles = await drive.ListAsync(token);
         var byName = remoteFiles.GroupBy(value => value.Name, StringComparer.Ordinal).ToDictionary(value => value.Key, value => value.First(), StringComparer.Ordinal);
         var devices = remoteFiles.Select(value => ParseDevice(value.Name)).Where(value => value is not null).Cast<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var knownDevices = repository.Devices();
         var downloaded = 0;
         var warnings = new List<string>();
         var uploadTarget = settings.SyncProvider.ToString();
@@ -82,9 +82,12 @@ internal sealed class PrivateCloudSync(BitmapRepository repository, AppSettings 
             try
             {
                 var remoteID = ParseDevice(file.Name);
+                if (remoteID is null || remoteID.Equals(settings.DeviceID, StringComparison.OrdinalIgnoreCase)) continue;
+                if (file.ModifiedAt is DateTimeOffset modifiedAt && knownDevices.TryGetValue(remoteID, out var known) && modifiedAt <= known.UpdatedAt) continue;
+                progress?.Invoke("Updating device information…");
                 var document = JsonSerializer.Deserialize<AppSettings>(await drive.DownloadAsync(file.ID, token), JsonOptions.Default);
-                if (remoteID is null || remoteID.Equals(settings.DeviceID, StringComparison.OrdinalIgnoreCase) || document is null || !document.DeviceID.Equals(remoteID, StringComparison.OrdinalIgnoreCase)) continue;
-                repository.UpsertDevice(new(document.DeviceID, document.DeviceName, document.DeviceKind, document.UpdatedAt));
+                if (document is null || !document.DeviceID.Equals(remoteID, StringComparison.OrdinalIgnoreCase)) continue;
+                repository.UpsertDevice(new(document.DeviceID, document.DeviceName, document.DeviceKind, file.ModifiedAt ?? document.UpdatedAt));
             }
             catch (Exception error) { warnings.Add($"settings_import_failed; provider={settings.SyncProvider}; file={file.Name}; {DiagnosticLog.Describe(error)}"); }
         }
@@ -275,7 +278,7 @@ internal sealed class ICloudDriveClient : IPrivateCloudDrive
     {
         token.ThrowIfCancellationRequested();
         IReadOnlyList<RemoteFile> result = Directory.EnumerateFiles(syncFolder, "*.json", SearchOption.TopDirectoryOnly)
-            .Select(path => new RemoteFile(path, Path.GetFileName(path))).ToList();
+            .Select(path => new RemoteFile(path, Path.GetFileName(path), File.GetLastWriteTimeUtc(path))).ToList();
         return Task.FromResult(result);
     }
 
@@ -298,7 +301,7 @@ internal sealed class ICloudDriveClient : IPrivateCloudDrive
     public Task<IReadOnlyList<RemoteFile>> ListFolderAsync(string folder, CancellationToken token)
     {
         token.ThrowIfCancellationRequested(); var path = SafeFolder(folder); Directory.CreateDirectory(path);
-        return Task.FromResult<IReadOnlyList<RemoteFile>>(Directory.EnumerateFiles(path, "*", SearchOption.TopDirectoryOnly).Select(value => new RemoteFile(value, Path.GetFileName(value))).ToList());
+        return Task.FromResult<IReadOnlyList<RemoteFile>>(Directory.EnumerateFiles(path, "*", SearchOption.TopDirectoryOnly).Select(value => new RemoteFile(value, Path.GetFileName(value), File.GetLastWriteTimeUtc(value))).ToList());
     }
 
     public async Task UploadFolderAsync(string folder, string name, byte[] data, string? existingID, CancellationToken token)
@@ -513,8 +516,8 @@ internal sealed class OneDriveClient : IPrivateCloudDrive
     public async Task<IReadOnlyList<RemoteFile>> ListAsync(CancellationToken token)
     {
         await EnsureAppRootAsync(token);
-        var data = await GraphAsync(HttpMethod.Get, "/v1.0/me/drive/special/approot/children?$select=id,name", null, token);
-        return (JsonSerializer.Deserialize<OneDriveFileList>(data, JsonOptions.Default)?.Value ?? []).Select(value => new RemoteFile(value.ID, value.Name)).ToList();
+        var data = await GraphAsync(HttpMethod.Get, "/v1.0/me/drive/special/approot/children?$select=id,name,lastModifiedDateTime", null, token);
+        return (JsonSerializer.Deserialize<OneDriveFileList>(data, JsonOptions.Default)?.Value ?? []).Select(value => new RemoteFile(value.ID, value.Name, value.LastModifiedDateTime)).ToList();
     }
 
     public async Task UploadAsync(string name, byte[] data, string? existingID, CancellationToken token)
@@ -632,7 +635,7 @@ internal sealed class OneDriveClient : IPrivateCloudDrive
     private static string? ApiError(byte[] data) { try { var root = JsonDocument.Parse(data).RootElement; if (root.TryGetProperty("error_description", out var description)) return description.GetString(); if (root.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object && error.TryGetProperty("message", out var message)) return message.GetString(); } catch { } return null; }
 
     private sealed record TokenResponse([property: JsonPropertyName("access_token")] string AccessToken, [property: JsonPropertyName("refresh_token")] string? RefreshToken, [property: JsonPropertyName("expires_in")] int ExpiresIn);
-    private sealed record OneDriveFile([property: JsonPropertyName("id")] string ID, [property: JsonPropertyName("name")] string Name);
+    private sealed record OneDriveFile([property: JsonPropertyName("id")] string ID, [property: JsonPropertyName("name")] string Name, [property: JsonPropertyName("lastModifiedDateTime")] DateTimeOffset? LastModifiedDateTime);
     private sealed record OneDriveFileList([property: JsonPropertyName("value")] List<OneDriveFile> Value);
     private sealed record MicrosoftProfile(
         [property: JsonPropertyName("displayName")] string? DisplayName,
@@ -710,9 +713,9 @@ internal sealed class GoogleDriveClient : IPrivateCloudDrive
 
     public async Task<IReadOnlyList<RemoteFile>> ListAsync(CancellationToken token)
     {
-        var url = "https://www.googleapis.com/drive/v3/files?" + Query(new() { ["spaces"] = "appDataFolder", ["fields"] = "files(id,name)", ["pageSize"] = "1000", ["q"] = "trashed = false" });
+        var url = "https://www.googleapis.com/drive/v3/files?" + Query(new() { ["spaces"] = "appDataFolder", ["fields"] = "files(id,name,modifiedTime)", ["pageSize"] = "1000", ["q"] = "trashed = false" });
         var data = await AuthorizedAsync(HttpMethod.Get, url, null, token);
-        return (JsonSerializer.Deserialize<GoogleFileList>(data, JsonOptions.Default)?.Files ?? []).Select(value => new RemoteFile(value.ID, value.Name)).ToList();
+        return (JsonSerializer.Deserialize<GoogleFileList>(data, JsonOptions.Default)?.Files ?? []).Select(value => new RemoteFile(value.ID, value.Name, value.ModifiedTime)).ToList();
     }
 
     public async Task UploadAsync(string name, byte[] data, string? existingID, CancellationToken token)
@@ -816,7 +819,7 @@ internal sealed class GoogleDriveClient : IPrivateCloudDrive
         throw new InvalidOperationException(message ?? $"{fallback} ({(int)response.StatusCode})");
     }
     private sealed record GoogleToken([property: JsonPropertyName("access_token")] string AccessToken, [property: JsonPropertyName("refresh_token")] string? RefreshToken, [property: JsonPropertyName("expires_in")] int ExpiresIn);
-    private sealed record GoogleFile([property: JsonPropertyName("id")] string ID, [property: JsonPropertyName("name")] string Name);
+    private sealed record GoogleFile([property: JsonPropertyName("id")] string ID, [property: JsonPropertyName("name")] string Name, [property: JsonPropertyName("modifiedTime")] DateTimeOffset? ModifiedTime);
     private sealed record GoogleFileList([property: JsonPropertyName("files")] List<GoogleFile> Files);
     private sealed record GoogleProfile(string? Name, string? Email);
 }

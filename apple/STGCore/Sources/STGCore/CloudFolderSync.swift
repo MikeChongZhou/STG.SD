@@ -29,16 +29,23 @@ public actor CloudFolderSync {
         try FileManager.default.createDirectory(at: folder.appendingPathComponent("history", isDirectory: true), withIntermediateDirectories: true)
         var result = Result()
         await progress?("Scanning remote devices…")
-        let files = try FileManager.default.contentsOfDirectory(at: sync, includingPropertiesForKeys: nil)
+        let files = try FileManager.default.contentsOfDirectory(at: sync, includingPropertiesForKeys: [.contentModificationDateKey])
         for file in files where file.pathExtension == "json" {
             if let id = Self.deviceID(from: file.lastPathComponent) { result.discoveredDeviceIDs.insert(id) }
         }
 
+        let knownDevices = Dictionary(uniqueKeysWithValues: try repository.deviceRecords().map { ($0.deviceID, $0) })
         for file in files where file.lastPathComponent.hasSuffix("_setting.json") {
             do {
+                guard let remoteID = Self.deviceID(from: file.lastPathComponent), remoteID != deviceID else { continue }
+                let modifiedAt = try file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+                if let modifiedAt, let known = knownDevices[remoteID], modifiedAt <= known.updatedAt { continue }
+                await progress?("Updating device information…")
                 let document = try decoder.decode(SettingDocument.self, from: Data(contentsOf: file))
-                guard document.deviceID == Self.deviceID(from: file.lastPathComponent), document.deviceID != deviceID else { continue }
-                try repository.upsertDevice(document.deviceRecord)
+                guard document.deviceID == remoteID else { continue }
+                var record = document.deviceRecord
+                record.updatedAt = modifiedAt ?? document.updatedAt
+                try repository.upsertDevice(record)
             } catch { result.warnings.append("settings_import_failed; file=\(file.lastPathComponent); \(DiagnosticLog.describe(error))"); continue }
         }
 
