@@ -21,7 +21,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.timbertrail.screentimeguardian.ios.core
         GENERATE_INFOPLIST_FILE: YES
         MARKETING_VERSION: "1.1.9"
-        CURRENT_PROJECT_VERSION: "24"
+        CURRENT_PROJECT_VERSION: "25"
     dependencies:
       - sdk: libsqlite3.tbd
   STG:

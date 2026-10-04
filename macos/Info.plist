@@ -9,7 +9,7 @@
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
 <key>CFBundleShortVersionString</key><string>1.1.9</string>
-<key>CFBundleVersion</key><string>24</string>
+<key>CFBundleVersion</key><string>25</string>
 <key>LSUIElement</key><true/>
 <key>NSHighResolutionCapable</key><true/>
 <key>STGOneDriveClientID</key><string>a4ff927c-e45a-413e-b5c3-45b026719171</string>
