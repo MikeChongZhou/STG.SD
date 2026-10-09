@@ -785,8 +785,13 @@ struct TrackingView: View {
                     }
                     Picker("Metric", selection: $metric) { ForEach(OpenRouterWeeklyMetric.allCases) { Text($0.label).tag($0) } }
                     ScrollView(.horizontal) {
-                        Chart(weeklyRows) { row in
-                            weeklyMarks(row)
+                        Chart {
+                            ForEach(weeklyAxisWeeks, id: \.self) { week in
+                                RuleMark(x: .value("Week", week)).opacity(0)
+                            }
+                            ForEach(weeklyRows) { row in
+                                weeklyMarks(row)
+                            }
                         }
                         .chartForegroundStyleScale(domain: weeklyModels, range: weeklyModelColors)
                         .chartLegend(.hidden)
@@ -821,7 +826,15 @@ struct TrackingView: View {
         max(320, CGFloat(Set(weeklyRows.map(\.weekStart)).count) * 32)
     }
     private var weeklyAxisWeeks: [String] {
-        Array(Set(weeklyRows.map { trackingISOWeekLabel($0.weekStart) })).sorted()
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .iso8601)
+        formatter.timeZone = STGTime.utc
+        formatter.dateFormat = "yyyy-MM-dd"
+        guard let latest = weeklyRows.map(\.weekStart).sorted().last.flatMap(formatter.date(from:)) else { return [] }
+        return (-12...0).compactMap { offset in
+            formatter.calendar.date(byAdding: .weekOfYear, value: offset, to: latest).map { trackingISOWeekLabel(formatter.string(from: $0)) }
+        }
     }
     private func weeklyAxisLabel(_ week: String) -> String {
         guard let index = weeklyAxisWeeks.firstIndex(of: week) else { return week }
