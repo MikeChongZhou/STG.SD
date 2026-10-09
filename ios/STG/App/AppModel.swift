@@ -471,8 +471,18 @@ final class AppModel: ObservableObject {
         } catch { SharedEnvironment.diagnosticLog.record("yearly action failed; year=\(year); stage=archive; \(DiagnosticLog.describe(error))", category: "sync") }
     }
 
-    func openRouterWeeks(models: [String]) -> [OpenRouterWeeklyRankingRow] { (try? repository?.openRouterWeeks(models: models)) ?? [] }
-    func latestOpenRouterTopModels(metric: OpenRouterWeeklyMetric) -> [String] { (try? repository?.latestOpenRouterTopModels(metric: metric, limit: 10)) ?? [] }
+    func trackingWeeks(metric: OpenRouterWeeklyMetric) async -> (models: [String], rows: [OpenRouterWeeklyRankingRow]) {
+        guard let repository = await readyRepository() else { return ([], []) }
+        let started = ProcessInfo.processInfo.systemUptime
+        let result = await Task.detached(priority: .utility) {
+            let models = (try? repository.latestOpenRouterTopModels(metric: metric, limit: 10)) ?? []
+            let rows = (try? repository.openRouterWeeks(models: models)) ?? []
+            return (models, rows)
+        }.value
+        let duration = Int((ProcessInfo.processInfo.systemUptime - started) * 1_000)
+        SharedEnvironment.diagnosticLog.record("tracking history loaded; metric=\(metric.rawValue); models=\(result.0.count); rows=\(result.1.count); duration=\(duration)ms", category: "tracking")
+        return result
+    }
     var latestTrackingTopTwo: String { let names = (try? repository?.latestOpenRouterTopModels(metric: .totalTokens, limit: 2)) ?? []; return names.isEmpty ? String(localized: "Weekly data will appear after sync.") : names.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n") }
 
     func requestOneDriveSignIn() {

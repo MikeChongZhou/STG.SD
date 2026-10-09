@@ -567,7 +567,11 @@ struct SettingsView: View {
                 }
             }
         }.navigationTitle("Settings")
-            .task { activity.refreshAuthorizationStatus() }
+            .task {
+                // Let the navigation transition render before asking the Screen Time framework.
+                await Task.yield()
+                activity.refreshAuthorizationStatus()
+            }
             .onChange(of: showActivityPicker) { _, presented in
                 if !presented { validateSettingsSelection() }
             }
@@ -809,10 +813,10 @@ struct TrackingView: View {
                 Text(status).font(.caption).foregroundStyle(.secondary)
                 Text("Source: OpenRouter public rankings").font(.caption)
             }.padding()
-        }.navigationTitle("Tracking").task { loadWeeks() }
-            .onChange(of: viewIndex) { value in if value == 0 && rows.isEmpty { Task { await refresh() } } else if value == 1 { loadWeeks() } }
-            .onChange(of: metric) { _ in if viewIndex == 1 { loadWeeks() } }
-            .onChange(of: model.trackingHistoryPreparing) { preparing in if !preparing && viewIndex == 1 { loadWeeks() } }
+        }.navigationTitle("Tracking").task { await loadWeeks() }
+            .onChange(of: viewIndex) { value in if value == 0 && rows.isEmpty { Task { await refresh() } } else if value == 1 { Task { await loadWeeks() } } }
+            .onChange(of: metric) { _ in if viewIndex == 1 { Task { await loadWeeks() } } }
+            .onChange(of: model.trackingHistoryPreparing) { preparing in if !preparing && viewIndex == 1 { Task { await loadWeeks() } } }
             .sheet(item: $trackingShare) { item in ActivityShareView(urls: item.urls) { _ in trackingShare = nil } }
     }
     private let weeklyModelColors: [Color] = [
@@ -898,17 +902,22 @@ struct TrackingView: View {
             SharedEnvironment.diagnosticLog.record("OpenRouter refresh complete; window=\(snapshot.startDate)...\(snapshot.endDate); rows=\(snapshot.rows.count)", category: "tracking")
         } catch { status = error.localizedDescription; SharedEnvironment.diagnosticLog.record("OpenRouter: \(status)", category: "tracking") }
     }
-    private func loadWeeks() {
+    private func loadWeeks() async {
         guard !model.trackingHistoryPreparing else {
             weeklyRows = []
             weeklyModels = []
             status = "Preparing tracking history…"
             return
         }
-        let models = model.latestOpenRouterTopModels(metric: metric)
-        weeklyModels = models
-        weeklyRows = model.openRouterWeeks(models: models)
-        status = weeklyRows.isEmpty ? "No weekly data is available for \(metric.label) yet." : "Showing \(metric.label) for the top \(models.count) models in the latest completed week."
+        let requestedMetric = metric
+        status = "Loading weekly trends…"
+        // A yield keeps the tab transition responsive before the chart data is prepared.
+        await Task.yield()
+        let result = await model.trackingWeeks(metric: requestedMetric)
+        guard requestedMetric == metric, viewIndex == 1 else { return }
+        weeklyModels = result.models
+        weeklyRows = result.rows
+        status = result.rows.isEmpty ? "No weekly data is available for \(requestedMetric.label) yet." : "Showing \(requestedMetric.label) for the top \(result.models.count) models in the latest completed week."
     }
     private func prepareTrackingExport() {
         let periodName = "date_to_latest"
