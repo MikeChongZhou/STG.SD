@@ -542,7 +542,6 @@ struct SettingsView: View {
                 Button((draft.syncProvider ?? SyncProvider.none) == SyncProvider.none ? "Set Up Private Cloud" : "Manage Private Cloud") { model.settings = draft; showCloudSetup = true }
             }
             Section("Screen Time") {
-                Text(activity.status)
                 Text(settingsSelectionSummary).font(.footnote).foregroundStyle(.secondary)
                 Button("Change Apps and Websites") { showActivityPicker = true }
                 Text("Select individual apps or websites. Categories aren’t supported because they may reduce accuracy.").font(.footnote).foregroundStyle(.secondary)
@@ -567,11 +566,6 @@ struct SettingsView: View {
                 }
             }
         }.navigationTitle("Settings")
-            .task {
-                // Let the navigation transition render before asking the Screen Time framework.
-                await Task.yield()
-                activity.refreshAuthorizationStatus()
-            }
             .onChange(of: showActivityPicker) { _, presented in
                 if !presented { validateSettingsSelection() }
             }
