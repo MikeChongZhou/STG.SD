@@ -824,7 +824,7 @@ struct TrackingView: View {
         .pink, .teal, .indigo, .mint, .brown
     ]
     private var weeklyChartWidth: CGFloat {
-        max(320, CGFloat(Set(weeklyRows.map(\.weekStart)).count) * 72)
+        max(320, CGFloat(Set(weeklyRows.map(\.weekStart)).count) * 32)
     }
     private var weeklyAxisWeeks: [String] {
         Array(Set(weeklyRows.map { trackingISOWeekLabel($0.weekStart) })).sorted()
