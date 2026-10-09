@@ -235,7 +235,7 @@ class MainActivity : Activity() {
         val metric = Spinner(this).apply { adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, metricLabels) }
         val weeklyPanel = ScrollView(this).apply { addView(LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; addView(metric); addView(HorizontalScrollView(this@MainActivity).apply { isFillViewport = true; addView(chart, android.view.ViewGroup.LayoutParams(android.view.ViewGroup.LayoutParams.WRAP_CONTENT, dp(650))) }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(650))) }) }
         val topPanel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(startButton); addView(TextView(this@MainActivity).apply { text = getString(R.string.top20_detail) }); addView(tableScroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)) }
-        val modes = Spinner(this).apply { adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf(getString(R.string.weekly_trends), getString(R.string.top20_since_date))) }
+        val modes = Spinner(this).apply { adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf(getString(R.string.top20_since_date), getString(R.string.weekly_trends))) }
         val refresh = Button(this).apply { text = getString(R.string.refresh_top20) }
         val export = Button(this).apply { text = getString(R.string.export_top20) }
         val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 8, 24, 0); minimumHeight = dp(560); addView(modes); addView(LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL; addView(refresh); addView(export) }); addView(statusText); addView(weeklyPanel, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)); addView(topPanel, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)) }
@@ -260,7 +260,9 @@ class MainActivity : Activity() {
             Thread {
                 val started = android.os.SystemClock.elapsedRealtime()
                 val models = database.latestOpenRouterTopModels(selectedMetric)
-                val rows = database.openRouterWeeks(models)
+                val allRows = database.openRouterWeeks(models)
+                val recentWeeks = allRows.map { it.weekStart }.distinct().sorted().takeLast(13).toSet()
+                val rows = allRows.filter { it.weekStart in recentWeeks }
                 val duration = android.os.SystemClock.elapsedRealtime() - started
                 diagnosticLog.record("tracking", "weekly trends loaded; metric=$selectedMetric; models=${models.size}; rows=${rows.size}; duration=${duration}ms")
                 runOnUiThread {
@@ -273,7 +275,7 @@ class MainActivity : Activity() {
         }
         refresh.setOnClickListener { loadTop() }; export.setOnClickListener { snapshot?.let(::exportTracking) ?: Toast.makeText(this, R.string.open_top20_first, Toast.LENGTH_SHORT).show() }
         metric.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener { override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) { loadWeeks() }; override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {} }
-        modes.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener { override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) { weeklyPanel.visibility = if (position == 0) View.VISIBLE else View.GONE; topPanel.visibility = if (position == 1) View.VISIBLE else View.GONE; refresh.visibility = if (position == 1) View.VISIBLE else View.GONE; export.visibility = refresh.visibility; if (position == 0) loadWeeks() else if (snapshot == null) loadTop() }; override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {} }
+        modes.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener { override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) { weeklyPanel.visibility = if (position == 1) View.VISIBLE else View.GONE; topPanel.visibility = if (position == 0) View.VISIBLE else View.GONE; refresh.visibility = if (position == 0) View.VISIBLE else View.GONE; export.visibility = refresh.visibility; if (position == 1) loadWeeks() else if (snapshot == null) loadTop() }; override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {} }
         setPage(page(getString(R.string.openrouter_tracking), layout), 2)
     }
     private fun showAbout() {

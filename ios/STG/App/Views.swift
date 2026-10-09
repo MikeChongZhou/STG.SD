@@ -757,7 +757,7 @@ struct TrackingView: View {
     @State private var weeklyRows: [OpenRouterWeeklyRankingRow] = []
     @State private var weeklyModels: [String] = []
     @State private var status = "Public data. No OpenRouter account or API key is required."
-    @State private var viewIndex = 1
+    @State private var viewIndex = 0
     @State private var customStart = Calendar.current.date(byAdding: .day, value: -7, to: .now) ?? .now
     @State private var metric: OpenRouterWeeklyMetric = .totalTokens
     @State private var sortField: TrackingSortField = .rank
@@ -807,7 +807,7 @@ struct TrackingView: View {
                 Text(status).font(.caption).foregroundStyle(.secondary)
                 Text("Source: OpenRouter public rankings").font(.caption)
             }.padding()
-        }.navigationTitle("Tracking").task { await loadWeeks() }
+        }.navigationTitle("Tracking").task { if viewIndex == 0 && rows.isEmpty { await refresh() } else { await loadWeeks() } }
             .onChange(of: viewIndex) { value in if value == 0 && rows.isEmpty { Task { await refresh() } } else if value == 1 { Task { await loadWeeks() } } }
             .onChange(of: metric) { _ in if viewIndex == 1 { Task { await loadWeeks() } } }
             .onChange(of: model.trackingHistoryPreparing) { preparing in if !preparing && viewIndex == 1 { Task { await loadWeeks() } } }
@@ -909,9 +909,10 @@ struct TrackingView: View {
         await Task.yield()
         let result = await model.trackingWeeks(metric: requestedMetric)
         guard requestedMetric == metric, viewIndex == 1 else { return }
+        let recentWeeks = Set(result.rows.map(\.weekStart).sorted().suffix(13))
         weeklyModels = result.models
-        weeklyRows = result.rows
-        status = result.rows.isEmpty ? "No weekly data is available for \(requestedMetric.label) yet." : "Showing \(requestedMetric.label) for the top \(result.models.count) models in the latest completed week."
+        weeklyRows = result.rows.filter { recentWeeks.contains($0.weekStart) }
+        status = weeklyRows.isEmpty ? "No weekly data is available for \(requestedMetric.label) yet." : "Showing the latest \(recentWeeks.count) weeks of \(requestedMetric.label) for the top \(result.models.count) models."
     }
     private func prepareTrackingExport() {
         let periodName = "date_to_latest"
