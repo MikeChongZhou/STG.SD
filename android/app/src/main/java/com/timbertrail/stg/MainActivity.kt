@@ -253,7 +253,24 @@ class MainActivity : Activity() {
         }
         render()
         fun loadTop() { statusText.text = getString(R.string.loading_rankings); diagnosticLog.record("tracking", "Top 20 refresh begin; start=$customStart"); Thread { val result = runCatching { OpenRouterClient().top20(customStart, LocalDate.now(ZoneOffset.UTC).minusDays(1)) }; runOnUiThread { result.onSuccess { snapshot = it; diagnosticLog.record("tracking", "Top 20 refresh complete; range=${it.startDate}..${it.endDate}; rows=${it.rows.size}"); statusText.text = "${it.startDate} – ${it.endDate} UTC · ${it.citation}"; render() }.onFailure { diagnosticLog.record("tracking", "Top 20 refresh failed; error=${it.message ?: it.javaClass.simpleName}"); statusText.text = getString(R.string.tracking_load_failed, it.message ?: it.javaClass.simpleName) } } }.start() }
-        fun loadWeeks() { val selectedMetric = metricKeys[metric.selectedItemPosition.coerceIn(metricKeys.indices)]; val selectedLabel = metricLabels[metric.selectedItemPosition.coerceIn(metricLabels.indices)]; val models = database.latestOpenRouterTopModels(selectedMetric); chart.metric = selectedMetric; chart.rows = database.openRouterWeeks(models); diagnosticLog.record("tracking", "weekly trends loaded; metric=$selectedMetric; models=${models.size}; rows=${chart.rows.size}"); statusText.text = if (chart.rows.isEmpty()) getString(R.string.no_saved_metric, selectedLabel) else getString(R.string.showing_saved_weeks, selectedLabel, models.size) }
+        fun loadWeeks() {
+            val selectedMetric = metricKeys[metric.selectedItemPosition.coerceIn(metricKeys.indices)]
+            val selectedLabel = metricLabels[metric.selectedItemPosition.coerceIn(metricLabels.indices)]
+            statusText.text = getString(R.string.loading_rankings)
+            Thread {
+                val started = android.os.SystemClock.elapsedRealtime()
+                val models = database.latestOpenRouterTopModels(selectedMetric)
+                val rows = database.openRouterWeeks(models)
+                val duration = android.os.SystemClock.elapsedRealtime() - started
+                diagnosticLog.record("tracking", "weekly trends loaded; metric=$selectedMetric; models=${models.size}; rows=${rows.size}; duration=${duration}ms")
+                runOnUiThread {
+                    if (metricKeys[metric.selectedItemPosition.coerceIn(metricKeys.indices)] != selectedMetric) return@runOnUiThread
+                    chart.metric = selectedMetric
+                    chart.rows = rows
+                    statusText.text = if (rows.isEmpty()) getString(R.string.no_saved_metric, selectedLabel) else getString(R.string.showing_saved_weeks, selectedLabel, models.size)
+                }
+            }.start()
+        }
         refresh.setOnClickListener { loadTop() }; export.setOnClickListener { snapshot?.let(::exportTracking) ?: Toast.makeText(this, R.string.open_top20_first, Toast.LENGTH_SHORT).show() }
         metric.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener { override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) { loadWeeks() }; override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {} }
         modes.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener { override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) { weeklyPanel.visibility = if (position == 0) View.VISIBLE else View.GONE; topPanel.visibility = if (position == 1) View.VISIBLE else View.GONE; refresh.visibility = if (position == 1) View.VISIBLE else View.GONE; export.visibility = refresh.visibility; if (position == 0) loadWeeks() else if (snapshot == null) loadTop() }; override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {} }
@@ -272,7 +289,13 @@ class MainActivity : Activity() {
         val eyeNotifications = CheckBox(this).apply { text = getString(R.string.eye_notifications); isChecked = settings.eyeNotificationsEnabled }
         val postureNotifications = CheckBox(this).apply { text = getString(R.string.posture_notifications); isChecked = settings.postureNotificationsEnabled }
         val dailyNotifications = CheckBox(this).apply { text = getString(R.string.daily_notifications); isChecked = settings.dailyNotificationsEnabled }
-        val meetingStatus = TextView(this).apply { val result = MeetingDetector(this@MainActivity).checkAndLog(); text = "${getString(R.string.automatic_meeting)}: ${getString(if (result.isInMeeting) R.string.in_meeting else R.string.not_in_meeting)}\n${result.reason}"; setPadding(0, 8, 0, 8) }
+        val meetingStatus = TextView(this).apply { text = "${getString(R.string.automatic_meeting)}: Checking…"; setPadding(0, 8, 0, 8) }
+        Thread {
+            val result = MeetingDetector(applicationContext).checkAndLog()
+            runOnUiThread {
+                meetingStatus.text = "${getString(R.string.automatic_meeting)}: ${getString(if (result.isInMeeting) R.string.in_meeting else R.string.not_in_meeting)}\n${result.reason}"
+            }
+        }.start()
         val usageStatus = TextView(this).apply { text = "${getString(R.string.usage_stats)}: ${getString(if (hasUsageStatsAccess()) R.string.enabled else R.string.needs_attention)}"; setPadding(0, 12, 0, 12) }
         val notificationStatus = TextView(this).apply { val enabled = getString(R.string.enabled); val attention = getString(R.string.needs_attention); text = "${getString(R.string.notifications)}: ${if (androidx.core.app.NotificationManagerCompat.from(this@MainActivity).areNotificationsEnabled()) enabled else attention}\n${getString(R.string.display_over_apps)}: ${if (Settings.canDrawOverlays(this@MainActivity)) enabled else attention}"; setPadding(0, 12, 0, 12) }
         val cloudStatus = TextView(this).apply { text = cloudStatusText(); setPadding(0, 12, 0, 8) }
