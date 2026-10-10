@@ -43,14 +43,17 @@ class AndroidMinuteBitmapView(context: Context) : View(context) {
 class AndroidUsageLineChartView(context: Context) : View(context) {
     var points: List<AndroidDailyUsagePoint> = emptyList(); set(value) { field = value; invalidate() }
     var period: String = "day"; set(value) { field = value; invalidate() }
+    var chartSize: String = "system"; set(value) { field = value; requestLayout(); invalidate() }
     private val palette = intArrayOf(Color.rgb(15,118,110), Color.rgb(37,99,235), Color.rgb(234,88,12), Color.rgb(147,51,234), Color.rgb(190,24,93), Color.rgb(22,163,74), Color.rgb(71,85,105))
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(71,85,105); textSize = 11 * resources.displayMetrics.scaledDensity }
     private val grid = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(220,228,236); strokeWidth = resources.displayMetrics.density }
-    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) { setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), (420 * resources.displayMetrics.density).toInt()) }
+    private val labelDensity get() = if (chartSize == "standard") resources.displayMetrics.density else resources.displayMetrics.scaledDensity
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) { setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), (max(420 * resources.displayMetrics.density, 380 * labelDensity)).toInt()) }
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas); if (points.isEmpty()) { canvas.drawText("No report data for this range", 20f, 40f, text); return }
+        text.textSize = 11 * labelDensity
         val dates = points.map { it.date }.distinct().sorted(); val series = points.groupBy { it.deviceID }.values.sortedWith(compareByDescending<List<AndroidDailyUsagePoint>> { it.first().aggregate }.thenBy { it.first().displayName })
-        val left = 58 * resources.displayMetrics.density; val right = 52 * resources.displayMetrics.density; val top = 78 * resources.displayMetrics.density; val bottom = 46 * resources.displayMetrics.density; val plotWidth = width - left - right; val plotHeight = height - top - bottom
+        val left = 58 * labelDensity; val right = 52 * labelDensity; val top = 78 * labelDensity; val bottom = 46 * labelDensity; val plotWidth = width - left - right; val plotHeight = height - top - bottom
         val maxMinutes = max(60, points.maxOf { it.minutes }); val yMax = ceil(maxMinutes / 60.0).toInt() * 60
         for (value in 0..yMax step 60) { val y = top + plotHeight - value * plotHeight / yMax; canvas.drawLine(left, y, left + plotWidth, y, grid); val label = "${value / 60}h"; canvas.drawText(label, 2f, y + 4, text); canvas.drawText(label, left + plotWidth + 6 * resources.displayMetrics.density, y + 4, text) }
         val every = max(1, ceil(dates.size / 6.0).toInt()); dates.forEachIndexed { index, date -> if (index % every == 0 || index == dates.lastIndex) { val label = when (period) { "week" -> { val wf = java.time.temporal.WeekFields.ISO; String.format("%02dW%02d", date.get(wf.weekBasedYear()) % 100, date.get(wf.weekOfWeekBasedYear())) }; "month" -> String.format("%02d-%02d", date.year % 100, date.monthValue); else -> date.toString().substring(5) }; canvas.drawText(label, x(index, dates.size, left, plotWidth) - 18, top + plotHeight + 22, text) } }
@@ -66,14 +69,17 @@ class AndroidUsageLineChartView(context: Context) : View(context) {
 class AndroidTrackingLineChartView(context: Context) : View(context) {
     var rows: List<WeeklyRankingRow> = emptyList(); set(value) { field = value; requestLayout(); invalidate() }
     var metric: String = "Total tokens"; set(value) { field = value; invalidate() }
+    var chartSize: String = "system"; set(value) { field = value; requestLayout(); invalidate() }
     private val palette = intArrayOf(Color.rgb(15,118,110), Color.rgb(37,99,235), Color.rgb(234,88,12), Color.rgb(147,51,234), Color.rgb(190,24,93), Color.rgb(22,163,74), Color.rgb(71,85,105), Color.rgb(8,145,178), Color.rgb(202,138,4), Color.rgb(79,70,229))
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(71,85,105); textSize = 10 * resources.displayMetrics.scaledDensity }
     private val grid = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(220,228,236); strokeWidth = resources.displayMetrics.density }
-    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) { val density = resources.displayMetrics.density; val viewport = MeasureSpec.getSize(widthMeasureSpec); val chartWidth = max(viewport, ((chartWeeks().size * 32 + 72) * density).toInt()); val requested = if (viewport < 600 * density) 650 else 520; setMeasuredDimension(chartWidth, (requested * density).toInt()) }
+    private val labelDensity get() = if (chartSize == "standard") resources.displayMetrics.density else resources.displayMetrics.scaledDensity
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) { val density = resources.displayMetrics.density; val viewport = MeasureSpec.getSize(widthMeasureSpec); val chartWidth = max(viewport, ((chartWeeks().size * 32 + 72) * labelDensity).toInt()); val requested = if (viewport < 600 * density) 650 else 520; setMeasuredDimension(chartWidth, max((requested * density).toInt(), (420 * labelDensity).toInt())) }
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas); if (rows.isEmpty()) { canvas.drawText(context.getString(R.string.weekly_data_after_sync), 20f, 45f, text); return }
-        val weeks = chartWeeks(); val series = rows.groupBy { it.model }.entries.sortedBy { it.value.firstOrNull()?.rank ?: 99 }.take(10); val density = resources.displayMetrics.density; val oneColumnLegend = this.width < 600 * density; val legendColumns = if (oneColumnLegend) 1 else 2; val legendRows = ceil(series.size / legendColumns.toDouble()).toInt(); val legendHeight = legendRows * 25 * density
-        val left = 62 * density; val right = 10 * density; val top = 18 * density; val bottom = 42 * density + legendHeight; val width = this.width - left - right; val height = max(80 * density, this.height - top - bottom)
+        text.textSize = 10 * labelDensity
+        val weeks = chartWeeks(); val series = rows.groupBy { it.model }.entries.sortedBy { it.value.firstOrNull()?.rank ?: 99 }.take(10); val density = resources.displayMetrics.density; val oneColumnLegend = this.width < 600 * density; val legendColumns = if (oneColumnLegend) 1 else 2; val legendRows = ceil(series.size / legendColumns.toDouble()).toInt(); val legendHeight = legendRows * 25 * labelDensity
+        val left = 62 * labelDensity; val right = 10 * labelDensity; val top = 30 * labelDensity; val bottom = 42 * labelDensity + legendHeight; val width = this.width - left - right; val height = max(80 * labelDensity, this.height - top - bottom)
         fun value(row: WeeklyRankingRow): Double? = when(metric) { "Rank" -> row.rank.toDouble(); "Input tokens" -> if (row.hasTokenBreakdown) row.promptTokens.toDouble() else null; "Output tokens" -> if (row.hasTokenBreakdown) row.completionTokens.toDouble() else null; "Input price / M" -> row.promptPrice?.times(1_000_000); "Output price / M" -> row.completionPrice?.times(1_000_000); "Estimated Revenue" -> row.revenue; else -> row.totalTokens.toDouble() }
         val available = rows.mapNotNull(::value); if (available.isEmpty()) { canvas.drawText(context.getString(R.string.metric_not_published), 20f, 45f, text); return }
         val maxValue = max(1.0, available.max()); repeat(5) { tick -> val y = top + height - height * tick / 4f; canvas.drawLine(left, y, left + width, y, grid); canvas.drawText(trackingLabel(maxValue * tick / 4), 1f, y + 4, text) }

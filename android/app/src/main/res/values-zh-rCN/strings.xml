@@ -35,6 +35,8 @@
     <string name="android_provider_detail">STG 登录您的账号，只使用 OneDrive App Folder 或 Google Drive 隐藏的 appDataFolder，无法浏览其他文件。首次同步成功后才保存连接。</string><string name="private_cloud_status">私人云：%1$s\n%2$s</string><string name="other_device">其他设备</string><string name="export_app_data_failed">无法导出 App 数据：%1$s</string><string name="cloud_signing_in">正在等待账号登录…</string><string name="cloud_validation">正在核查账号权限并进行首次同步…</string><string name="cloud_connected">私人云已连接并完成首次同步。</string><string name="cloud_connection_failed">私人云设置失败：%1$s</string><string name="select_provider_first">请先选择 OneDrive 或 Google Drive。</string><string name="disconnect_private_cloud">断开私人云</string>
     <string name="sign_in_microsoft">登录 Microsoft</string><string name="microsoft_device_code">Microsoft 一次性代码：</string><string name="microsoft_device_code_detail">打开 Microsoft 登录页时会自动复制此代码。请在浏览器中输入代码以授权 STG。</string><string name="open_microsoft_sign_in">复制代码并打开登录页</string><string name="google_sign_in_expired">Google 登录请求已过期，请重新开始连接。</string>
     <string name="notification_options">通知选项</string>
+    <string name="chart_size">图表大小</string>
+    <string name="standard">标准</string>
     <string name="eye_notifications">用眼休息通知</string>
     <string name="posture_notifications">姿势切换通知</string>
     <string name="daily_notifications">全天用时通知</string>
