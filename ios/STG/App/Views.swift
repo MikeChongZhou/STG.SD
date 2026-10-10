@@ -322,8 +322,8 @@ struct ReportView: View {
                         .frame(minWidth: chartWidth(for: multiDayPoints), minHeight: compactReportLayout ? 350 : 320)
                         .dynamicTypeSize(...DynamicTypeSize.large)
                     }
-                    .gesture(chartZoomGesture)
-                    if multiDayPoints.count > 7 { Text("Pinch the chart to zoom, then scroll sideways to inspect dates.").font(.caption).foregroundStyle(.secondary) }
+                    .simultaneousGesture(chartZoomGesture)
+                    chartZoomControls
                     if let average = intervalAverage(multiDayPoints) { Text("Interval average: \(duration(average)) per day").font(.caption).foregroundStyle(.secondary) }
                     if multiDayPoints.isEmpty && !loading { ContentUnavailableView("No Data for This Period", systemImage: "chart.xyaxis.line") }
                 } else {
@@ -336,8 +336,8 @@ struct ReportView: View {
                             .chartLegend(position: .bottom, alignment: .leading, spacing: 8).frame(minWidth: chartWidth(for: periodPoints), minHeight: compactReportLayout ? 350 : 320)
                             .dynamicTypeSize(...DynamicTypeSize.large)
                     }
-                    .gesture(chartZoomGesture)
-                    if periodPoints.count > 7 { Text("Pinch the chart to zoom, then scroll sideways to inspect periods.").font(.caption).foregroundStyle(.secondary) }
+                    .simultaneousGesture(chartZoomGesture)
+                    chartZoomControls
                     if !unavailablePeriods.isEmpty {
                         DisclosureGroup("— · No eligible completed days") {
                             ForEach(unavailablePeriods) { value in
@@ -405,6 +405,18 @@ struct ReportView: View {
                 chartZoom = min(3, max(1, (chartZoomStart ?? chartZoom) * scale))
             }
             .onEnded { _ in chartZoomStart = nil }
+    }
+    private var chartZoomControls: some View {
+        HStack {
+            Text("Pinch the chart to zoom · \(Int((chartZoom * 100).rounded()))%")
+            Spacer()
+            if chartZoom > 1.01 {
+                Button("Reset zoom") { chartZoom = 1 }
+                    .buttonStyle(.borderless)
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
     }
     private var usageAxisTickStep: Int {
         guard compactReportLayout else { return 60 }
