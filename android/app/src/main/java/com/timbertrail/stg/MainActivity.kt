@@ -233,7 +233,8 @@ class MainActivity : Activity() {
         val metricKeys = listOf("Total tokens", "Input tokens", "Output tokens", "Rank", "Input price / M", "Output price / M", "Estimated Revenue")
         val metricLabels = listOf(getString(R.string.total_tokens), getString(R.string.input_tokens), getString(R.string.output_tokens), getString(R.string.rank), getString(R.string.input_price_per_m), getString(R.string.output_price_per_m), getString(R.string.estimated_revenue))
         val metric = Spinner(this).apply { adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, metricLabels) }
-        val weeklyPanel = ScrollView(this).apply { addView(LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; addView(metric); addView(HorizontalScrollView(this@MainActivity).apply { isFillViewport = true; addView(chart, android.view.ViewGroup.LayoutParams(android.view.ViewGroup.LayoutParams.WRAP_CONTENT, dp(650))) }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(650))) }) }
+        val tokenUnit = TextView(this).apply { text = "Unit: Trillion Tokens"; textSize = 12f; setTextColor(Color.rgb(100, 116, 139)); setPadding(0, dp(6), 0, 0) }
+        val weeklyPanel = ScrollView(this).apply { addView(LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; addView(metric); addView(HorizontalScrollView(this@MainActivity).apply { isFillViewport = true; addView(chart, android.view.ViewGroup.LayoutParams(android.view.ViewGroup.LayoutParams.WRAP_CONTENT, dp(650))) }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(650))); addView(tokenUnit) }) }
         val topPanel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(startButton); addView(TextView(this@MainActivity).apply { text = getString(R.string.top20_detail) }); addView(tableScroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)) }
         val modes = Spinner(this).apply { adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf(getString(R.string.top20_since_date), getString(R.string.weekly_trends))) }
         val refresh = Button(this).apply { text = getString(R.string.refresh_top20) }
@@ -269,6 +270,7 @@ class MainActivity : Activity() {
                     if (metricKeys[metric.selectedItemPosition.coerceIn(metricKeys.indices)] != selectedMetric) return@runOnUiThread
                     chart.metric = selectedMetric
                     chart.rows = rows
+                    tokenUnit.visibility = if (selectedMetric == "Total tokens" || selectedMetric == "Input tokens" || selectedMetric == "Output tokens") View.VISIBLE else View.GONE
                     statusText.text = if (rows.isEmpty()) getString(R.string.no_saved_metric, selectedLabel) else getString(R.string.showing_saved_weeks, selectedLabel, models.size)
                 }
             }.start()

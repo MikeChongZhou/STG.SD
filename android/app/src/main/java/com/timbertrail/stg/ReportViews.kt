@@ -92,7 +92,7 @@ class AndroidTrackingLineChartView(context: Context) : View(context) {
     private fun trackingLabel(value: Double): String = when {
         metric == "Input price / M" || metric == "Output price / M" -> String.format(java.util.Locale.US, "\$%,.2f", value)
         metric == "Estimated Revenue" -> String.format(java.util.Locale.US, "\$%,.0f", value)
-        value >= 1_000_000_000_000 -> String.format(java.util.Locale.US, "%.1f Trillion", value / 1_000_000_000_000)
+        value >= 1_000_000_000_000 -> String.format(java.util.Locale.US, "%.1fT", value / 1_000_000_000_000)
         value >= 1_000_000_000 -> String.format(java.util.Locale.US, "%.1f Billion", value / 1_000_000_000)
         value >= 1_000_000 -> String.format(java.util.Locale.US, "%.1f Million", value / 1_000_000)
         else -> String.format(java.util.Locale.US, "%,.0f", value)

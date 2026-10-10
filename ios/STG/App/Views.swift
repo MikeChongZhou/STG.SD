@@ -820,6 +820,7 @@ struct TrackingView: View {
                         .frame(minWidth: weeklyChartWidth, minHeight: 360)
                     }
                     weeklyModelLegend
+                    if trackingUsesTokenUnit { Text("Unit: Trillion Tokens").font(.caption).foregroundStyle(.secondary) }
                     Text("Weekly data updates during the weekly sync.").font(.caption).foregroundStyle(.secondary)
                 }
                 Text(status).font(.caption).foregroundStyle(.secondary)
@@ -858,10 +859,13 @@ struct TrackingView: View {
     private func trackingAxisLabel(_ value: Double) -> String {
         if metric == .promptPrice || metric == .completionPrice { return String(format: "$%.2f", value) }
         if metric == .revenue { return String(format: "$%.0f", value) }
-        if value >= 1_000_000_000_000 { return String(format: "%.1f Trillion", value / 1_000_000_000_000) }
+        if value >= 1_000_000_000_000 { return String(format: "%.1fT", value / 1_000_000_000_000) }
         if value >= 1_000_000_000 { return String(format: "%.1f Billion", value / 1_000_000_000) }
         if value >= 1_000_000 { return String(format: "%.1f Million", value / 1_000_000) }
         return String(format: "%.0f", value)
+    }
+    private var trackingUsesTokenUnit: Bool {
+        metric == .promptTokens || metric == .completionTokens || metric == .totalTokens
     }
     private var weeklyModelLegend: some View {
         VStack(alignment: .leading, spacing: 8) {
