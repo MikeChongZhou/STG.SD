@@ -242,6 +242,7 @@ struct TodayView: View {
 
 struct ReportView: View {
     @ObservedObject var model: AppModel
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var mode = 0
     @State private var selectedDate = Date()
     @State private var rangeStart = Calendar.current.date(byAdding: .day, value: -6, to: .now) ?? .now
@@ -288,8 +289,8 @@ struct ReportView: View {
                         }.padding().background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
                     }
                 } else if mode == 1 {
-                    DatePicker("From", selection: $rangeStart, displayedComponents: .date)
-                    DatePicker("To", selection: $rangeEnd, displayedComponents: .date)
+                    reportDatePicker("From", selection: $rangeStart)
+                    reportDatePicker("To", selection: $rangeEnd)
                     Text("One line per device. All Devices combines overlapping use.").font(.caption).foregroundStyle(.secondary)
                     Chart(multiDayPoints) { point in
                         LineMark(x: .value("Date", point.date), y: .value("Minutes", point.minutes))
@@ -297,21 +298,23 @@ struct ReportView: View {
                             .symbol(by: .value("Device", point.displayName))
                         PointMark(x: .value("Date", point.date), y: .value("Minutes", point.minutes))
                             .foregroundStyle(by: .value("Device", point.displayName))
-                            .annotation(position: .top) { if point.isAggregate { Text(usagePointLabel(point.minutes)).font(.caption2).foregroundStyle(.secondary) } }
+                            .annotation(position: .top) { if showsAggregateLabel(point) { Text(usagePointLabel(point.minutes)).font(.caption2).foregroundStyle(.secondary) } }
                     }
                     .chartYScale(domain: 0...usageAxisMaximum(multiDayPoints))
                     .chartYAxis { usageAxisMarks }
                     .chartLegend(position: .bottom, alignment: .leading, spacing: 8)
-                    .frame(minHeight: 320)
+                    .frame(minHeight: compactReportLayout ? 350 : 320)
+                    .dynamicTypeSize(...DynamicTypeSize.large)
                     if let average = intervalAverage(multiDayPoints) { Text("Interval average: \(duration(average)) per day").font(.caption).foregroundStyle(.secondary) }
                     if multiDayPoints.isEmpty && !loading { ContentUnavailableView("No Data for This Period", systemImage: "chart.xyaxis.line") }
                 } else {
                     Text(mode == 2 ? "Average daily use by week in the current year" : "Average daily use by month across recent years").font(.caption).foregroundStyle(.secondary)
                     Chart(periodPoints) { point in
                         LineMark(x: .value("Period", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName)).symbol(by: .value("Device", point.displayName))
-                        PointMark(x: .value("Period", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName)).annotation(position: .top) { if point.isAggregate { Text(usagePointLabel(point.minutes)).font(.caption2).foregroundStyle(.secondary) } }
+                        PointMark(x: .value("Period", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName)).annotation(position: .top) { if showsAggregateLabel(point) { Text(usagePointLabel(point.minutes)).font(.caption2).foregroundStyle(.secondary) } }
                     }.chartYScale(domain: 0...usageAxisMaximum(periodPoints)).chartYAxis { usageAxisMarks }
-                        .chartLegend(position: .bottom, alignment: .leading, spacing: 8).frame(minHeight: 320)
+                        .chartLegend(position: .bottom, alignment: .leading, spacing: 8).frame(minHeight: compactReportLayout ? 350 : 320)
+                        .dynamicTypeSize(...DynamicTypeSize.large)
                     if !unavailablePeriods.isEmpty {
                         DisclosureGroup("— · No eligible completed days") {
                             ForEach(unavailablePeriods) { value in
@@ -329,6 +332,7 @@ struct ReportView: View {
             }.padding()
         }
         .navigationTitle("Report")
+        .navigationBarTitleDisplayMode(compactReportLayout ? .inline : .automatic)
         .toolbar {
             Button("Refresh") { Task { await reload() } }
             ShareLink(item: csv, preview: SharePreview("STG report.csv")) { Image(systemName: "square.and.arrow.up") }
@@ -340,17 +344,42 @@ struct ReportView: View {
         .onChange(of: rangeEnd) { _, _ in if mode == 1 { Task { await reloadMultiple() } } }
     }
     private func reportMetric(_ title: String, _ minutes: Int) -> some View { VStack(alignment: .leading, spacing: 4) { Text(title).font(.caption).foregroundStyle(.secondary); Text(duration(minutes)).font(.headline).monospacedDigit() }.frame(maxWidth: .infinity, alignment: .leading).padding(10).background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10)) }
+    @ViewBuilder private func reportDatePicker(_ title: String, selection: Binding<Date>) -> some View {
+        if compactReportLayout {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.caption).foregroundStyle(.secondary)
+                DatePicker(title, selection: selection, displayedComponents: .date).labelsHidden().datePickerStyle(.compact)
+            }
+        } else {
+            DatePicker(title, selection: selection, displayedComponents: .date)
+        }
+    }
     private func averageMetric(_ title: String, _ minutes: Double?) -> some View {
         HStack { Text(title).font(.caption).foregroundStyle(.secondary); Spacer(); Text(minutes.map { duration(Int($0.rounded())) } ?? "—").font(.caption.bold()).monospacedDigit() }
             .padding(8).background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
     }
     private func usageAxisMaximum(_ points: [DailyUsagePoint]) -> Int { max(60, (((points.map(\.minutes).max() ?? 0) + 59) / 60) * 60) }
-    private var usageAxisTicks: [Int] { Array(stride(from: 0, through: usageAxisMaximum(mode == 1 ? multiDayPoints : periodPoints), by: 60)) }
+    // The standard Text Size slider has sizes above `.large` before its
+    // separate accessibility sizes. Charts need their compact layout there
+    // too, otherwise axes and point labels consume the plotting area.
+    private var compactReportLayout: Bool { dynamicTypeSize > .large }
+    private var usageAxisTickStep: Int {
+        guard compactReportLayout else { return 60 }
+        let maximum = usageAxisMaximum(mode == 1 ? multiDayPoints : periodPoints)
+        return maximum > 16 * 60 ? 180 : 120
+    }
+    private var usageAxisTicks: [Int] { Array(stride(from: 0, through: usageAxisMaximum(mode == 1 ? multiDayPoints : periodPoints), by: usageAxisTickStep)) }
     @AxisContentBuilder private var usageAxisMarks: some AxisContent {
         AxisMarks(position: .leading, values: usageAxisTicks) { value in AxisGridLine(); AxisTick(); AxisValueLabel { if let minutes = value.as(Int.self) { Text("\(minutes / 60)h") } } }
         AxisMarks(position: .trailing, values: usageAxisTicks) { value in AxisTick(); AxisValueLabel { if let minutes = value.as(Int.self) { Text("\(minutes / 60)h") } } }
     }
     private func usagePointLabel(_ minutes: Int) -> String { String(format: "%.1fh", Double(minutes) / 60) }
+    private func showsAggregateLabel(_ point: DailyUsagePoint) -> Bool {
+        guard point.isAggregate else { return false }
+        guard compactReportLayout else { return true }
+        let values = mode == 1 ? multiDayPoints : periodPoints
+        return point.date == values.filter(\.isAggregate).map(\.date).max()
+    }
     private func reload() async { if mode == 0 { await reloadDaily() } else if mode == 1 { await reloadMultiple() } else { await reloadPeriod() } }
     private func reloadDaily() async { loading = true; dailyBitmaps = await model.reportDay(at: reportInstant(selectedDate, timeZoneID: model.currentReportTimeZone)); loading = false }
     private func reloadMultiple() async { loading = true; multiDayPoints = await model.multiDayReport(from: reportInstant(rangeStart, timeZoneID: model.currentReportTimeZone), through: reportInstant(rangeEnd, timeZoneID: model.currentReportTimeZone)); loading = false }
