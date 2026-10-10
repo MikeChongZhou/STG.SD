@@ -269,6 +269,7 @@ struct ReportView: View {
     @State private var reportWidth: CGFloat = 0
     @State private var chartZoom: CGFloat = 1
     @State private var chartZoomStart: CGFloat?
+    @State private var reportChartFullscreen = false
     @State private var reportDateField: ReportDateField?
     var body: some View {
         ScrollView {
@@ -328,10 +329,11 @@ struct ReportView: View {
                         .chartYScale(domain: 0...usageChartMaximum(multiDayPoints))
                         .chartYAxis { usageAxisMarks }
                         .chartLegend(position: .bottom, alignment: .leading, spacing: 8)
-                        .frame(minWidth: chartWidth(for: multiDayPoints), minHeight: compactReportLayout ? 350 : 320)
+                        .frame(minWidth: chartWidth(for: multiDayPoints), minHeight: (compactReportLayout ? 350 : 320) * chartZoom)
                         .dynamicTypeSize(...DynamicTypeSize.large)
                     }
                     .simultaneousGesture(chartZoomGesture)
+                    .simultaneousGesture(TapGesture(count: 2).onEnded { reportChartFullscreen = true })
                     chartZoomControls
                     if let average = intervalAverage(multiDayPoints) { Text("Interval average: \(duration(average)) per day").font(.caption).foregroundStyle(.secondary) }
                     if multiDayPoints.isEmpty && !loading { ContentUnavailableView("No Data for This Period", systemImage: "chart.xyaxis.line") }
@@ -342,10 +344,11 @@ struct ReportView: View {
                             LineMark(x: .value("Period", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName)).symbol(by: .value("Device", point.displayName))
                             PointMark(x: .value("Period", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName)).annotation(position: .top) { if showsAggregateLabel(point) { Text(usagePointLabel(point.minutes)).font(.caption2).foregroundStyle(.secondary) } }
                         }.chartYScale(domain: 0...usageChartMaximum(periodPoints)).chartYAxis { usageAxisMarks }
-                            .chartLegend(position: .bottom, alignment: .leading, spacing: 8).frame(minWidth: chartWidth(for: periodPoints), minHeight: compactReportLayout ? 350 : 320)
+                            .chartLegend(position: .bottom, alignment: .leading, spacing: 8).frame(minWidth: chartWidth(for: periodPoints), minHeight: (compactReportLayout ? 350 : 320) * chartZoom)
                             .dynamicTypeSize(...DynamicTypeSize.large)
                     }
                     .simultaneousGesture(chartZoomGesture)
+                    .simultaneousGesture(TapGesture(count: 2).onEnded { reportChartFullscreen = true })
                     chartZoomControls
                     if !unavailablePeriods.isEmpty {
                         DisclosureGroup("— · No eligible completed days") {
@@ -384,19 +387,32 @@ struct ReportView: View {
                     .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { reportDateField = nil } } }
             }
         }
+        .fullScreenCover(isPresented: $reportChartFullscreen) {
+            ZoomableChartScreen(title: mode == 1 ? "Multiple Days" : (mode == 2 ? "This Year by Week" : "Years by Month")) {
+                Chart(mode == 1 ? multiDayPoints : periodPoints) { point in
+                    LineMark(x: .value("Period", point.date), y: .value("Minutes", point.minutes))
+                        .foregroundStyle(by: .value("Device", point.displayName))
+                        .symbol(by: .value("Device", point.displayName))
+                    PointMark(x: .value("Period", point.date), y: .value("Minutes", point.minutes))
+                        .foregroundStyle(by: .value("Device", point.displayName))
+                }
+                .chartYScale(domain: 0...usageChartMaximum(mode == 1 ? multiDayPoints : periodPoints))
+                .chartYAxis { usageAxisMarks }
+                .chartLegend(position: .bottom, alignment: .leading)
+            }
+        }
     }
     private func reportMetric(_ title: String, _ minutes: Int) -> some View { VStack(alignment: .leading, spacing: 4) { Text(title).font(.caption).foregroundStyle(.secondary); Text(duration(minutes)).font(.headline).monospacedDigit() }.frame(maxWidth: .infinity, alignment: .leading).padding(10).background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10)) }
     private func reportDateButton(_ title: String, date: Date, field: ReportDateField) -> some View {
-        HStack {
-            Text(title).font(.caption).foregroundStyle(.secondary)
-            Spacer()
-            Button { reportDateField = field } label: {
-                Text(date.formatted(.dateTime.month(.abbreviated).day()))
-                    .font(.caption)
-                    .monospacedDigit()
+        Button { reportDateField = field } label: {
+            HStack(spacing: 4) {
+                Text(title).foregroundStyle(.secondary)
+                Text(date.formatted(.dateTime.month(.abbreviated).day())).monospacedDigit()
             }
-            .buttonStyle(.bordered)
+            .font(.caption)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .buttonStyle(.bordered)
     }
     private func averageMetric(_ title: String, _ minutes: Double?) -> some View {
         HStack { Text(title).font(.caption).foregroundStyle(.secondary); Spacer(); Text(minutes.map { duration(Int($0.rounded())) } ?? "—").font(.caption.bold()).monospacedDigit() }
@@ -430,7 +446,7 @@ struct ReportView: View {
     }
     private var chartZoomControls: some View {
         HStack {
-            Text("Pinch the chart to zoom · \(Int((chartZoom * 100).rounded()))%")
+            Text("Pinch to resize · double-tap for full screen · \(Int((chartZoom * 100).rounded()))%")
             Spacer()
             if chartZoom > 1.01 {
                 Button("Reset zoom") { chartZoom = 1 }
@@ -870,6 +886,44 @@ private struct ActivityShareView: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) { }
 }
 
+private struct ZoomableChartScreen<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: () -> Content
+    @Environment(\.dismiss) private var dismiss
+    @State private var zoom: CGFloat = 1
+    @State private var zoomStart: CGFloat?
+
+    var body: some View {
+        NavigationStack {
+            GeometryReader { proxy in
+                ScrollView([.horizontal, .vertical], showsIndicators: false) {
+                    content()
+                        .frame(width: max(680, proxy.size.width) * zoom, height: max(460, proxy.size.height - 80) * zoom)
+                        .padding(28)
+                }
+                .simultaneousGesture(
+                    MagnificationGesture()
+                        .onChanged { scale in
+                            if zoomStart == nil { zoomStart = zoom }
+                            zoom = min(4, max(0.7, (zoomStart ?? zoom) * scale))
+                        }
+                        .onEnded { _ in zoomStart = nil }
+                )
+                .simultaneousGesture(TapGesture().onEnded { dismiss() })
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .safeAreaInset(edge: .bottom) {
+                Text("Pinch to zoom · drag to inspect · tap chart to return · \(Int((zoom * 100).rounded()))%")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 8)
+            }
+        }
+    }
+}
+
 struct TrackingView: View {
     @ObservedObject var model: AppModel
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -889,6 +943,7 @@ struct TrackingView: View {
     @State private var trackingWidth: CGFloat = 0
     @State private var weeklyChartZoom: CGFloat = 1
     @State private var weeklyChartZoomStart: CGFloat?
+    @State private var weeklyChartFullscreen = false
     var body: some View {
         ScrollView {
             GeometryReader { proxy in
@@ -921,6 +976,7 @@ struct TrackingView: View {
                         }
                         .chartForegroundStyleScale(domain: weeklyModels, range: weeklyModelColors)
                         .chartXScale(domain: weeklyAxisWeeks)
+                        .chartYScale(domain: .automatic(includesZero: true))
                         .chartLegend(.hidden)
                         .chartXAxis {
                             AxisMarks(values: weeklyAxisWeeks) { value in
@@ -937,13 +993,14 @@ struct TrackingView: View {
                                 AxisValueLabel { if let number = value.as(Double.self) { Text(trackingAxisLabel(number)) } }
                             }
                         }
-                        .chartPlotStyle { plotArea in plotArea.padding(.top, 16).padding(.trailing, 12) }
-                        .frame(minWidth: weeklyChartWidth, minHeight: trackingCompactLayout ? 390 : 360)
+                        .chartPlotStyle { plotArea in plotArea.padding(.top, 30).padding(.bottom, 18).padding(.trailing, 20) }
+                        .frame(minWidth: weeklyChartWidth, minHeight: (trackingCompactLayout ? 440 : 410) * weeklyChartZoom)
                         .dynamicTypeSize(...DynamicTypeSize.large)
                     }
                     .simultaneousGesture(weeklyChartZoomGesture)
+                    .simultaneousGesture(TapGesture(count: 2).onEnded { weeklyChartFullscreen = true })
                     HStack {
-                        Text("Pinch the chart to zoom · \(Int((weeklyChartZoom * 100).rounded()))%")
+                        Text("Pinch to resize · double-tap for full screen · \(Int((weeklyChartZoom * 100).rounded()))%")
                         Spacer()
                         if weeklyChartZoom > 1.01 {
                             Button("Reset zoom") { weeklyChartZoom = 1 }
@@ -965,6 +1022,19 @@ struct TrackingView: View {
             .onChange(of: metric) { _ in if viewIndex == 1 { Task { await loadWeeks() } } }
             .onChange(of: model.trackingHistoryPreparing) { preparing in if !preparing && viewIndex == 1 { Task { await loadWeeks() } } }
             .sheet(item: $trackingShare) { item in ActivityShareView(urls: item.urls) { _ in trackingShare = nil } }
+            .fullScreenCover(isPresented: $weeklyChartFullscreen) {
+                ZoomableChartScreen(title: "Weekly Trends") {
+                    Chart {
+                        ForEach(weeklyRows) { row in weeklyMarks(row) }
+                    }
+                    .chartForegroundStyleScale(domain: weeklyModels, range: weeklyModelColors)
+                    .chartXScale(domain: weeklyAxisWeeks)
+                    .chartYScale(domain: .automatic(includesZero: true))
+                    .chartLegend(.hidden)
+                    .chartXAxis { AxisMarks(values: weeklyAxisWeeks) { value in AxisGridLine(); AxisTick(); AxisValueLabel { if let week = value.as(String.self) { Text(weeklyAxisLabel(week)) } } } }
+                    .chartYAxis { AxisMarks(position: .leading) { value in AxisGridLine(); AxisTick(); AxisValueLabel { if let number = value.as(Double.self) { Text(trackingAxisLabel(number)) } } } }
+                }
+            }
     }
     private let weeklyModelColors: [Color] = [
         .blue, .orange, .green, .red, .purple,
