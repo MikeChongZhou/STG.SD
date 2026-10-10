@@ -748,6 +748,7 @@ final class STGCoreTests: XCTestCase {
         XCTAssertEqual(models.count, 10)
         let rows = try repository.openRouterWeeks(models: models)
         XCTAssertGreaterThan(rows.count, 10)
+        XCTAssertGreaterThanOrEqual(Set(rows.map(\.weekStart)).count, 13)
         XCTAssertTrue(rows.allSatisfy { $0.totalTokens > 0 })
         XCTAssertTrue(rows.allSatisfy { !$0.hasTokenBreakdown })
         XCTAssertTrue(rows.allSatisfy { $0.asOf != nil })

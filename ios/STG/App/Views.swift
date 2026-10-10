@@ -786,14 +786,12 @@ struct TrackingView: View {
                     Picker("Metric", selection: $metric) { ForEach(OpenRouterWeeklyMetric.allCases) { Text($0.label).tag($0) } }
                     ScrollView(.horizontal) {
                         Chart {
-                            ForEach(weeklyAxisWeeks, id: \.self) { week in
-                                RuleMark(x: .value("Week", week)).opacity(0)
-                            }
                             ForEach(weeklyRows) { row in
                                 weeklyMarks(row)
                             }
                         }
                         .chartForegroundStyleScale(domain: weeklyModels, range: weeklyModelColors)
+                        .chartXScale(domain: weeklyAxisWeeks)
                         .chartLegend(.hidden)
                         .chartXAxis {
                             AxisMarks(values: weeklyAxisWeeks) { value in
@@ -823,7 +821,7 @@ struct TrackingView: View {
         .pink, .teal, .indigo, .mint, .brown
     ]
     private var weeklyChartWidth: CGFloat {
-        max(320, CGFloat(Set(weeklyRows.map(\.weekStart)).count) * 32)
+        max(680, CGFloat(weeklyAxisWeeks.count) * 52)
     }
     private var weeklyAxisWeeks: [String] {
         let formatter = DateFormatter()
@@ -922,7 +920,7 @@ struct TrackingView: View {
         await Task.yield()
         let result = await model.trackingWeeks(metric: requestedMetric)
         guard requestedMetric == metric, viewIndex == 1 else { return }
-        let recentWeeks = Set(result.rows.map(\.weekStart).sorted().suffix(13))
+        let recentWeeks = Set(Set(result.rows.map(\.weekStart)).sorted().suffix(13))
         weeklyModels = result.models
         weeklyRows = result.rows.filter { recentWeeks.contains($0.weekStart) }
         status = weeklyRows.isEmpty ? "No weekly data is available for \(requestedMetric.label) yet." : "Showing the latest \(recentWeeks.count) weeks of \(requestedMetric.label) for the top \(result.models.count) models."
