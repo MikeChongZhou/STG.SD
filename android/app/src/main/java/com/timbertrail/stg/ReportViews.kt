@@ -50,13 +50,13 @@ class AndroidUsageLineChartView(context: Context) : View(context) {
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas); if (points.isEmpty()) { canvas.drawText("No report data for this range", 20f, 40f, text); return }
         val dates = points.map { it.date }.distinct().sorted(); val series = points.groupBy { it.deviceID }.values.sortedWith(compareByDescending<List<AndroidDailyUsagePoint>> { it.first().aggregate }.thenBy { it.first().displayName })
-        val left = 58 * resources.displayMetrics.density; val right = 12 * resources.displayMetrics.density; val top = 78 * resources.displayMetrics.density; val bottom = 46 * resources.displayMetrics.density; val plotWidth = width - left - right; val plotHeight = height - top - bottom
+        val left = 58 * resources.displayMetrics.density; val right = 52 * resources.displayMetrics.density; val top = 78 * resources.displayMetrics.density; val bottom = 46 * resources.displayMetrics.density; val plotWidth = width - left - right; val plotHeight = height - top - bottom
         val maxMinutes = max(60, points.maxOf { it.minutes }); val yMax = ceil(maxMinutes / 60.0).toInt() * 60
-        repeat(5) { tick -> val value = yMax * tick / 4; val y = top + plotHeight - plotHeight * tick / 4f; canvas.drawLine(left, y, left + plotWidth, y, grid); canvas.drawText("${value / 60}h${value % 60}", 2f, y + 4, text) }
+        for (value in 0..yMax step 60) { val y = top + plotHeight - value * plotHeight / yMax; canvas.drawLine(left, y, left + plotWidth, y, grid); val label = "${value / 60}h"; canvas.drawText(label, 2f, y + 4, text); canvas.drawText(label, left + plotWidth + 6 * resources.displayMetrics.density, y + 4, text) }
         val every = max(1, ceil(dates.size / 6.0).toInt()); dates.forEachIndexed { index, date -> if (index % every == 0 || index == dates.lastIndex) { val label = when (period) { "week" -> { val wf = java.time.temporal.WeekFields.ISO; String.format("%02dW%02d", date.get(wf.weekBasedYear()) % 100, date.get(wf.weekOfWeekBasedYear())) }; "month" -> String.format("%02d-%02d", date.year % 100, date.monthValue); else -> date.toString().substring(5) }; canvas.drawText(label, x(index, dates.size, left, plotWidth) - 18, top + plotHeight + 22, text) } }
         series.forEachIndexed { seriesIndex, values ->
             val color = palette[seriesIndex % palette.size]; val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color; strokeWidth = (if (values.first().aggregate) 3 else 2) * resources.displayMetrics.density; style = Paint.Style.STROKE }; val dot = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color }; val byDate = values.associateBy { it.date }; var previous: PointF? = null
-            dates.forEachIndexed { index, date -> val point = byDate[date]; if (point == null) { previous = null } else { val current = PointF(x(index, dates.size, left, plotWidth), top + plotHeight - point.minutes * plotHeight / yMax); previous?.let { canvas.drawLine(it.x, it.y, current.x, current.y, paint) }; canvas.drawCircle(current.x, current.y, 3.5f * resources.displayMetrics.density, dot); previous = current } }
+            dates.forEachIndexed { index, date -> val point = byDate[date]; if (point == null) { previous = null } else { val current = PointF(x(index, dates.size, left, plotWidth), top + plotHeight - point.minutes * plotHeight / yMax); previous?.let { canvas.drawLine(it.x, it.y, current.x, current.y, paint) }; canvas.drawCircle(current.x, current.y, 3.5f * resources.displayMetrics.density, dot); if (point.aggregate) canvas.drawText(String.format(java.util.Locale.US, "%.1fh", point.minutes / 60.0), current.x + 4 * resources.displayMetrics.density, maxOf(top + 10 * resources.displayMetrics.density, current.y - 7 * resources.displayMetrics.density), text); previous = current } }
             val legendX = left + (seriesIndex % 2) * (plotWidth / 2); val legendY = 20f + (seriesIndex / 2) * 24 * resources.displayMetrics.density; canvas.drawCircle(legendX, legendY, 4f * resources.displayMetrics.density, dot); canvas.drawText(values.first().displayName, legendX + 10 * resources.displayMetrics.density, legendY + 4, text)
         }
     }
@@ -76,7 +76,7 @@ class AndroidTrackingLineChartView(context: Context) : View(context) {
         val left = 62 * density; val right = 10 * density; val top = 18 * density; val bottom = 42 * density + legendHeight; val width = this.width - left - right; val height = max(80 * density, this.height - top - bottom)
         fun value(row: WeeklyRankingRow): Double? = when(metric) { "Rank" -> row.rank.toDouble(); "Input tokens" -> if (row.hasTokenBreakdown) row.promptTokens.toDouble() else null; "Output tokens" -> if (row.hasTokenBreakdown) row.completionTokens.toDouble() else null; "Input price / M" -> row.promptPrice?.times(1_000_000); "Output price / M" -> row.completionPrice?.times(1_000_000); "Estimated Revenue" -> row.revenue; else -> row.totalTokens.toDouble() }
         val available = rows.mapNotNull(::value); if (available.isEmpty()) { canvas.drawText(context.getString(R.string.metric_not_published), 20f, 45f, text); return }
-        val maxValue = max(1.0, available.max()); repeat(5) { tick -> val y = top + height - height * tick / 4f; canvas.drawLine(left, y, left + width, y, grid); canvas.drawText(android.text.format.Formatter.formatShortFileSize(context, (maxValue * tick / 4).toLong()).replace("B", ""), 1f, y + 4, text) }
+        val maxValue = max(1.0, available.max()); repeat(5) { tick -> val y = top + height - height * tick / 4f; canvas.drawLine(left, y, left + width, y, grid); canvas.drawText(trackingLabel(maxValue * tick / 4), 1f, y + 4, text) }
         val keyIndices = linkedSetOf(0, weeks.lastIndex).apply { weeks.indices.filterTo(this) { index -> val wf = java.time.temporal.WeekFields.ISO; weeks[index].get(wf.weekOfWeekBasedYear()) == 1 }; if (size < 3 && weeks.size > 2) add(weeks.lastIndex / 2) }
         keyIndices.sorted().forEach { index -> val week = weeks[index]; val wf = java.time.temporal.WeekFields.ISO; val label = String.format("%04d-W%02d", week.get(wf.weekBasedYear()), week.get(wf.weekOfWeekBasedYear())); canvas.drawText(label, left + (if (weeks.size == 1) width/2 else index * width/(weeks.size-1)) - 27 * density, top + height + 22 * density, text) }
         val clip = canvas.clipBounds
@@ -88,5 +88,13 @@ class AndroidTrackingLineChartView(context: Context) : View(context) {
     private fun chartWeeks(): List<LocalDate> {
         val latest = rows.maxOfOrNull { it.weekStart } ?: return emptyList()
         return (-12..0).map { latest.plusWeeks(it.toLong()) }
+    }
+    private fun trackingLabel(value: Double): String = when {
+        metric == "Input price / M" || metric == "Output price / M" -> String.format(java.util.Locale.US, "\$%,.2f", value)
+        metric == "Estimated Revenue" -> String.format(java.util.Locale.US, "\$%,.0f", value)
+        value >= 1_000_000_000_000 -> String.format(java.util.Locale.US, "%.1f Trillion", value / 1_000_000_000_000)
+        value >= 1_000_000_000 -> String.format(java.util.Locale.US, "%.1f Billion", value / 1_000_000_000)
+        value >= 1_000_000 -> String.format(java.util.Locale.US, "%.1f Million", value / 1_000_000)
+        else -> String.format(java.util.Locale.US, "%,.0f", value)
     }
 }

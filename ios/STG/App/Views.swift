@@ -297,8 +297,10 @@ struct ReportView: View {
                             .symbol(by: .value("Device", point.displayName))
                         PointMark(x: .value("Date", point.date), y: .value("Minutes", point.minutes))
                             .foregroundStyle(by: .value("Device", point.displayName))
+                            .annotation(position: .top) { if point.isAggregate { Text(usagePointLabel(point.minutes)).font(.caption2).foregroundStyle(.secondary) } }
                     }
-                    .chartYAxis { AxisMarks(position: .leading) { value in AxisGridLine(); AxisTick(); AxisValueLabel { if let minutes = value.as(Int.self) { Text(duration(minutes)) } } } }
+                    .chartYScale(domain: 0...usageAxisMaximum(multiDayPoints))
+                    .chartYAxis { usageAxisMarks }
                     .chartLegend(position: .bottom, alignment: .leading, spacing: 8)
                     .frame(minHeight: 320)
                     if let average = intervalAverage(multiDayPoints) { Text("Interval average: \(duration(average)) per day").font(.caption).foregroundStyle(.secondary) }
@@ -307,8 +309,8 @@ struct ReportView: View {
                     Text(mode == 2 ? "Average daily use by week in the current year" : "Average daily use by month across recent years").font(.caption).foregroundStyle(.secondary)
                     Chart(periodPoints) { point in
                         LineMark(x: .value("Period", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName)).symbol(by: .value("Device", point.displayName))
-                        PointMark(x: .value("Period", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName))
-                    }.chartYAxis { AxisMarks(position: .leading) { value in AxisGridLine(); AxisTick(); AxisValueLabel { if let minutes = value.as(Int.self) { Text(duration(minutes)) } } } }
+                        PointMark(x: .value("Period", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName)).annotation(position: .top) { if point.isAggregate { Text(usagePointLabel(point.minutes)).font(.caption2).foregroundStyle(.secondary) } }
+                    }.chartYScale(domain: 0...usageAxisMaximum(periodPoints)).chartYAxis { usageAxisMarks }
                         .chartLegend(position: .bottom, alignment: .leading, spacing: 8).frame(minHeight: 320)
                     if !unavailablePeriods.isEmpty {
                         DisclosureGroup("— · No eligible completed days") {
@@ -342,6 +344,13 @@ struct ReportView: View {
         HStack { Text(title).font(.caption).foregroundStyle(.secondary); Spacer(); Text(minutes.map { duration(Int($0.rounded())) } ?? "—").font(.caption.bold()).monospacedDigit() }
             .padding(8).background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
     }
+    private func usageAxisMaximum(_ points: [DailyUsagePoint]) -> Int { max(60, (((points.map(\.minutes).max() ?? 0) + 59) / 60) * 60) }
+    private var usageAxisTicks: [Int] { Array(stride(from: 0, through: usageAxisMaximum(mode == 1 ? multiDayPoints : periodPoints), by: 60)) }
+    @AxisContentBuilder private var usageAxisMarks: some AxisContent {
+        AxisMarks(position: .leading, values: usageAxisTicks) { value in AxisGridLine(); AxisTick(); AxisValueLabel { if let minutes = value.as(Int.self) { Text("\(minutes / 60)h") } } }
+        AxisMarks(position: .trailing, values: usageAxisTicks) { value in AxisTick(); AxisValueLabel { if let minutes = value.as(Int.self) { Text("\(minutes / 60)h") } } }
+    }
+    private func usagePointLabel(_ minutes: Int) -> String { String(format: "%.1fh", Double(minutes) / 60) }
     private func reload() async { if mode == 0 { await reloadDaily() } else if mode == 1 { await reloadMultiple() } else { await reloadPeriod() } }
     private func reloadDaily() async { loading = true; dailyBitmaps = await model.reportDay(at: reportInstant(selectedDate, timeZoneID: model.currentReportTimeZone)); loading = false }
     private func reloadMultiple() async { loading = true; multiDayPoints = await model.multiDayReport(from: reportInstant(rangeStart, timeZoneID: model.currentReportTimeZone), through: reportInstant(rangeEnd, timeZoneID: model.currentReportTimeZone)); loading = false }
@@ -802,6 +811,12 @@ struct TrackingView: View {
                                 }
                             }
                         }
+                        .chartYAxis {
+                            AxisMarks { value in
+                                AxisGridLine(); AxisTick()
+                                AxisValueLabel { if let number = value.as(Double.self) { Text(trackingAxisLabel(number)) } }
+                            }
+                        }
                         .frame(minWidth: weeklyChartWidth, minHeight: 360)
                     }
                     weeklyModelLegend
@@ -839,6 +854,14 @@ struct TrackingView: View {
         let previousYear = index > 0 ? String(weeklyAxisWeeks[index - 1].prefix(4)) : nil
         let includeYear = index == 0 || index == weeklyAxisWeeks.count - 1 || String(week.prefix(4)) != previousYear
         return includeYear ? week : String(week.dropFirst(5))
+    }
+    private func trackingAxisLabel(_ value: Double) -> String {
+        if metric == .promptPrice || metric == .completionPrice { return String(format: "$%.2f", value) }
+        if metric == .revenue { return String(format: "$%.0f", value) }
+        if value >= 1_000_000_000_000 { return String(format: "%.1f Trillion", value / 1_000_000_000_000) }
+        if value >= 1_000_000_000 { return String(format: "%.1f Billion", value / 1_000_000_000) }
+        if value >= 1_000_000 { return String(format: "%.1f Million", value / 1_000_000) }
+        return String(format: "%.0f", value)
     }
     private var weeklyModelLegend: some View {
         VStack(alignment: .leading, spacing: 8) {

@@ -284,8 +284,8 @@ struct ReportView: View {
                         } else if mode == 1 {
                             Chart(multiDayPoints) { point in
                                 LineMark(x: .value("Date", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName)).symbol(by: .value("Device", point.displayName))
-                                PointMark(x: .value("Date", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName))
-                            }.chartYAxis { AxisMarks(position: .leading) { value in AxisGridLine(); AxisTick(); AxisValueLabel { if let minutes = value.as(Int.self) { Text(duration(minutes)) } } } }.chartLegend(position: .bottom, alignment: .leading)
+                                PointMark(x: .value("Date", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName)).annotation(position: .top) { if point.isAggregate { Text(usagePointLabel(point.minutes)).font(.caption2).foregroundStyle(.secondary) } }
+                            }.chartYScale(domain: 0...usageAxisMaximum(multiDayPoints)).chartYAxis { usageAxisMarks }.chartLegend(position: .bottom, alignment: .leading)
                                 .frame(height: max(360, viewport.size.height - 30)).padding().background(.quaternary.opacity(0.25), in: RoundedRectangle(cornerRadius: 12))
                             if let average = macIntervalAverage(multiDayPoints) { Text("Interval average: \(duration(average)) per day").font(.caption).foregroundStyle(.secondary) }
                         } else {
@@ -298,8 +298,8 @@ struct ReportView: View {
                             }
                             Chart(periodPoints) { point in
                                 LineMark(x: .value("Period", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName)).symbol(by: .value("Device", point.displayName))
-                                PointMark(x: .value("Period", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName))
-                            }.chartYAxis { AxisMarks(position: .leading) { value in AxisGridLine(); AxisTick(); AxisValueLabel { if let minutes = value.as(Int.self) { Text(duration(minutes)) } } } }.chartLegend(position: .bottom, alignment: .leading)
+                                PointMark(x: .value("Period", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName)).annotation(position: .top) { if point.isAggregate { Text(usagePointLabel(point.minutes)).font(.caption2).foregroundStyle(.secondary) } }
+                            }.chartYScale(domain: 0...usageAxisMaximum(periodPoints)).chartYAxis { usageAxisMarks }.chartLegend(position: .bottom, alignment: .leading)
                                 .frame(height: max(360, viewport.size.height - 30)).padding().background(.quaternary.opacity(0.25), in: RoundedRectangle(cornerRadius: 12))
                         }
                     }
@@ -323,6 +323,13 @@ struct ReportView: View {
         HStack(spacing: 5) { Text(title.uppercased()).font(.caption2).foregroundStyle(.secondary); Text(duration(minutes)).font(.headline).monospacedDigit() }
             .padding(.horizontal, 9).padding(.vertical, 6).background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 9))
     }
+    private func usageAxisMaximum(_ points: [DailyUsagePoint]) -> Int { max(60, (((points.map(\.minutes).max() ?? 0) + 59) / 60) * 60) }
+    private var usageAxisTicks: [Int] { Array(stride(from: 0, through: max(60, ((((mode == 1 ? multiDayPoints : periodPoints).map(\.minutes).max() ?? 0) + 59) / 60) * 60), by: 60)) }
+    @AxisContentBuilder private var usageAxisMarks: some AxisContent {
+        AxisMarks(position: .leading, values: usageAxisTicks) { value in AxisGridLine(); AxisTick(); AxisValueLabel { if let minutes = value.as(Int.self) { Text("\(minutes / 60)h") } } }
+        AxisMarks(position: .trailing, values: usageAxisTicks) { value in AxisTick(); AxisValueLabel { if let minutes = value.as(Int.self) { Text("\(minutes / 60)h") } } }
+    }
+    private func usagePointLabel(_ minutes: Int) -> String { String(format: "%.1fh", Double(minutes) / 60) }
     private func averageMetric(_ title: String, _ minutes: Double?) -> some View {
         HStack(spacing: 4) { Text(title).font(.caption2).foregroundStyle(.secondary); Text(minutes.map { duration(Int($0.rounded())) } ?? "—").font(.caption.bold()).monospacedDigit() }
     }
@@ -573,6 +580,12 @@ struct TrackingView: View {
                             }
                         }
                     }
+                    .chartYAxis {
+                        AxisMarks { value in
+                            AxisGridLine(); AxisTick()
+                            AxisValueLabel { if let number = value.as(Double.self) { Text(trackingAxisLabel(number)) } }
+                        }
+                    }
                     .frame(width: weeklyChartWidth, height: 460).padding()
                 }.background(.quaternary.opacity(0.2), in: RoundedRectangle(cornerRadius: 8))
             }
@@ -597,6 +610,14 @@ struct TrackingView: View {
         let previousYear = index > 0 ? String(weeklyAxisWeeks[index - 1].prefix(4)) : nil
         let includeYear = index == 0 || index == weeklyAxisWeeks.count - 1 || String(week.prefix(4)) != previousYear
         return includeYear ? week : String(week.dropFirst(5))
+    }
+    private func trackingAxisLabel(_ value: Double) -> String {
+        if metric == .promptPrice || metric == .completionPrice { return String(format: "$%.2f", value) }
+        if metric == .revenue { return String(format: "$%.0f", value) }
+        if value >= 1_000_000_000_000 { return String(format: "%.1f Trillion", value / 1_000_000_000_000) }
+        if value >= 1_000_000_000 { return String(format: "%.1f Billion", value / 1_000_000_000) }
+        if value >= 1_000_000 { return String(format: "%.1f Million", value / 1_000_000) }
+        return String(format: "%.0f", value)
     }
     private var trackingHeader: some View {
         HStack(spacing: 0) {

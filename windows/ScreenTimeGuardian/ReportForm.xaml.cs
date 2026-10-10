@@ -185,20 +185,23 @@ internal sealed class UsageLineChartControl : FrameworkElement
         if (points.Count == 0) { DrawText(dc, "No report data for this range", 20, 20, 15, WpfColor.FromRgb(100, 116, 139), face, dpi); return; }
         var series = points.GroupBy(value => value.DeviceID, StringComparer.OrdinalIgnoreCase).OrderByDescending(value => value.First().IsAggregate).ThenBy(value => value.First().DisplayName).ToList();
         var dates = points.Select(value => value.Date).Distinct().Order().ToList(); var maxMinutes = Math.Max(60, points.Max(value => value.Minutes)); var yMax = ((maxMinutes + 59) / 60) * 60;
-        var left = 66d; var top = 48d; var right = Math.Min(250d, Math.Max(170d, ActualWidth * .22)); var bottom = 58d; var plotWidth = Math.Max(240, ActualWidth - left - right); var plotHeight = Math.Max(180, ActualHeight - top - bottom);
+        var left = 66d; var top = 48d; var right = Math.Min(310d, Math.Max(230d, ActualWidth * .30)); var bottom = 58d; var plotWidth = Math.Max(240, ActualWidth - left - right); var plotHeight = Math.Max(180, ActualHeight - top - bottom);
         var grid = new WpfPen(new SolidColorBrush(WpfColor.FromRgb(220, 228, 236)), 1); var axis = new WpfPen(new SolidColorBrush(WpfColor.FromRgb(100, 116, 139)), 1);
-        for (var tick = 0; tick <= 4; tick++) { var minutes = yMax * tick / 4; var y = top + plotHeight - plotHeight * tick / 4; dc.DrawLine(grid, new WpfPoint(left, y), new WpfPoint(left + plotWidth, y)); DrawText(dc, $"{minutes / 60}h {minutes % 60}m", 4, y - 8, 11, WpfColor.FromRgb(100, 116, 139), face, dpi); }
-        dc.DrawLine(axis, new WpfPoint(left, top), new WpfPoint(left, top + plotHeight)); dc.DrawLine(axis, new WpfPoint(left, top + plotHeight), new WpfPoint(left + plotWidth, top + plotHeight));
+        for (var minutes = 0; minutes <= yMax; minutes += 60) { var y = top + plotHeight - minutes * plotHeight / yMax; dc.DrawLine(grid, new WpfPoint(left, y), new WpfPoint(left + plotWidth, y)); var label = UsageAxisLabel(minutes); DrawText(dc, label, 4, y - 8, 11, WpfColor.FromRgb(100, 116, 139), face, dpi); DrawText(dc, label, left + plotWidth + 7, y - 8, 11, WpfColor.FromRgb(100, 116, 139), face, dpi); }
+        dc.DrawLine(axis, new WpfPoint(left, top), new WpfPoint(left, top + plotHeight)); dc.DrawLine(axis, new WpfPoint(left + plotWidth, top), new WpfPoint(left + plotWidth, top + plotHeight)); dc.DrawLine(axis, new WpfPoint(left, top + plotHeight), new WpfPoint(left + plotWidth, top + plotHeight));
         var labelEvery = Math.Max(1, (int)Math.Ceiling(dates.Count / 8d));
         for (var i = 0; i < dates.Count; i++) { if (i % labelEvery != 0 && i != dates.Count - 1) continue; var x = X(i); DrawText(dc, dates[i].ToString("MM-dd", CultureInfo.InvariantCulture), x - 17, top + plotHeight + 10, 10, WpfColor.FromRgb(100, 116, 139), face, dpi); }
         for (var seriesIndex = 0; seriesIndex < series.Count; seriesIndex++)
         {
             var group = series[seriesIndex]; var color = Palette[seriesIndex % Palette.Length]; var pen = new WpfPen(new SolidColorBrush(color), group.First().IsAggregate ? 3 : 2); var byDate = group.ToDictionary(value => value.Date); WpfPoint? previous = null;
-            for (var index = 0; index < dates.Count; index++) { if (!byDate.TryGetValue(dates[index], out var point)) { previous = null; continue; } var current = new WpfPoint(X(index), top + plotHeight - point.Minutes * plotHeight / yMax); if (previous is not null) dc.DrawLine(pen, previous.Value, current); dc.DrawEllipse(new SolidColorBrush(color), null, current, group.First().IsAggregate ? 4 : 3, group.First().IsAggregate ? 4 : 3); previous = current; }
-            var legendY = top + seriesIndex * 27; dc.DrawLine(pen, new WpfPoint(left + plotWidth + 20, legendY + 8), new WpfPoint(left + plotWidth + 48, legendY + 8)); DrawText(dc, group.First().DisplayName, left + plotWidth + 56, legendY, 12, WpfColor.FromRgb(24, 35, 48), face, dpi);
+            for (var index = 0; index < dates.Count; index++) { if (!byDate.TryGetValue(dates[index], out var point)) { previous = null; continue; } var current = new WpfPoint(X(index), top + plotHeight - point.Minutes * plotHeight / yMax); if (previous is not null) dc.DrawLine(pen, previous.Value, current); dc.DrawEllipse(new SolidColorBrush(color), null, current, group.First().IsAggregate ? 4 : 3, group.First().IsAggregate ? 4 : 3); if (point.IsAggregate) DrawText(dc, UsagePointLabel(point.Minutes), current.X + 5, Math.Max(top, current.Y - 18), 10, color, face, dpi); previous = current; }
+            var legendY = top + seriesIndex * 27; dc.DrawLine(pen, new WpfPoint(left + plotWidth + 76, legendY + 8), new WpfPoint(left + plotWidth + 104, legendY + 8)); DrawText(dc, group.First().DisplayName, left + plotWidth + 112, legendY, 12, WpfColor.FromRgb(24, 35, 48), face, dpi);
         }
         double X(int index) => left + (dates.Count == 1 ? plotWidth / 2 : index * plotWidth / (dates.Count - 1));
     }
+
+    private static string UsageAxisLabel(int minutes) => $"{minutes / 60}h";
+    private static string UsagePointLabel(int minutes) => $"{minutes / 60d:0.#}h";
 
     private static void DrawText(DrawingContext dc, string value, double x, double y, double size, WpfColor color, Typeface face, double dpi) => dc.DrawText(new FormattedText(value, CultureInfo.CurrentCulture, System.Windows.FlowDirection.LeftToRight, face, size, new SolidColorBrush(color), dpi), new WpfPoint(x, y));
 }
