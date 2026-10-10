@@ -311,8 +311,10 @@ struct ReportView: View {
                         }.padding().background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
                     }
                 } else if mode == 1 {
-                    reportDateButton("From", date: rangeStart, field: .start)
-                    reportDateButton("To", date: rangeEnd, field: .end)
+                    HStack(spacing: 12) {
+                        reportDateButton("From", date: rangeStart, field: .start).frame(maxWidth: .infinity)
+                        reportDateButton("To", date: rangeEnd, field: .end).frame(maxWidth: .infinity)
+                    }
                     Text("One line per device. All Devices combines overlapping use.").font(.caption).foregroundStyle(.secondary)
                     ScrollView(.horizontal, showsIndicators: true) {
                         Chart(multiDayPoints) { point in
@@ -870,6 +872,8 @@ private struct ActivityShareView: UIViewControllerRepresentable {
 
 struct TrackingView: View {
     @ObservedObject var model: AppModel
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @AppStorage("report_chart_display", store: SharedEnvironment.defaults) private var chartDisplay = ReportChartDisplay.system.rawValue
     @State private var rows: [OpenRouterRankingRow] = []
     @State private var weeklyRows: [OpenRouterWeeklyRankingRow] = []
     @State private var weeklyModels: [String] = []
@@ -882,8 +886,14 @@ struct TrackingView: View {
     @State private var startDate = ""
     @State private var endDate = ""
     @State private var trackingShare: LogShareItem?
+    @State private var trackingWidth: CGFloat = 0
     var body: some View {
         ScrollView {
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear { trackingWidth = proxy.size.width }
+                    .onChange(of: proxy.size.width) { _, width in trackingWidth = width }
+            }.frame(height: 0)
             VStack(alignment: .leading, spacing: 14) {
                 Text("OpenRouter Rankings").font(.headline)
                 Picker("View", selection: $viewIndex) { Text("Top 20 Since Date").tag(0); Text("Weekly Trends").tag(1) }.pickerStyle(.segmented)
@@ -920,21 +930,25 @@ struct TrackingView: View {
                             }
                         }
                         .chartYAxis {
-                            AxisMarks { value in
+                            AxisMarks(position: .leading) { value in
                                 AxisGridLine(); AxisTick()
                                 AxisValueLabel { if let number = value.as(Double.self) { Text(trackingAxisLabel(number)) } }
                             }
                         }
-                        .frame(minWidth: weeklyChartWidth, minHeight: 360)
+                        .chartPlotStyle { plotArea in plotArea.padding(.top, 16).padding(.trailing, 12) }
+                        .frame(minWidth: weeklyChartWidth, minHeight: trackingCompactLayout ? 390 : 360)
+                        .dynamicTypeSize(...DynamicTypeSize.large)
                     }
-                    weeklyModelLegend
+                    weeklyModelLegend.dynamicTypeSize(...DynamicTypeSize.large)
                     if trackingUsesTokenUnit { Text("Unit: Trillion Tokens").font(.caption).foregroundStyle(.secondary) }
                     Text("Weekly data updates during the weekly sync.").font(.caption).foregroundStyle(.secondary)
                 }
                 Text(status).font(.caption).foregroundStyle(.secondary)
                 Text("Source: OpenRouter public rankings").font(.caption)
             }.padding()
-        }.navigationTitle("Tracking").task { if viewIndex == 0 && rows.isEmpty { await refresh() } else { await loadWeeks() } }
+        }.navigationTitle("Tracking").navigationBarTitleDisplayMode(trackingCompactLayout ? .inline : .automatic)
+            .dynamicTypeSize(...trackingDynamicTypeLimit)
+            .task { if viewIndex == 0 && rows.isEmpty { await refresh() } else { await loadWeeks() } }
             .onChange(of: viewIndex) { value in if value == 0 && rows.isEmpty { Task { await refresh() } } else if value == 1 { Task { await loadWeeks() } } }
             .onChange(of: metric) { _ in if viewIndex == 1 { Task { await loadWeeks() } } }
             .onChange(of: model.trackingHistoryPreparing) { preparing in if !preparing && viewIndex == 1 { Task { await loadWeeks() } } }
@@ -945,7 +959,12 @@ struct TrackingView: View {
         .pink, .teal, .indigo, .mint, .brown
     ]
     private var weeklyChartWidth: CGFloat {
-        max(680, CGFloat(weeklyAxisWeeks.count) * 52)
+        max(trackingWidth > 0 ? trackingWidth - 32 : 0, 780, CGFloat(weeklyAxisWeeks.count) * (trackingCompactLayout ? 68 : 60) + 120)
+    }
+    private var selectedChartDisplay: ReportChartDisplay { ReportChartDisplay(rawValue: chartDisplay) ?? .system }
+    private var trackingDynamicTypeLimit: DynamicTypeSize { selectedChartDisplay == .standard ? .large : .accessibility5 }
+    private var trackingCompactLayout: Bool {
+        selectedChartDisplay == .system && (dynamicTypeSize > .large || trackingWidth > 0 && trackingWidth < 380)
     }
     private var weeklyAxisWeeks: [String] {
         let formatter = DateFormatter()
