@@ -291,19 +291,12 @@ class MainActivity : Activity() {
         val eyeNotifications = CheckBox(this).apply { text = getString(R.string.eye_notifications); isChecked = settings.eyeNotificationsEnabled }
         val postureNotifications = CheckBox(this).apply { text = getString(R.string.posture_notifications); isChecked = settings.postureNotificationsEnabled }
         val dailyNotifications = CheckBox(this).apply { text = getString(R.string.daily_notifications); isChecked = settings.dailyNotificationsEnabled }
-        val meetingStatus = TextView(this).apply { text = "${getString(R.string.automatic_meeting)}: Checking…"; setPadding(0, 8, 0, 8) }
-        Thread {
-            val result = MeetingDetector(applicationContext).checkAndLog()
-            runOnUiThread {
-                meetingStatus.text = "${getString(R.string.automatic_meeting)}: ${getString(if (result.isInMeeting) R.string.in_meeting else R.string.not_in_meeting)}\n${result.reason}"
-            }
-        }.start()
         val notificationStatus = TextView(this).apply { val enabled = getString(R.string.enabled); val attention = getString(R.string.needs_attention); text = "${getString(R.string.notifications)}: ${if (androidx.core.app.NotificationManagerCompat.from(this@MainActivity).areNotificationsEnabled()) enabled else attention}\n${getString(R.string.display_over_apps)}: ${if (Settings.canDrawOverlays(this@MainActivity)) enabled else attention}"; setPadding(0, 12, 0, 12) }
         val cloudStatus = TextView(this).apply { text = cloudStatusText(); setPadding(0, 12, 0, 8) }
         fun section(title: Int, content: View): View = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(TextView(this@MainActivity).apply { text = getString(title); textSize = 14f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.rgb(15,118,110)); setPadding(dp(2), dp(8), 0, dp(7)) }); addView(card(content)) }
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; setPadding(dp(8),0,dp(8),dp(14))
-            addView(section(R.string.daily_limit, LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; addView(planRow); addView(meeting); addView(meetingStatus) }))
+            addView(section(R.string.daily_limit, LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; addView(planRow); addView(meeting) }))
             addView(section(R.string.configure_private_cloud, LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; addView(cloudStatus); addView(Button(this@MainActivity).apply { text = getString(R.string.configure_cloud); isAllCaps = false; setOnClickListener { showCloudSetup(cloudStatus) } }) }))
             addView(section(R.string.usage_stats_title, LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; addView(Button(this@MainActivity).apply { text = getString(R.string.open_usage_permission); isAllCaps = false; setOnClickListener { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) } }) }))
             addView(section(R.string.notification_options, LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; addView(eyeNotifications); addView(postureNotifications); addView(dailyNotifications); addView(TextView(this@MainActivity).apply { text = getString(R.string.notifications_recording_detail) }) }))
