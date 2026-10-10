@@ -316,7 +316,7 @@ struct ReportView: View {
                         reportDateButton("To", date: rangeEnd, field: .end).frame(maxWidth: .infinity)
                     }
                     Text("One line per device. All Devices combines overlapping use.").font(.caption).foregroundStyle(.secondary)
-                    ScrollView(.horizontal, showsIndicators: true) {
+                    ScrollView(.horizontal, showsIndicators: false) {
                         Chart(multiDayPoints) { point in
                             LineMark(x: .value("Date", point.date), y: .value("Minutes", point.minutes))
                                 .foregroundStyle(by: .value("Device", point.displayName))
@@ -337,7 +337,7 @@ struct ReportView: View {
                     if multiDayPoints.isEmpty && !loading { ContentUnavailableView("No Data for This Period", systemImage: "chart.xyaxis.line") }
                 } else {
                     Text(mode == 2 ? "Average daily use by week in the current year" : "Average daily use by month across recent years").font(.caption).foregroundStyle(.secondary)
-                    ScrollView(.horizontal, showsIndicators: true) {
+                    ScrollView(.horizontal, showsIndicators: false) {
                         Chart(periodPoints) { point in
                             LineMark(x: .value("Period", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName)).symbol(by: .value("Device", point.displayName))
                             PointMark(x: .value("Period", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName)).annotation(position: .top) { if showsAggregateLabel(point) { Text(usagePointLabel(point.minutes)).font(.caption2).foregroundStyle(.secondary) } }
@@ -887,6 +887,8 @@ struct TrackingView: View {
     @State private var endDate = ""
     @State private var trackingShare: LogShareItem?
     @State private var trackingWidth: CGFloat = 0
+    @State private var weeklyChartZoom: CGFloat = 1
+    @State private var weeklyChartZoomStart: CGFloat?
     var body: some View {
         ScrollView {
             GeometryReader { proxy in
@@ -901,7 +903,7 @@ struct TrackingView: View {
                     DatePicker("From", selection: $customStart, in: ...Calendar.current.date(byAdding: .day, value: -1, to: .now)!, displayedComponents: .date)
                     Text("Data loads when you open this view or tap Refresh.").font(.caption).foregroundStyle(.secondary)
                     HStack { Button("Refresh") { Task { await refresh() } }; Spacer(); Button { prepareTrackingExport() } label: { Label("Export CSV", systemImage: "square.and.arrow.up") }.disabled(rows.isEmpty) }
-                    ScrollView(.horizontal) {
+                    ScrollView(.horizontal, showsIndicators: false) {
                         trackingTable.frame(width: 1_068)
                     }
                     Text("Prices are effective weighted averages per 1M tokens, including cache and provider discounts. Revenue is estimated and is not official OpenRouter financial data.").font(.caption).foregroundStyle(.secondary)
@@ -911,7 +913,7 @@ struct TrackingView: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Picker("Metric", selection: $metric) { ForEach(OpenRouterWeeklyMetric.allCases) { Text($0.label).tag($0) } }
-                    ScrollView(.horizontal) {
+                    ScrollView(.horizontal, showsIndicators: false) {
                         Chart {
                             ForEach(weeklyRows) { row in
                                 weeklyMarks(row)
@@ -939,6 +941,16 @@ struct TrackingView: View {
                         .frame(minWidth: weeklyChartWidth, minHeight: trackingCompactLayout ? 390 : 360)
                         .dynamicTypeSize(...DynamicTypeSize.large)
                     }
+                    .simultaneousGesture(weeklyChartZoomGesture)
+                    HStack {
+                        Text("Pinch the chart to zoom · \(Int((weeklyChartZoom * 100).rounded()))%")
+                        Spacer()
+                        if weeklyChartZoom > 1.01 {
+                            Button("Reset zoom") { weeklyChartZoom = 1 }
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                     weeklyModelLegend.dynamicTypeSize(...DynamicTypeSize.large)
                     if trackingUsesTokenUnit { Text("Unit: Trillion Tokens").font(.caption).foregroundStyle(.secondary) }
                     Text("Weekly data updates during the weekly sync.").font(.caption).foregroundStyle(.secondary)
@@ -959,7 +971,15 @@ struct TrackingView: View {
         .pink, .teal, .indigo, .mint, .brown
     ]
     private var weeklyChartWidth: CGFloat {
-        max(trackingWidth > 0 ? trackingWidth - 32 : 0, 780, CGFloat(weeklyAxisWeeks.count) * (trackingCompactLayout ? 68 : 60) + 120)
+        max(trackingWidth > 0 ? trackingWidth - 32 : 0, 780, CGFloat(weeklyAxisWeeks.count) * (trackingCompactLayout ? 68 : 60) + 120) * weeklyChartZoom
+    }
+    private var weeklyChartZoomGesture: some Gesture {
+        MagnificationGesture()
+            .onChanged { scale in
+                if weeklyChartZoomStart == nil { weeklyChartZoomStart = weeklyChartZoom }
+                weeklyChartZoom = min(3, max(1, (weeklyChartZoomStart ?? weeklyChartZoom) * scale))
+            }
+            .onEnded { _ in weeklyChartZoomStart = nil }
     }
     private var selectedChartDisplay: ReportChartDisplay { ReportChartDisplay(rawValue: chartDisplay) ?? .system }
     private var trackingDynamicTypeLimit: DynamicTypeSize { selectedChartDisplay == .standard ? .large : .accessibility5 }
