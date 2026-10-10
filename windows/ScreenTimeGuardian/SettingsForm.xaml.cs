@@ -33,6 +33,13 @@ internal partial class SettingsForm : System.Windows.Window
     private void ExportLog_Click(object sender, System.Windows.RoutedEventArgs e) => app.ExportTestLog(this);
     private void ExportData_Click(object sender, System.Windows.RoutedEventArgs e) => app.ExportData(this);
     private void Close_Click(object sender, System.Windows.RoutedEventArgs e) => Close();
+    private void RemoveApp_Click(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (HasUnsavedChanges() && !ApplySettings()) return;
+        closeApproved = true;
+        Close();
+        app.BeginUninstall();
+    }
     private void Save_Click(object sender, System.Windows.RoutedEventArgs e)
     {
         if (!ApplySettings()) return;

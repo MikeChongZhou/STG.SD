@@ -34,7 +34,7 @@ On first use grant notifications, overlay/full-screen reminder access, and Usage
 
 ## Windows
 
-Install the .NET 8 SDK to build and run `bash scripts/build_windows.sh`. The framework-dependent output is written to `dist/windows/`. Target computers require the [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0/runtime).
+Install the .NET 8 SDK to build and run `bash scripts/build_windows.sh`. The framework-dependent output is written to `dist/windows/`. Target computers require the [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0/runtime). For Microsoft Store distribution, build the MSIX upload bundle on Windows with `./scripts/build_windows_store.ps1` after associating `windows/ScreenTimeGuardian.Package` with the reserved Partner Center product; details are in [`windows/STORE_PACKAGING.md`](../windows/STORE_PACKAGING.md).
 
 Choose iCloud Drive, OneDrive, or Google Drive in Settings. iCloud Drive uses the Apple Account already signed in through iCloud for Windows and automatically locates Screen Time Guardian's public iCloud document folder; it never opens an arbitrary folder picker. OneDrive starts Microsoft Graph App Folder authorization with `Files.ReadWrite.AppFolder`, while Google Drive uses OAuth/PKCE and the hidden `appDataFolder`. Access and refresh tokens are stored in Windows Credential Manager and are never written to logs or synchronized. The Microsoft public-client and Google Desktop OAuth registrations must permit the flows documented above.
 
@@ -46,6 +46,8 @@ all-device summary, the local-PC summary, the complete aggregate and per-device
 minute bitmaps, a **Sync now** button, and CSV export.
 
 Export diagnostics from Settings using **Export test log**. The log records lifecycle, minute samples, report totals, reminder decisions, provider/account state (without account addresses), synchronization counts, and OpenRouter refresh/export events.
+
+MSIX installs hold active data in package-owned storage, which Windows deletes on normal uninstall. To let the customer choose first, STG's tray menu and Settings offer **Remove app…**. It asks whether to retain settings and screen-time data for the next installation, then opens the application's Windows Settings page to complete uninstall. Windows does not permit an app to display this choice when the customer starts removal directly in Settings; that path performs a clean package-data deletion.
 
 Windows uses Per-Monitor V2 DPI scaling. Meeting mode is effective when the user enables it manually or when a reminder-time registry check finds an application actively using the microphone or camera. Automatic and manual meeting mode both silence the reminder and allow it to close immediately.
 
