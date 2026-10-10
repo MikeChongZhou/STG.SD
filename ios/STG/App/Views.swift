@@ -240,9 +240,16 @@ struct TodayView: View {
     private func metric(_ name: String, _ minutes: Int) -> some View { HStack { Text(name); Spacer(); Text(duration(minutes)).bold().monospacedDigit() }.padding().background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14)) }
 }
 
+private enum ReportChartDisplay: String, CaseIterable, Identifiable {
+    case system, compact, standard
+    var id: String { rawValue }
+    var label: String { switch self { case .system: "Follow System"; case .compact: "Compact"; case .standard: "Standard" } }
+}
+
 struct ReportView: View {
     @ObservedObject var model: AppModel
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @AppStorage("report_chart_display", store: SharedEnvironment.defaults) private var chartDisplay = ReportChartDisplay.system.rawValue
     @State private var mode = 0
     @State private var selectedDate = Date()
     @State private var rangeStart = Calendar.current.date(byAdding: .day, value: -6, to: .now) ?? .now
@@ -253,8 +260,16 @@ struct ReportView: View {
     @State private var unavailablePeriods: [PeriodUsagePoint] = []
     @State private var loading = false
     @State private var expandedIntervalIDs: Set<String> = []
+    @State private var reportWidth: CGFloat = 0
+    @State private var chartZoom: CGFloat = 1
+    @State private var chartZoomStart: CGFloat?
     var body: some View {
         ScrollView {
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear { reportWidth = proxy.size.width }
+                    .onChange(of: proxy.size.width) { _, width in reportWidth = width }
+            }.frame(height: 0)
             VStack(alignment: .leading, spacing: 14) {
                 Picker("Report Type", selection: $mode) {
                     Text("Daily").tag(0); Text("Multiple Days").tag(1); Text("This Year by Week").tag(2); Text("Years by Month").tag(3)
@@ -292,29 +307,37 @@ struct ReportView: View {
                     reportDatePicker("From", selection: $rangeStart)
                     reportDatePicker("To", selection: $rangeEnd)
                     Text("One line per device. All Devices combines overlapping use.").font(.caption).foregroundStyle(.secondary)
-                    Chart(multiDayPoints) { point in
-                        LineMark(x: .value("Date", point.date), y: .value("Minutes", point.minutes))
-                            .foregroundStyle(by: .value("Device", point.displayName))
-                            .symbol(by: .value("Device", point.displayName))
-                        PointMark(x: .value("Date", point.date), y: .value("Minutes", point.minutes))
-                            .foregroundStyle(by: .value("Device", point.displayName))
-                            .annotation(position: .top) { if showsAggregateLabel(point) { Text(usagePointLabel(point.minutes)).font(.caption2).foregroundStyle(.secondary) } }
+                    ScrollView(.horizontal, showsIndicators: true) {
+                        Chart(multiDayPoints) { point in
+                            LineMark(x: .value("Date", point.date), y: .value("Minutes", point.minutes))
+                                .foregroundStyle(by: .value("Device", point.displayName))
+                                .symbol(by: .value("Device", point.displayName))
+                            PointMark(x: .value("Date", point.date), y: .value("Minutes", point.minutes))
+                                .foregroundStyle(by: .value("Device", point.displayName))
+                                .annotation(position: .top) { if showsAggregateLabel(point) { Text(usagePointLabel(point.minutes)).font(.caption2).foregroundStyle(.secondary) } }
+                        }
+                        .chartYScale(domain: 0...usageAxisMaximum(multiDayPoints))
+                        .chartYAxis { usageAxisMarks }
+                        .chartLegend(position: .bottom, alignment: .leading, spacing: 8)
+                        .frame(minWidth: chartWidth(for: multiDayPoints), minHeight: compactReportLayout ? 350 : 320)
+                        .dynamicTypeSize(...DynamicTypeSize.large)
                     }
-                    .chartYScale(domain: 0...usageAxisMaximum(multiDayPoints))
-                    .chartYAxis { usageAxisMarks }
-                    .chartLegend(position: .bottom, alignment: .leading, spacing: 8)
-                    .frame(minHeight: compactReportLayout ? 350 : 320)
-                    .dynamicTypeSize(...DynamicTypeSize.large)
+                    .gesture(chartZoomGesture)
+                    if multiDayPoints.count > 7 { Text("Pinch the chart to zoom, then scroll sideways to inspect dates.").font(.caption).foregroundStyle(.secondary) }
                     if let average = intervalAverage(multiDayPoints) { Text("Interval average: \(duration(average)) per day").font(.caption).foregroundStyle(.secondary) }
                     if multiDayPoints.isEmpty && !loading { ContentUnavailableView("No Data for This Period", systemImage: "chart.xyaxis.line") }
                 } else {
                     Text(mode == 2 ? "Average daily use by week in the current year" : "Average daily use by month across recent years").font(.caption).foregroundStyle(.secondary)
-                    Chart(periodPoints) { point in
-                        LineMark(x: .value("Period", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName)).symbol(by: .value("Device", point.displayName))
-                        PointMark(x: .value("Period", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName)).annotation(position: .top) { if showsAggregateLabel(point) { Text(usagePointLabel(point.minutes)).font(.caption2).foregroundStyle(.secondary) } }
-                    }.chartYScale(domain: 0...usageAxisMaximum(periodPoints)).chartYAxis { usageAxisMarks }
-                        .chartLegend(position: .bottom, alignment: .leading, spacing: 8).frame(minHeight: compactReportLayout ? 350 : 320)
-                        .dynamicTypeSize(...DynamicTypeSize.large)
+                    ScrollView(.horizontal, showsIndicators: true) {
+                        Chart(periodPoints) { point in
+                            LineMark(x: .value("Period", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName)).symbol(by: .value("Device", point.displayName))
+                            PointMark(x: .value("Period", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName)).annotation(position: .top) { if showsAggregateLabel(point) { Text(usagePointLabel(point.minutes)).font(.caption2).foregroundStyle(.secondary) } }
+                        }.chartYScale(domain: 0...usageAxisMaximum(periodPoints)).chartYAxis { usageAxisMarks }
+                            .chartLegend(position: .bottom, alignment: .leading, spacing: 8).frame(minWidth: chartWidth(for: periodPoints), minHeight: compactReportLayout ? 350 : 320)
+                            .dynamicTypeSize(...DynamicTypeSize.large)
+                    }
+                    .gesture(chartZoomGesture)
+                    if periodPoints.count > 7 { Text("Pinch the chart to zoom, then scroll sideways to inspect periods.").font(.caption).foregroundStyle(.secondary) }
                     if !unavailablePeriods.isEmpty {
                         DisclosureGroup("— · No eligible completed days") {
                             ForEach(unavailablePeriods) { value in
@@ -362,7 +385,27 @@ struct ReportView: View {
     // The standard Text Size slider has sizes above `.large` before its
     // separate accessibility sizes. Charts need their compact layout there
     // too, otherwise axes and point labels consume the plotting area.
-    private var compactReportLayout: Bool { dynamicTypeSize > .large }
+    private var selectedChartDisplay: ReportChartDisplay { ReportChartDisplay(rawValue: chartDisplay) ?? .system }
+    private var compactReportLayout: Bool {
+        switch selectedChartDisplay {
+        case .compact: true
+        case .standard: false
+        case .system: dynamicTypeSize > .large || reportWidth > 0 && reportWidth < 380
+        }
+    }
+    private func chartWidth(for points: [DailyUsagePoint]) -> CGFloat {
+        let visibleWidth = max(320, reportWidth - 32)
+        let pointWidth: CGFloat = compactReportLayout ? 58 : 48
+        return max(visibleWidth, CGFloat(Set(points.map(\.date)).count) * pointWidth + 128) * chartZoom
+    }
+    private var chartZoomGesture: some Gesture {
+        MagnificationGesture()
+            .onChanged { scale in
+                if chartZoomStart == nil { chartZoomStart = chartZoom }
+                chartZoom = min(3, max(1, (chartZoomStart ?? chartZoom) * scale))
+            }
+            .onEnded { _ in chartZoomStart = nil }
+    }
     private var usageAxisTickStep: Int {
         guard compactReportLayout else { return 60 }
         let maximum = usageAxisMaximum(mode == 1 ? multiDayPoints : periodPoints)
@@ -560,6 +603,7 @@ struct SettingsView: View {
     @State private var selectionWarningTitle = String(localized: "Selection Required")
     @State private var selectionWarning = ""
     @State private var confirmClose = false
+    @AppStorage("report_chart_display", store: SharedEnvironment.defaults) private var reportChartDisplay = ReportChartDisplay.system.rawValue
     init(model: AppModel, activity: DeviceActivityController, close: @escaping () -> Void) {
         self.model = model; self.activity = activity; self.close = close
         _draft = State(initialValue: model.settings)
@@ -589,6 +633,12 @@ struct SettingsView: View {
                 Toggle("Posture Notifications", isOn: $draft.postureNotificationsEnabled)
                 Toggle("Daily Usage Notifications", isOn: $draft.dailyNotificationsEnabled)
                 Text("Usage is still recorded when all options are off.").font(.footnote).foregroundStyle(.secondary)
+            }
+            Section("Display") {
+                Picker("Report Charts", selection: $reportChartDisplay) {
+                    ForEach(ReportChartDisplay.allCases) { Text($0.label).tag($0.rawValue) }
+                }
+                Text("Follow System adjusts chart density to the screen width and current text size. Pinch a chart to zoom.").font(.footnote).foregroundStyle(.secondary)
             }
             Section("Notifications") { Button("Notification Settings") { UIApplication.shared.open(URL(string: UIApplication.openNotificationSettingsURLString)!) } }
             Section("Diagnostics") {
