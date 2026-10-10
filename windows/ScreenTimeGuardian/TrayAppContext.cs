@@ -39,7 +39,7 @@ internal sealed class TrayAppContext : IDisposable
 
     public TrayAppContext()
     {
-        dataFolder = AppDataLocation.Prepare();
+        dataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ScreenTimeGuardian");
         settingsStore = new(dataFolder); log = new(dataFolder); Settings = settingsStore.Load(); Settings.ReportTimeZone = CurrentReportTimeZone;
         repository = new(Path.Combine(dataFolder, "stg.sqlite"));
         repository.UpsertDevice(new(Settings.DeviceID, Settings.DeviceName, Settings.DeviceKind, Settings.UpdatedAt));
@@ -57,7 +57,7 @@ internal sealed class TrayAppContext : IDisposable
         var menu = new WinForms.ContextMenuStrip { Font = new Font("Segoe UI", 10) };
         Add(menu, L.T("Screen Time Guardian"), ShowMain); Add(menu, L.T("Report"), ShowReport); Add(menu, L.T("Tracking"), ShowTracking);
         menu.Items.Add(new WinForms.ToolStripSeparator()); Add(menu, L.T("Sync Now"), () => _ = SyncAsync()); Add(menu, L.T("Settings"), ShowSettings); Add(menu, L.T("About"), ShowAbout);
-        menu.Items.Add(new WinForms.ToolStripSeparator()); Add(menu, "Remove app…", BeginUninstall); Add(menu, "Quit", Exit);
+        menu.Items.Add(new WinForms.ToolStripSeparator()); Add(menu, "Quit", Exit);
         var applicationIcon = Icon.ExtractAssociatedIcon(Environment.ProcessPath ?? "") ?? SystemIcons.Shield;
         tray = new WinForms.NotifyIcon { Text = "Screen Time Guardian", Icon = applicationIcon, Visible = true, ContextMenuStrip = menu };
         tray.MouseDoubleClick += (_, eventArgs) => { if (eventArgs.Button == WinForms.MouseButtons.Left) { log.Record("lifecycle", "tray icon double-click; opening main window"); ShowMain(); } };
@@ -399,14 +399,6 @@ internal sealed class TrayAppContext : IDisposable
     private static void Add(WinForms.ContextMenuStrip menu, string text, Action action) { var item = menu.Items.Add(text); item.Click += (_, _) => action(); }
     private void Changed() => System.Windows.Application.Current.Dispatcher.InvokeAsync(() => StateChanged?.Invoke(this, EventArgs.Empty));
     private void Exit() { if (exitInProgress) return; exitInProgress = true; _ = ExitAsync(); }
-    public void BeginUninstall()
-    {
-        var result = WinForms.MessageBox.Show("Do you want to keep your personal settings and screen-time data for the next installation?\n\nYes keeps a local restore copy. No permanently deletes settings, data, saved cloud sign-ins, and the restore copy.\n\nAfter your choice, Windows Settings will open so you can remove the app.", "Remove Screen Time Guardian", WinForms.MessageBoxButtons.YesNoCancel, WinForms.MessageBoxIcon.Question);
-        if (result == WinForms.DialogResult.Cancel) return;
-        var mode = result == WinForms.DialogResult.Yes ? "keep" : "delete";
-        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Environment.ProcessPath!, $"--prepare-uninstall {mode}") { UseShellExecute = true });
-        Exit();
-    }
     private async Task ExitAsync()
     {
         log.Record("lifecycle", $"quit requested; active_sync={syncInProgress}; quick_upload={quickUploadInProgress}; hard_timeout=3s");

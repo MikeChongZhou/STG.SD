@@ -1,6 +1,4 @@
-using System.Diagnostics;
 using Microsoft.Win32;
-using Windows.ApplicationModel;
 
 namespace ScreenTimeGuardian;
 
@@ -8,19 +6,16 @@ internal static class UninstallCleanup
 {
     public static void DeletePersonalData()
     {
-        using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true);
-        key?.DeleteValue("ScreenTimeGuardian", false);
+        RemoveStartupRegistration();
         CredentialStore.Delete(CloudConfiguration.OneDriveCredential);
         CredentialStore.Delete(CloudConfiguration.GoogleDriveCredential);
-        AppDataLocation.DeleteAllUserData();
+        var dataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ScreenTimeGuardian");
+        if (Directory.Exists(dataFolder)) Directory.Delete(dataFolder, true);
     }
 
-    public static void PrepareForSystemUninstall(bool keepPersonalData)
+    public static void RemoveStartupRegistration()
     {
-        Thread.Sleep(TimeSpan.FromSeconds(4));
-        if (keepPersonalData) AppDataLocation.PreserveForReinstall(); else DeletePersonalData();
-        var target = "ms-settings:appsfeatures-app";
-        try { target += "?" + Uri.EscapeDataString(Package.Current.Id.FamilyName); } catch { }
-        Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+        using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true);
+        key?.DeleteValue("ScreenTimeGuardian", false);
     }
 }

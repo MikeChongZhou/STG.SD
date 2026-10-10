@@ -68,8 +68,6 @@
                 </Border>
                 <TextBlock Text="DIAGNOSTICS" Style="{StaticResource SectionTitle}" Margin="2,18,0,8"/>
                 <Border Style="{StaticResource Card}" Margin="0"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="Export the app database, global settings, or diagnostic events." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" VerticalAlignment="Center"/><StackPanel Grid.Column="1" Orientation="Horizontal" Margin="20,0,0,0"><Button Content="Export Data…" Click="ExportData_Click"/><Button Content="Export Test Log…" Click="ExportLog_Click" Margin="8,0,0,0"/></StackPanel></Grid></Border>
-                <TextBlock Text="APP REMOVAL" Style="{StaticResource SectionTitle}" Margin="2,18,0,8"/>
-                <Border Style="{StaticResource Card}" Margin="0"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="Choose whether to keep your personalized settings and screen-time data before Windows removes the app." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" VerticalAlignment="Center"/><Button Grid.Column="1" Content="Remove app…" Click="RemoveApp_Click" Margin="20,0,0,0"/></Grid></Border>
             </StackPanel>
         </ScrollViewer>
     </Grid>
