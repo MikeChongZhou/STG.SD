@@ -976,7 +976,7 @@ struct TrackingView: View {
                         }
                         .chartForegroundStyleScale(domain: weeklyModels, range: weeklyModelColors)
                         .chartXScale(domain: weeklyAxisWeeks)
-                        .chartYScale(domain: .automatic(includesZero: true))
+                        .chartYScale(domain: 0...weeklyChartMaximum, range: .plotDimension(startPadding: 24, endPadding: 44))
                         .chartLegend(.hidden)
                         .chartXAxis {
                             AxisMarks(values: weeklyAxisWeeks) { value in
@@ -993,7 +993,7 @@ struct TrackingView: View {
                                 AxisValueLabel { if let number = value.as(Double.self) { Text(trackingAxisLabel(number)) } }
                             }
                         }
-                        .chartPlotStyle { plotArea in plotArea.padding(.top, 30).padding(.bottom, 18).padding(.trailing, 20) }
+                        .chartPlotStyle { plotArea in plotArea.padding(.trailing, 20) }
                         .frame(minWidth: weeklyChartWidth, minHeight: (trackingCompactLayout ? 440 : 410) * weeklyChartZoom)
                         .dynamicTypeSize(...DynamicTypeSize.large)
                     }
@@ -1029,7 +1029,7 @@ struct TrackingView: View {
                     }
                     .chartForegroundStyleScale(domain: weeklyModels, range: weeklyModelColors)
                     .chartXScale(domain: weeklyAxisWeeks)
-                    .chartYScale(domain: .automatic(includesZero: true))
+                    .chartYScale(domain: 0...weeklyChartMaximum, range: .plotDimension(startPadding: 24, endPadding: 44))
                     .chartLegend(.hidden)
                     .chartXAxis { AxisMarks(values: weeklyAxisWeeks) { value in AxisGridLine(); AxisTick(); AxisValueLabel { if let week = value.as(String.self) { Text(weeklyAxisLabel(week)) } } } }
                     .chartYAxis { AxisMarks(position: .leading) { value in AxisGridLine(); AxisTick(); AxisValueLabel { if let number = value.as(Double.self) { Text(trackingAxisLabel(number)) } } } }
@@ -1042,6 +1042,10 @@ struct TrackingView: View {
     ]
     private var weeklyChartWidth: CGFloat {
         max(trackingWidth > 0 ? trackingWidth - 32 : 0, 780, CGFloat(weeklyAxisWeeks.count) * (trackingCompactLayout ? 68 : 60) + 120) * weeklyChartZoom
+    }
+    private var weeklyChartMaximum: Double {
+        guard let maximum = weeklyRows.compactMap({ metric.value($0) }).max(), maximum > 0 else { return 1 }
+        return maximum * 1.12
     }
     private var weeklyChartZoomGesture: some Gesture {
         MagnificationGesture()
