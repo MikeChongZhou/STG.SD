@@ -241,9 +241,15 @@ struct TodayView: View {
 }
 
 private enum ReportChartDisplay: String, CaseIterable, Identifiable {
-    case system, compact, standard
+    case system, standard
     var id: String { rawValue }
-    var label: String { switch self { case .system: "Follow System"; case .compact: "Compact"; case .standard: "Standard" } }
+    var label: String { switch self { case .system: "Follow System"; case .standard: "Standard" } }
+}
+
+private enum ReportDateField: Identifiable {
+    case start, end
+    var id: Self { self }
+    var title: String { self == .start ? "From" : "To" }
 }
 
 struct ReportView: View {
@@ -263,6 +269,7 @@ struct ReportView: View {
     @State private var reportWidth: CGFloat = 0
     @State private var chartZoom: CGFloat = 1
     @State private var chartZoomStart: CGFloat?
+    @State private var reportDateField: ReportDateField?
     var body: some View {
         ScrollView {
             GeometryReader { proxy in
@@ -304,8 +311,8 @@ struct ReportView: View {
                         }.padding().background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
                     }
                 } else if mode == 1 {
-                    reportDatePicker("From", selection: $rangeStart)
-                    reportDatePicker("To", selection: $rangeEnd)
+                    reportDateButton("From", date: rangeStart, field: .start)
+                    reportDateButton("To", date: rangeEnd, field: .end)
                     Text("One line per device. All Devices combines overlapping use.").font(.caption).foregroundStyle(.secondary)
                     ScrollView(.horizontal, showsIndicators: true) {
                         Chart(multiDayPoints) { point in
@@ -316,7 +323,7 @@ struct ReportView: View {
                                 .foregroundStyle(by: .value("Device", point.displayName))
                                 .annotation(position: .top) { if showsAggregateLabel(point) { Text(usagePointLabel(point.minutes)).font(.caption2).foregroundStyle(.secondary) } }
                         }
-                        .chartYScale(domain: 0...usageAxisMaximum(multiDayPoints))
+                        .chartYScale(domain: 0...usageChartMaximum(multiDayPoints))
                         .chartYAxis { usageAxisMarks }
                         .chartLegend(position: .bottom, alignment: .leading, spacing: 8)
                         .frame(minWidth: chartWidth(for: multiDayPoints), minHeight: compactReportLayout ? 350 : 320)
@@ -332,7 +339,7 @@ struct ReportView: View {
                         Chart(periodPoints) { point in
                             LineMark(x: .value("Period", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName)).symbol(by: .value("Device", point.displayName))
                             PointMark(x: .value("Period", point.date), y: .value("Minutes", point.minutes)).foregroundStyle(by: .value("Device", point.displayName)).annotation(position: .top) { if showsAggregateLabel(point) { Text(usagePointLabel(point.minutes)).font(.caption2).foregroundStyle(.secondary) } }
-                        }.chartYScale(domain: 0...usageAxisMaximum(periodPoints)).chartYAxis { usageAxisMarks }
+                        }.chartYScale(domain: 0...usageChartMaximum(periodPoints)).chartYAxis { usageAxisMarks }
                             .chartLegend(position: .bottom, alignment: .leading, spacing: 8).frame(minWidth: chartWidth(for: periodPoints), minHeight: compactReportLayout ? 350 : 320)
                             .dynamicTypeSize(...DynamicTypeSize.large)
                     }
@@ -356,6 +363,7 @@ struct ReportView: View {
         }
         .navigationTitle("Report")
         .navigationBarTitleDisplayMode(compactReportLayout ? .inline : .automatic)
+        .dynamicTypeSize(...reportDynamicTypeLimit)
         .toolbar {
             Button("Refresh") { Task { await reload() } }
             ShareLink(item: csv, preview: SharePreview("STG report.csv")) { Image(systemName: "square.and.arrow.up") }
@@ -365,16 +373,27 @@ struct ReportView: View {
         .onChange(of: selectedDate) { _, _ in if mode == 0 { Task { await reloadDaily() } } }
         .onChange(of: rangeStart) { _, _ in if mode == 1 { Task { await reloadMultiple() } } }
         .onChange(of: rangeEnd) { _, _ in if mode == 1 { Task { await reloadMultiple() } } }
+        .sheet(item: $reportDateField) { field in
+            NavigationStack {
+                DatePicker(field.title, selection: field == .start ? $rangeStart : $rangeEnd, displayedComponents: .date)
+                    .datePickerStyle(.graphical)
+                    .padding()
+                    .navigationTitle(field.title)
+                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { reportDateField = nil } } }
+            }
+        }
     }
     private func reportMetric(_ title: String, _ minutes: Int) -> some View { VStack(alignment: .leading, spacing: 4) { Text(title).font(.caption).foregroundStyle(.secondary); Text(duration(minutes)).font(.headline).monospacedDigit() }.frame(maxWidth: .infinity, alignment: .leading).padding(10).background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10)) }
-    @ViewBuilder private func reportDatePicker(_ title: String, selection: Binding<Date>) -> some View {
-        if compactReportLayout {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.caption).foregroundStyle(.secondary)
-                DatePicker(title, selection: selection, displayedComponents: .date).labelsHidden().datePickerStyle(.compact)
+    private func reportDateButton(_ title: String, date: Date, field: ReportDateField) -> some View {
+        HStack {
+            Text(title).font(.caption).foregroundStyle(.secondary)
+            Spacer()
+            Button { reportDateField = field } label: {
+                Text(date.formatted(.dateTime.month(.abbreviated).day()))
+                    .font(.caption)
+                    .monospacedDigit()
             }
-        } else {
-            DatePicker(title, selection: selection, displayedComponents: .date)
+            .buttonStyle(.bordered)
         }
     }
     private func averageMetric(_ title: String, _ minutes: Double?) -> some View {
@@ -382,13 +401,14 @@ struct ReportView: View {
             .padding(8).background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
     }
     private func usageAxisMaximum(_ points: [DailyUsagePoint]) -> Int { max(60, (((points.map(\.minutes).max() ?? 0) + 59) / 60) * 60) }
+    private func usageChartMaximum(_ points: [DailyUsagePoint]) -> Int { usageAxisMaximum(points) + usageAxisTickStep }
     // The standard Text Size slider has sizes above `.large` before its
     // separate accessibility sizes. Charts need their compact layout there
     // too, otherwise axes and point labels consume the plotting area.
     private var selectedChartDisplay: ReportChartDisplay { ReportChartDisplay(rawValue: chartDisplay) ?? .system }
+    private var reportDynamicTypeLimit: DynamicTypeSize { selectedChartDisplay == .standard ? .large : .accessibility5 }
     private var compactReportLayout: Bool {
         switch selectedChartDisplay {
-        case .compact: true
         case .standard: false
         case .system: dynamicTypeSize > .large || reportWidth > 0 && reportWidth < 380
         }
@@ -423,17 +443,14 @@ struct ReportView: View {
         let maximum = usageAxisMaximum(mode == 1 ? multiDayPoints : periodPoints)
         return maximum > 16 * 60 ? 180 : 120
     }
-    private var usageAxisTicks: [Int] { Array(stride(from: 0, through: usageAxisMaximum(mode == 1 ? multiDayPoints : periodPoints), by: usageAxisTickStep)) }
+    private var usageAxisTicks: [Int] { Array(stride(from: 0, through: usageChartMaximum(mode == 1 ? multiDayPoints : periodPoints), by: usageAxisTickStep)) }
     @AxisContentBuilder private var usageAxisMarks: some AxisContent {
         AxisMarks(position: .leading, values: usageAxisTicks) { value in AxisGridLine(); AxisTick(); AxisValueLabel { if let minutes = value.as(Int.self) { Text("\(minutes / 60)h") } } }
         AxisMarks(position: .trailing, values: usageAxisTicks) { value in AxisTick(); AxisValueLabel { if let minutes = value.as(Int.self) { Text("\(minutes / 60)h") } } }
     }
     private func usagePointLabel(_ minutes: Int) -> String { String(format: "%.1fh", Double(minutes) / 60) }
     private func showsAggregateLabel(_ point: DailyUsagePoint) -> Bool {
-        guard point.isAggregate else { return false }
-        guard compactReportLayout else { return true }
-        let values = mode == 1 ? multiDayPoints : periodPoints
-        return point.date == values.filter(\.isAggregate).map(\.date).max()
+        point.isAggregate
     }
     private func reload() async { if mode == 0 { await reloadDaily() } else if mode == 1 { await reloadMultiple() } else { await reloadPeriod() } }
     private func reloadDaily() async { loading = true; dailyBitmaps = await model.reportDay(at: reportInstant(selectedDate, timeZoneID: model.currentReportTimeZone)); loading = false }
@@ -650,7 +667,7 @@ struct SettingsView: View {
                 Picker("Report Charts", selection: $reportChartDisplay) {
                     ForEach(ReportChartDisplay.allCases) { Text($0.label).tag($0.rawValue) }
                 }
-                Text("Follow System adjusts chart density to the screen width and current text size. Pinch a chart to zoom.").font(.footnote).foregroundStyle(.secondary)
+                Text("Standard uses a coordinated page size for iPhone screens. Follow System adjusts chart density to the screen width and current text size. Pinch a chart to zoom.").font(.footnote).foregroundStyle(.secondary)
             }
             Section("Notifications") { Button("Notification Settings") { UIApplication.shared.open(URL(string: UIApplication.openNotificationSettingsURLString)!) } }
             Section("Diagnostics") {
