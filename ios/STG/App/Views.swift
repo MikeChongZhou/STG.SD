@@ -682,7 +682,7 @@ struct SettingsView: View {
                 Text("Usage is still recorded when all options are off.").font(.footnote).foregroundStyle(.secondary)
             }
             Section("Display") {
-                Picker("Report Charts", selection: $reportChartDisplay) {
+                Picker("Chart Size", selection: $reportChartDisplay) {
                     ForEach(ReportChartDisplay.allCases) { Text($0.label).tag($0.rawValue) }
                 }
                 Text("Standard uses a coordinated page size for iPhone screens. Follow System adjusts chart density to the screen width and current text size. Pinch a chart to zoom.").font(.footnote).foregroundStyle(.secondary)
