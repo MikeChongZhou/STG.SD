@@ -82,7 +82,7 @@ struct SettingsView: View {
                     GroupBox("Daily check-in") {
                         VStack(alignment: .leading, spacing: 10) {
                             Toggle("Automatically check in to 1Point3Acres at the first daily break reminder", isOn: $draft.autoDailyCheckInEnabled)
-                            Text("STG uses the Google Chrome already installed on this Mac, including its existing sign-in session. It generates a mood and note automatically.").font(.caption).foregroundStyle(.secondary)
+                            Text("STG uses the Google Chrome already installed on this Mac, including its existing sign-in session. It generates a mood and note automatically. In Chrome, enable View › Developer › Allow JavaScript from Apple Events once.").font(.caption).foregroundStyle(.secondary)
                             Button("Test automatic check-in") { model.testDailyCheckIn() }
                         }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
                     }

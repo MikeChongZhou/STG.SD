@@ -9,9 +9,10 @@
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
 <key>CFBundleShortVersionString</key><string>1.1.9</string>
-<key>CFBundleVersion</key><string>30</string>
+<key>CFBundleVersion</key><string>31</string>
 <key>LSUIElement</key><true/>
 <key>NSHighResolutionCapable</key><true/>
+<key>NSAppleEventsUsageDescription</key><string>Screen Time Guardian uses Google Chrome only for the optional daily check-in that you enable in Settings.</string>
 <key>STGOneDriveClientID</key><string>a4ff927c-e45a-413e-b5c3-45b026719171</string>
 <key>STGGoogleClientID</key><string>552360735383-030pcr7mduhf1d20kjslobh5dhacsg2o.apps.googleusercontent.com</string>
 <key>STGGoogleClientSecret</key><string>$(STG_GOOGLE_CLIENT_SECRET)</string>

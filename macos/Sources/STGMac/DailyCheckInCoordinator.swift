@@ -54,7 +54,9 @@ final class DailyCheckInCoordinator {
           set active tab of front window to targetTab
           repeat with attempt from 1 to 30
             delay 1
-            set resultText to execute javascript "\(escaped)" in targetTab
+            tell active tab of front window
+              set resultText to execute javascript "\(escaped)"
+            end tell
             if resultText contains "submitted" then return resultText
           end repeat
           return "form_not_ready_or_not_logged_in_after_30_seconds"
