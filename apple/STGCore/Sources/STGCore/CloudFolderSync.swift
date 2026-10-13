@@ -55,15 +55,15 @@ public actor CloudFolderSync {
             guard let importedAt = try repository.remoteBitmapFileModifiedAt(remoteDeviceID: remoteID, utcDate: utcDate) else { return true }
             return modifiedAt > importedAt
         }
-        let downloadIDs = result.discoveredDeviceIDs.filter {
-            $0 != "alldevices" && ($0 != deviceID || existingUploadCursor == nil)
-        }
+        // A device's cloud copy is also a recovery source for that same device.
+        // Bitmap merging is monotonic, so a newer cloud copy can safely restore
+        // minutes after a reinstall or a partially missing local database.
+        let downloadIDs = result.discoveredDeviceIDs.filter { $0 != "alldevices" }
         let totalDownloads = downloadIDs.reduce(into: 0) { total, remoteID in
-            let restoringThisDevice = remoteID == deviceID
             total += files.filter { file in
                 guard Self.deviceID(from: file.lastPathComponent) == remoteID,
                       let date = Self.bitmapUTCDate(from: file.lastPathComponent),
-                      (restoringThisDevice || ((try? changedSinceLastImport(file, remoteID: remoteID, utcDate: date)) ?? true)) else { return false }
+                      ((try? changedSinceLastImport(file, remoteID: remoteID, utcDate: date)) ?? true) else { return false }
                 return true
             }.count
         }
@@ -73,7 +73,7 @@ public actor CloudFolderSync {
             let candidates = files.compactMap { file -> (URL, String, Date?)? in
                 guard Self.deviceID(from: file.lastPathComponent) == remoteID,
                       let date = Self.bitmapUTCDate(from: file.lastPathComponent),
-                      (restoringThisDevice || ((try? changedSinceLastImport(file, remoteID: remoteID, utcDate: date)) ?? true)) else { return nil }
+                      ((try? changedSinceLastImport(file, remoteID: remoteID, utcDate: date)) ?? true) else { return nil }
                 return (file, date, try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
             }.sorted { $0.1 < $1.1 }
             for (file, expectedDate, modifiedAt) in candidates {
@@ -89,9 +89,9 @@ public actor CloudFolderSync {
                     _ = try repository.rebuildAllDevices(utcDate: document.utcDate)
                     if !restoringThisDevice {
                         try repository.saveIncrementalDownloadCursor(remoteDeviceID: remoteID, latestUTCDate: expectedDate)
-                        try repository.saveRemoteBitmapFileModifiedAt(remoteDeviceID: remoteID, utcDate: expectedDate, modifiedAt: modifiedAt ?? document.updatedAt)
                         result.downloadCursors[remoteID] = expectedDate
                     }
+                    try repository.saveRemoteBitmapFileModifiedAt(remoteDeviceID: remoteID, utcDate: expectedDate, modifiedAt: modifiedAt ?? document.updatedAt)
                     result.downloaded += 1
                 } catch { result.warnings.append("bitmap_import_failed; device=\(remoteID.prefix(8)); utc_date=\(expectedDate); file=\(file.lastPathComponent); cursor_not_advanced=true; \(DiagnosticLog.describe(error))"); break }
             }
