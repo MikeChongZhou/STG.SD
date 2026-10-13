@@ -151,8 +151,16 @@ internal sealed class PrivateCloudSync(BitmapRepository repository, AppSettings 
             repository.SaveIncrementalUploadCursor(uploadTarget, date); uploadCursor = date; uploaded++;
         }
         var settingsName = $"{settings.DeviceID}_setting.json";
-        progress?.Invoke("Uploading device settings…");
-        await drive.UploadAsync(settingsName, JsonSerializer.SerializeToUtf8Bytes(settings, JsonOptions.Default), byName.GetValueOrDefault(settingsName)?.ID, token);
+        var remoteSettings = byName.GetValueOrDefault(settingsName);
+        if (remoteSettings?.ModifiedAt is DateTimeOffset remoteUpdatedAt && remoteUpdatedAt >= settings.UpdatedAt)
+        {
+            progress?.Invoke("Device settings unchanged — nothing to upload…");
+        }
+        else
+        {
+            progress?.Invoke("Uploading device settings…");
+            await drive.UploadAsync(settingsName, JsonSerializer.SerializeToUtf8Bytes(settings, JsonOptions.Default), remoteSettings?.ID, token);
+        }
         return new(uploaded, downloaded, devices, downloadCursors, uploadCursor, warnings);
     }
 

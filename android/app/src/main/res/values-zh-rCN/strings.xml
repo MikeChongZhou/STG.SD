@@ -36,6 +36,7 @@
     <string name="sign_in_microsoft">登录 Microsoft</string><string name="microsoft_device_code">Microsoft 一次性代码：</string><string name="microsoft_device_code_detail">打开 Microsoft 登录页时会自动复制此代码。请在浏览器中输入代码以授权 STG。</string><string name="open_microsoft_sign_in">复制代码并打开登录页</string><string name="google_sign_in_expired">Google 登录请求已过期，请重新开始连接。</string>
     <string name="notification_options">通知选项</string>
     <string name="chart_size">图表大小</string>
+    <string name="launch_automatically">设备重启后自动启动</string>
     <string name="standard">标准</string>
     <string name="eye_notifications">用眼休息通知</string>
     <string name="posture_notifications">姿势切换通知</string>

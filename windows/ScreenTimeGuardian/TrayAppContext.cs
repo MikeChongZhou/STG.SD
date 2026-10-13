@@ -63,6 +63,7 @@ internal sealed class TrayAppContext : IDisposable
         tray.MouseDoubleClick += (_, eventArgs) => { if (eventArgs.Button == WinForms.MouseButtons.Left) { log.Record("lifecycle", "tray icon double-click; opening main window"); ShowMain(); } };
         timer = new() { Interval = 60_000, Enabled = true }; timer.Tick += (_, _) => Tick();
         SystemEvents.SessionSwitch += OnSessionSwitch; SystemEvents.PowerModeChanged += OnPowerModeChanged;
+        ConfigureStartup();
         RefreshSyncStatus(); RefreshTotals();
         log.Record("lifecycle", $"launch; repository=ready; provider={Settings.SyncProvider}; device={ShortDeviceID}; ui=wpf");
         log.Record("reminder", $"state restored; last={lastReminder ?? "none"}; last_eye={lastEye:O}; last_posture={lastPosture:O}");
@@ -393,7 +394,15 @@ internal sealed class TrayAppContext : IDisposable
         log.Record("lifecycle", $"screen available; trigger={trigger}; minute_timer_resumed=true; immediate_tick=true; immediate_sync=true");
         Tick(); _ = SyncAsync();
     }
-    private void ConfigureStartup() { using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true); if (Settings.LaunchAtLogin) key?.SetValue("ScreenTimeGuardian", $"\"{Environment.ProcessPath}\""); else key?.DeleteValue("ScreenTimeGuardian", false); }
+    private void ConfigureStartup()
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true);
+        if (key is null) { log.Record("lifecycle", $"startup reconciliation failed; requested={Settings.LaunchAtLogin}; registry_unavailable=true"); return; }
+        if (Settings.LaunchAtLogin) key.SetValue("ScreenTimeGuardian", $"\"{Environment.ProcessPath}\"");
+        else key.DeleteValue("ScreenTimeGuardian", false);
+        var active = key.GetValue("ScreenTimeGuardian") is not null;
+        log.Record("lifecycle", $"startup reconciled; requested={Settings.LaunchAtLogin}; registered={active}");
+    }
     internal static string ProviderName(SyncProvider provider) => provider switch { SyncProvider.ICloudDrive => "iCloud Drive", SyncProvider.OneDrive => "OneDrive", SyncProvider.GoogleDrive => "Google Drive", _ => "Off" };
     private string ShortDeviceID => Settings.DeviceID[..Math.Min(8, Settings.DeviceID.Length)];
     private static void Add(WinForms.ContextMenuStrip menu, string text, Action action) { var item = menu.Items.Add(text); item.Click += (_, _) => action(); }

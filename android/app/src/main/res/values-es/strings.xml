@@ -36,6 +36,7 @@
     <string name="sign_in_microsoft">Iniciar sesión en Microsoft</string><string name="microsoft_device_code">Tu código único de Microsoft es:</string><string name="microsoft_device_code_detail">El código se copiará al abrir el inicio de sesión. Introdúcelo en el navegador para autorizar STG.</string><string name="open_microsoft_sign_in">Copiar código y abrir</string><string name="google_sign_in_expired">La solicitud de Google caducó. Inicia de nuevo la conexión.</string>
     <string name="notification_options">Opciones de notificación</string>
     <string name="chart_size">Tamaño de gráfico</string>
+    <string name="launch_automatically">Iniciar automáticamente después de reiniciar el dispositivo</string>
     <string name="standard">Estándar</string>
     <string name="eye_notifications">Avisos de descanso visual</string>
     <string name="posture_notifications">Avisos de cambio de postura</string>

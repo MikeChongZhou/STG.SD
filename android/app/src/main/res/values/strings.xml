@@ -36,6 +36,7 @@
     <string name="sign_in_microsoft">Sign in to Microsoft</string><string name="microsoft_device_code">Your one-time Microsoft code is:</string><string name="microsoft_device_code_detail">The code will be copied when you open Microsoft sign-in. Enter it in the browser to authorize STG.</string><string name="open_microsoft_sign_in">Copy Code &amp; Open Sign-In</string><string name="google_sign_in_expired">The Google sign-in request expired. Start the connection again.</string>
     <string name="notification_options">Notification Options</string>
     <string name="chart_size">Chart Size</string>
+    <string name="launch_automatically">Launch automatically after device restart</string>
     <string name="standard">Standard</string>
     <string name="eye_notifications">Eye Break Notifications</string>
     <string name="posture_notifications">Posture Notifications</string>
