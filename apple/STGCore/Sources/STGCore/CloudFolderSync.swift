@@ -50,39 +50,33 @@ public actor CloudFolderSync {
         }
 
         let existingUploadCursor = try repository.incrementalUploadCursor(syncTarget: uploadCursorTarget)
-        let lastSync = try repository.lastIncrementalSync(deviceID: deviceID)
-        func changedSinceLastSync(_ file: URL) throws -> Bool {
-            guard let lastSync else { return true }
-            let modifiedAt = try file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
-            return modifiedAt.map { $0 > lastSync } ?? true
+        func changedSinceLastImport(_ file: URL, remoteID: String, utcDate: String) throws -> Bool {
+            guard let modifiedAt = try file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate else { return true }
+            guard let importedAt = try repository.remoteBitmapFileModifiedAt(remoteDeviceID: remoteID, utcDate: utcDate) else { return true }
+            return modifiedAt > importedAt
         }
         let downloadIDs = result.discoveredDeviceIDs.filter {
             $0 != "alldevices" && ($0 != deviceID || existingUploadCursor == nil)
         }
-        let totalDownloads = try downloadIDs.reduce(into: 0) { total, remoteID in
+        let totalDownloads = downloadIDs.reduce(into: 0) { total, remoteID in
             let restoringThisDevice = remoteID == deviceID
-            let cursor = remoteID == deviceID ? nil : try repository.incrementalDownloadCursor(remoteDeviceID: remoteID)
             total += files.filter { file in
                 guard Self.deviceID(from: file.lastPathComponent) == remoteID,
                       let date = Self.bitmapUTCDate(from: file.lastPathComponent),
-                      (restoringThisDevice || ((try? changedSinceLastSync(file)) ?? true)) else { return false }
-                return cursor == nil || date >= cursor!
+                      (restoringThisDevice || ((try? changedSinceLastImport(file, remoteID: remoteID, utcDate: date)) ?? true)) else { return false }
+                return true
             }.count
         }
         if totalDownloads == 0 { await progress?("Downloading device data — nothing new…") }
         for remoteID in downloadIDs {
             let restoringThisDevice = remoteID == deviceID
-            let cursor: String?
-            if restoringThisDevice { cursor = nil }
-            else { cursor = try repository.incrementalDownloadCursor(remoteDeviceID: remoteID) }
-            let candidates = files.compactMap { file -> (URL, String)? in
+            let candidates = files.compactMap { file -> (URL, String, Date?)? in
                 guard Self.deviceID(from: file.lastPathComponent) == remoteID,
                       let date = Self.bitmapUTCDate(from: file.lastPathComponent),
-                      cursor == nil || date >= cursor!,
-                      (restoringThisDevice || ((try? changedSinceLastSync(file)) ?? true)) else { return nil }
-                return (file, date)
+                      (restoringThisDevice || ((try? changedSinceLastImport(file, remoteID: remoteID, utcDate: date)) ?? true)) else { return nil }
+                return (file, date, try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
             }.sorted { $0.1 < $1.1 }
-            for (file, expectedDate) in candidates {
+            for (file, expectedDate, modifiedAt) in candidates {
                 await progress?("Downloading device data — \(result.downloaded + 1) of \(totalDownloads)…")
                 do {
                     let document = try decoder.decode(BitmapDocument.self, from: Data(contentsOf: file))
@@ -95,6 +89,7 @@ public actor CloudFolderSync {
                     _ = try repository.rebuildAllDevices(utcDate: document.utcDate)
                     if !restoringThisDevice {
                         try repository.saveIncrementalDownloadCursor(remoteDeviceID: remoteID, latestUTCDate: expectedDate)
+                        try repository.saveRemoteBitmapFileModifiedAt(remoteDeviceID: remoteID, utcDate: expectedDate, modifiedAt: modifiedAt ?? document.updatedAt)
                         result.downloadCursors[remoteID] = expectedDate
                     }
                     result.downloaded += 1

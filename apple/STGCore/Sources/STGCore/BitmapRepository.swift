@@ -99,6 +99,7 @@ public final class BitmapRepository: @unchecked Sendable {
             );
             CREATE TABLE IF NOT EXISTS pending_quick_upload(device_id TEXT NOT NULL,utc_date TEXT NOT NULL,queued_at INTEGER NOT NULL,PRIMARY KEY(device_id,utc_date));
             CREATE TABLE IF NOT EXISTS incremental_download_cursor(remote_device_id TEXT PRIMARY KEY,latest_utc_date TEXT NOT NULL,updated_at INTEGER NOT NULL);
+            CREATE TABLE IF NOT EXISTS remote_bitmap_file_state(remote_device_id TEXT NOT NULL,utc_date TEXT NOT NULL,modified_at INTEGER NOT NULL,PRIMARY KEY(remote_device_id,utc_date));
             CREATE TABLE IF NOT EXISTS incremental_upload_cursor(sync_target TEXT PRIMARY KEY,latest_utc_date TEXT NOT NULL,updated_at INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS maintenance_state(action TEXT PRIMARY KEY,completed_at TEXT NOT NULL,updated_at INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS statistics_state(id INTEGER PRIMARY KEY CHECK(id=1),last_statistics_at INTEGER NOT NULL DEFAULT 0,dirty_from_date TEXT,updated_at INTEGER NOT NULL DEFAULT 0);
@@ -551,6 +552,31 @@ public final class BitmapRepository: @unchecked Sendable {
                 result[String(cString: id)] = String(cString: date)
             }
             return result
+        }
+    }
+
+    /// Cloud-file modification time successfully imported for one remote bitmap.
+    /// This is deliberately per file rather than a global sync timestamp: a cloud
+    /// provider can expose a file after an earlier directory scan has completed.
+    public func remoteBitmapFileModifiedAt(remoteDeviceID: String, utcDate: String) throws -> Date? {
+        try queue.sync {
+            var statement: OpaquePointer?
+            guard sqlite3_prepare_v2(database, "SELECT modified_at FROM remote_bitmap_file_state WHERE remote_device_id=? AND utc_date=?", -1, &statement, nil) == SQLITE_OK else { throw error() }
+            defer { sqlite3_finalize(statement) }
+            bind(remoteDeviceID, at: 1, to: statement); bind(utcDate, at: 2, to: statement)
+            guard sqlite3_step(statement) == SQLITE_ROW else { return nil }
+            return Date(timeIntervalSince1970: TimeInterval(sqlite3_column_int64(statement, 0)))
+        }
+    }
+
+    public func saveRemoteBitmapFileModifiedAt(remoteDeviceID: String, utcDate: String, modifiedAt: Date) throws {
+        try queue.sync {
+            let sql = "INSERT INTO remote_bitmap_file_state(remote_device_id,utc_date,modified_at) VALUES(?,?,?) ON CONFLICT(remote_device_id,utc_date) DO UPDATE SET modified_at=MAX(remote_bitmap_file_state.modified_at,excluded.modified_at)"
+            var statement: OpaquePointer?
+            guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else { throw error() }
+            defer { sqlite3_finalize(statement) }
+            bind(remoteDeviceID, at: 1, to: statement); bind(utcDate, at: 2, to: statement); sqlite3_bind_int64(statement, 3, epochSeconds(modifiedAt))
+            guard sqlite3_step(statement) == SQLITE_DONE else { throw error() }
         }
     }
 
