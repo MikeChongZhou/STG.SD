@@ -169,8 +169,9 @@ final class AppModel: ObservableObject {
         catch { syncStatus = "Settings save failed: \(error.localizedDescription)"; diagnosticLog.record(syncStatus, category: "error") }
     }
 
-    func showDailyCheckInPreview(text: String) {
-        dailyCheckIn.show(text: text, submit: false)
+    func testDailyCheckIn() {
+        let content = Self.dailyCheckInContent(for: .now)
+        dailyCheckIn.checkIn(mood: content.mood, note: content.note, trigger: "settings_test")
     }
 
     private func runDailyCheckInIfNeeded(now: Date) {
@@ -182,8 +183,15 @@ final class AppModel: ObservableObject {
             return
         }
         UserDefaults.standard.set(date, forKey: key)
-        diagnosticLog.record("started; local_date=\(date); source=first_reminder; text_length=\(settings.dailyCheckInText.count)", category: "daily-checkin")
-        dailyCheckIn.show(text: settings.dailyCheckInText, submit: true)
+        let content = Self.dailyCheckInContent(for: now)
+        diagnosticLog.record("started; local_date=\(date); source=first_reminder; mood=\(content.mood)", category: "daily-checkin")
+        dailyCheckIn.checkIn(mood: content.mood, note: content.note, trigger: "first_reminder")
+    }
+
+    private static func dailyCheckInContent(for date: Date) -> (mood: String, note: String) {
+        let moods = [("😀 开心", "今天保持好心情，也记得休息。"), ("✊ 奋斗", "继续专注，也给自己留一点休息时间。"), ("😶 无聊", "平静的一天，按时休息。"), ("😴 慵懒", "今天有些疲惫，早点休息。")]
+        let index = Calendar.current.ordinality(of: .day, in: .year, for: date)! % moods.count
+        return moods[index]
     }
 
     func synchronize() async {
