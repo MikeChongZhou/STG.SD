@@ -20,7 +20,10 @@ internal partial class SettingsForm : System.Windows.Window
         EyeNotificationsBox.IsChecked = app.Settings.EyeNotificationsEnabled;
         PostureNotificationsBox.IsChecked = app.Settings.PostureNotificationsEnabled;
         DailyNotificationsBox.IsChecked = app.Settings.DailyNotificationsEnabled;
+        DailyCheckInBox.IsChecked = app.Settings.AutoDailyCheckInEnabled;
+        DailyCheckInTextBox.Text = app.Settings.DailyCheckInText;
         foreach (var box in new[] { EyeNotificationsBox, PostureNotificationsBox, DailyNotificationsBox }) { box.Checked += Draft_Changed; box.Unchecked += Draft_Changed; }
+        DailyCheckInBox.Checked += Draft_Changed; DailyCheckInBox.Unchecked += Draft_Changed; DailyCheckInTextBox.TextChanged += Draft_Changed;
         UpdateCloud(); app.StateChanged += OnStateChanged; Closing += SettingsForm_Closing; Closed += (_, _) => app.StateChanged -= OnStateChanged;
     }
     private void Draft_Changed(object sender, System.Windows.RoutedEventArgs e) => SaveButton.IsEnabled = HasUnsavedChanges();
@@ -32,6 +35,7 @@ internal partial class SettingsForm : System.Windows.Window
     }
     private void ExportLog_Click(object sender, System.Windows.RoutedEventArgs e) => app.ExportTestLog(this);
     private void ExportData_Click(object sender, System.Windows.RoutedEventArgs e) => app.ExportData(this);
+    private void TestDailyCheckIn_Click(object sender, System.Windows.RoutedEventArgs e) => app.ShowDailyCheckIn(DailyCheckInTextBox.Text, submit: false);
     private void Close_Click(object sender, System.Windows.RoutedEventArgs e) => Close();
     private void Save_Click(object sender, System.Windows.RoutedEventArgs e)
     {
@@ -45,6 +49,8 @@ internal partial class SettingsForm : System.Windows.Window
         app.Settings.EyeNotificationsEnabled = EyeNotificationsBox.IsChecked == true;
         app.Settings.PostureNotificationsEnabled = PostureNotificationsBox.IsChecked == true;
         app.Settings.DailyNotificationsEnabled = DailyNotificationsBox.IsChecked == true;
+        app.Settings.AutoDailyCheckInEnabled = DailyCheckInBox.IsChecked == true;
+        app.Settings.DailyCheckInText = DailyCheckInTextBox.Text.Trim();
         app.Settings.DailyPlanMinutes = plan; app.Settings.LaunchAtLogin = StartupBox.IsChecked == true; app.Settings.MeetingMode = MeetingModeBox.IsChecked == true;
         app.Settings.EyeCountdown = EyeCountdownBox.SelectedItem as int? ?? 1; app.Settings.PostureCountdown = PostureCountdownBox.SelectedItem as int? ?? 2; app.Settings.DailyCountdown = DailyCountdownBox.SelectedItem as int? ?? 3; app.SaveSettings(); return true;
     }
@@ -55,6 +61,8 @@ internal partial class SettingsForm : System.Windows.Window
             || (EyeNotificationsBox.IsChecked == true) != app.Settings.EyeNotificationsEnabled
             || (PostureNotificationsBox.IsChecked == true) != app.Settings.PostureNotificationsEnabled
             || (DailyNotificationsBox.IsChecked == true) != app.Settings.DailyNotificationsEnabled
+            || (DailyCheckInBox.IsChecked == true) != app.Settings.AutoDailyCheckInEnabled
+            || DailyCheckInTextBox.Text.Trim() != app.Settings.DailyCheckInText
             || StartupBox.IsChecked == true != app.Settings.LaunchAtLogin
             || MeetingModeBox.IsChecked == true != app.Settings.MeetingMode
             || (EyeCountdownBox.SelectedItem as int? ?? 1) != app.Settings.EyeCountdown

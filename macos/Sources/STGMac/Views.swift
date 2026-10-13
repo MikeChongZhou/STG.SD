@@ -79,6 +79,15 @@ struct SettingsView: View {
                             Text(model.launchAtLoginStatus).font(.caption).foregroundStyle(.secondary)
                         }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
                     }
+                    GroupBox("Daily check-in") {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Toggle("Automatically check in to 1Point3Acres at the first daily break reminder", isOn: $draft.autoDailyCheckInEnabled)
+                            Text("Today's mood").foregroundStyle(.secondary)
+                            TextEditor(text: $draft.dailyCheckInText).font(.body).frame(minHeight: 58, maxHeight: 110).overlay(RoundedRectangle(cornerRadius: 5).stroke(.quaternary))
+                            Text("STG uses its own saved browser session. Select Test / Sign in once, sign in there if needed, and later check-ins will fill this text and submit automatically.").font(.caption).foregroundStyle(.secondary)
+                            Button("Test / Sign in…") { model.showDailyCheckInPreview(text: draft.dailyCheckInText) }
+                        }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
+                    }
                     GroupBox("Private cloud") {
                         HStack {
                             VStack(alignment: .leading, spacing: 5) {

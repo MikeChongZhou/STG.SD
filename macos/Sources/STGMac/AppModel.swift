@@ -32,6 +32,7 @@ final class AppModel: ObservableObject {
     private var reminderState = ReminderState()
     private var reminderStateLocalDate = ""
     private let reminderEngine = ReminderEngine()
+    private lazy var dailyCheckIn = DailyCheckInCoordinator(diagnosticLog: diagnosticLog)
     private var timer: Timer?
     private var observers: [NSObjectProtocol] = []
     private let sessionID: String
@@ -166,6 +167,23 @@ final class AppModel: ObservableObject {
             reconcileLaunchAtLogin(trigger: "settings_save")
         }
         catch { syncStatus = "Settings save failed: \(error.localizedDescription)"; diagnosticLog.record(syncStatus, category: "error") }
+    }
+
+    func showDailyCheckInPreview(text: String) {
+        dailyCheckIn.show(text: text, submit: false)
+    }
+
+    private func runDailyCheckInIfNeeded(now: Date) {
+        guard settings.autoDailyCheckInEnabled else { return }
+        let key = "dailyCheckInLastAttemptLocalDate"
+        let date = Self.dateLabel(now, zone: TimeZone.current.identifier)
+        guard UserDefaults.standard.string(forKey: key) != date else {
+            diagnosticLog.record("skipped; reason=already_attempted; local_date=\(date)", category: "daily-checkin")
+            return
+        }
+        UserDefaults.standard.set(date, forKey: key)
+        diagnosticLog.record("started; local_date=\(date); source=first_reminder; text_length=\(settings.dailyCheckInText.count)", category: "daily-checkin")
+        dailyCheckIn.show(text: settings.dailyCheckInText, submit: true)
     }
 
     func synchronize() async {
@@ -495,6 +513,7 @@ final class AppModel: ObservableObject {
                 diagnosticLog.record("reminder; kind=\(decision.kind.rawValue); previous_slot=\(priorLastReminder?.rawValue ?? "none"); next_slot=\(reminderState.lastReminder?.rawValue ?? "none"); all_used=\(decision.usedMinutes)m; local_used=\(localMinutes)m; countdown=\(decision.closeCountdownMinutes)m; silent=\(decision.silent)", category: "reminder")
                 lastReminder = decision
                 NotificationCenter.default.post(name: .stgReminder, object: decision)
+                runDailyCheckInIfNeeded(now: now)
                 diagnosticLog.record("incremental sync requested; trigger=reminder; kind=\(decision.kind.rawValue)", category: "sync")
                 await synchronize()
             }

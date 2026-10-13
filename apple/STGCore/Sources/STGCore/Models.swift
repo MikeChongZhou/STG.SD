@@ -101,6 +101,9 @@ public struct STGSettings: Codable, Equatable, Sendable {
     public var dailyCloseCountdownMinutes = 3
     public var launchAtLogin = true
     public var meetingMode = false
+    /// Desktop-local automation preferences. They are deliberately omitted from SettingDocument.
+    public var autoDailyCheckInEnabled = false
+    public var dailyCheckInText = ""
     // Optional storage preserves decoding of settings saved before notification options existed.
     private var breakNotifications: Bool?
     private var dailyNotifications: Bool?

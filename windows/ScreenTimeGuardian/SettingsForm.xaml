@@ -66,6 +66,16 @@
                         <TextBlock Text="Usage is still recorded when all options are off." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
                     </StackPanel>
                 </Border>
+                <TextBlock Text="DAILY CHECK-IN" Style="{StaticResource SectionTitle}" Margin="2,18,0,8"/>
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
+                        <CheckBox x:Name="DailyCheckInBox" Content="Automatically check in to 1Point3Acres at the first daily break reminder" Margin="0,0,0,10"/>
+                        <TextBlock Text="Today's mood" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,5"/>
+                        <TextBox x:Name="DailyCheckInTextBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="54" MaxLength="500" VerticalScrollBarVisibility="Auto"/>
+                        <TextBlock Text="STG stores a separate browser session. Use Test / Sign in once below, then later check-ins fill this text and submit automatically." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,9,0,0"/>
+                        <Button Content="Test / Sign in…" Click="TestDailyCheckIn_Click" HorizontalAlignment="Left" Margin="0,12,0,0"/>
+                    </StackPanel>
+                </Border>
                 <TextBlock Text="DIAGNOSTICS" Style="{StaticResource SectionTitle}" Margin="2,18,0,8"/>
                 <Border Style="{StaticResource Card}" Margin="0"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="Export the app database, global settings, or diagnostic events." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" VerticalAlignment="Center"/><StackPanel Grid.Column="1" Orientation="Horizontal" Margin="20,0,0,0"><Button Content="Export Data…" Click="ExportData_Click"/><Button Content="Export Test Log…" Click="ExportLog_Click" Margin="8,0,0,0"/></StackPanel></Grid></Border>
             </StackPanel>

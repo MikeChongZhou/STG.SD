@@ -11,7 +11,7 @@ let package = Package(
             name: "STGMac",
             dependencies: [.product(name: "STGCore", package: "STGCore")],
             resources: [.process("Resources")],
-            linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("CoreAudio"), .linkedFramework("IOKit"), .linkedFramework("Security"), .linkedFramework("ServiceManagement")]
+            linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("CoreAudio"), .linkedFramework("IOKit"), .linkedFramework("Security"), .linkedFramework("ServiceManagement"), .linkedFramework("WebKit")]
         )
     ],
     swiftLanguageModes: [.v5]

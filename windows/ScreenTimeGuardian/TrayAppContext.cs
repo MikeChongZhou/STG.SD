@@ -83,6 +83,7 @@ internal sealed class TrayAppContext : IDisposable
     public void ShowReport() { var window = new ReportForm(this) { Owner = VisibleDashboard }; window.Show(); }
     public void ShowSettings() { var window = new SettingsForm(this) { Owner = VisibleDashboard }; window.ShowDialog(); }
     public void ShowTracking() { var window = new TrackingForm(this) { Owner = VisibleDashboard }; window.Show(); }
+    public void ShowDailyCheckIn(string text, bool submit) => new DailyCheckInWindow(text, submit, message => log.Record("daily-checkin", message)) { Owner = VisibleDashboard }.Show();
     public void ShowAbout() { var window = new AboutForm { Owner = VisibleDashboard }; window.ShowDialog(); }
     private void ShowOnboarding() { if (!Settings.OnboardingComplete) new OnboardingForm(this).ShowDialog(); }
     private DashboardForm? VisibleDashboard => dashboard?.IsVisible == true ? dashboard : null;
@@ -242,11 +243,22 @@ internal sealed class TrayAppContext : IDisposable
             log.Record("meeting", $"check at reminder; manual={Settings.MeetingMode}; automatic={automaticMeeting.IsMeeting}; effective={meetingMode}; reason={meetingReason}");
             log.Record("reminder", $"reminder; kind={kind}; previous_slot={priorReminder}; next_slot={lastReminder}; all_used={AllMinutes}m; local_used={LocalMinutes}m; silent={meetingMode}");
             new ReminderForm(kind, AllMinutes, Settings, meetingMode).Show();
+            RunDailyCheckInIfNeeded(today);
             log.Record("sync", $"incremental sync requested; trigger=reminder; kind={kind}");
             _ = SyncAsync();
         }
         else log.Record("reminder", $"20m block complete; no reminder due; previous_slot={priorReminder}; all_used={AllMinutes}m");
         Changed();
+    }
+
+    private void RunDailyCheckInIfNeeded(DateOnly today)
+    {
+        if (!Settings.AutoDailyCheckInEnabled) return;
+        var label = today.ToString("yyyy-MM-dd");
+        if (Settings.LastDailyCheckInLocalDate == label) { log.Record("daily-checkin", $"skipped; reason=already_attempted; local_date={label}"); return; }
+        Settings.LastDailyCheckInLocalDate = label; settingsStore.Save(Settings);
+        log.Record("daily-checkin", $"started; local_date={label}; source=first_reminder; text_length={Settings.DailyCheckInText.Length}");
+        ShowDailyCheckIn(Settings.DailyCheckInText, submit: true);
     }
 
     private void RefreshTotals()
