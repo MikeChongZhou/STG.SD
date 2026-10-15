@@ -246,6 +246,20 @@ internal sealed partial class BitmapRepository : IDisposable
         }
     }
 
+    public IReadOnlyList<string> BitmapUtcDates(string deviceID)
+    {
+        lock (gate)
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT utc_date FROM bitmap WHERE device_id=$id ORDER BY utc_date";
+            command.Parameters.AddWithValue("$id", deviceID);
+            using var reader = command.ExecuteReader();
+            var result = new List<string>();
+            while (reader.Read()) result.Add(reader.GetString(0));
+            return result;
+        }
+    }
+
     public MinuteBitmap RebuildAll(string date)
     {
         lock (gate)

@@ -1,0 +1,4 @@
+module STGCompression {
+    header "STGCompression.h"
+    export *
+}

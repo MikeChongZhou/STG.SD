@@ -7,10 +7,21 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
+    SWIFT_INCLUDE_PATHS: $(SRCROOT)/../apple/STGCore/Sources/STGCompression/include
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: DA6DVPSL36
     TARGETED_DEVICE_FAMILY: "1,2"
 targets:
+  STGCompression:
+    type: library.static
+    platform: iOS
+    sources:
+      - path: ../apple/STGCore/Sources/STGCompression/STGCompression.c
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.timbertrail.screentimeguardian.ios.compression
+        HEADER_SEARCH_PATHS: $(SRCROOT)/../apple/STGCore/Sources/STGCompression/include
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/../apple/STGCore/Sources/STGCompression/include
   STGCore:
     type: framework
     platform: iOS
@@ -19,10 +30,15 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.timbertrail.screentimeguardian.ios.core
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/../apple/STGCore/Sources/STGCompression/include
+        LIBRARY_SEARCH_PATHS: $(BUILT_PRODUCTS_DIR)
+        OTHER_LDFLAGS: -lSTGCompression -lz
         GENERATE_INFOPLIST_FILE: YES
-        MARKETING_VERSION: "1.1.9"
-        CURRENT_PROJECT_VERSION: "28"
+        MARKETING_VERSION: "1.2.13"
+        CURRENT_PROJECT_VERSION: "43"
     dependencies:
+      - target: STGCompression
+      - sdk: libz.tbd
       - sdk: libsqlite3.tbd
   STG:
     type: application
@@ -62,8 +78,8 @@ targets:
       path: STG/App/Info.plist
       properties:
         CFBundleDisplayName: Screen Time Guardian
-        CFBundleShortVersionString: "1.1.9"
-        CFBundleVersion: "28"
+        CFBundleShortVersionString: "1.2.13"
+        CFBundleVersion: "43"
         ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
         STGOneDriveClientID: "a4ff927c-e45a-413e-b5c3-45b026719171"
@@ -130,8 +146,8 @@ targets:
       path: STG/Monitor/Info.plist
       properties:
         CFBundleDisplayName: STG Monitor
-        CFBundleShortVersionString: "1.1.9"
-        CFBundleVersion: "28"
+        CFBundleShortVersionString: "1.2.13"
+        CFBundleVersion: "43"
         STGOneDriveClientID: "a4ff927c-e45a-413e-b5c3-45b026719171"
         STGKeychainAccessGroup: "$(AppIdentifierPrefix)group.com.timbertrail.screentimeguardian"
         STGGoogleClientID: "552360735383-alblvd6inepkvg6cni453j1t6pl6gf0g.apps.googleusercontent.com"

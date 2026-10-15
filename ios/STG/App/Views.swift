@@ -669,6 +669,8 @@ struct SettingsView: View {
                 LabeledContent("Account", value: iosCloudAccount(provider: draft.syncProvider ?? .none, model: model))
                 Text(model.syncStatus).font(.caption).foregroundStyle(.secondary)
                 Button((draft.syncProvider ?? SyncProvider.none) == SyncProvider.none ? "Set Up Private Cloud" : "Manage Private Cloud") { model.settings = draft; showCloudSetup = true }
+                Button("Align Local and Cloud Data") { Task { await model.alignLocalAndCloudData() } }
+                    .disabled((draft.syncProvider ?? SyncProvider.none) == SyncProvider.none)
             }
             Section("Screen Time") {
                 Text(settingsSelectionSummary).font(.footnote).foregroundStyle(.secondary)
@@ -1199,7 +1201,7 @@ struct AboutView: View {
             VStack(alignment: .leading, spacing: 16) {
                 HStack { Spacer(); Image(systemName: "shield.lefthalf.filled").font(.system(size: 64)).foregroundStyle(.blue); Spacer() }
                 Text("Screen Time Guardian").font(.title.bold()).frame(maxWidth: .infinity)
-                Text("Version 1.1.9\nCopyright © 2026 Fairy Phoenix Foundation.")
+                Text("Version 1.2.13\nCopyright © 2026 Fairy Phoenix Foundation.")
                 Text("This app records minute-level estimates of screen use on this device or across all your devices, and reminds you to take breaks.")
                 Text("Privacy: Your screen-use data stays on this device and, if enabled, in the private cloud you choose. It is never sent to the app developer or any other service.")
                 Text("Accuracy: Apple does not make Screen Time data available to third-party apps. STG estimates usage from DeviceActivity data, so its totals may differ from those shown in Settings → Screen Time.")

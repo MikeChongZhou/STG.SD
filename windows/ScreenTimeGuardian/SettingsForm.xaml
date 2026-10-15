@@ -22,7 +22,8 @@
                         <TextBlock Text="Current cloud" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
                         <WrapPanel Grid.Column="1" VerticalAlignment="Center">
                             <StackPanel Width="430" Margin="0,0,14,8" VerticalAlignment="Center"><TextBlock x:Name="ProviderLabel" FontWeight="SemiBold"/><TextBlock x:Name="AccountLabel" TextWrapping="Wrap"/><TextBlock x:Name="CloudStatusLabel" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,3,0,0"/></StackPanel>
-                            <Button Content="Configure…" Style="{StaticResource PrimaryButton}" Click="ConfigureCloud_Click" Margin="0,0,0,8"/>
+                            <Button Content="Configure…" Style="{StaticResource PrimaryButton}" Click="ConfigureCloud_Click" Margin="0,0,8,8"/>
+                            <Button x:Name="AlignDataButton" Content="Align Local and Cloud Data" Click="AlignData_Click" Margin="0,0,0,8"/>
                         </WrapPanel>
                     </Grid>
                 </Border>
@@ -70,10 +71,8 @@
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
                         <CheckBox x:Name="DailyCheckInBox" Content="Automatically check in to 1Point3Acres at the first daily break reminder" Margin="0,0,0,10"/>
-                        <TextBlock Text="Today's mood" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,5"/>
-                        <TextBox x:Name="DailyCheckInTextBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="54" MaxLength="500" VerticalScrollBarVisibility="Auto"/>
-                        <TextBlock Text="STG stores a separate browser session. Use Test / Sign in once below, then later check-ins fill this text and submit automatically." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,9,0,0"/>
-                        <Button Content="Test / Sign in…" Click="TestDailyCheckIn_Click" HorizontalAlignment="Left" Margin="0,12,0,0"/>
+                        <TextBlock Text="STG opens installed Chrome and uses its existing signed-in session. It chooses today's mood and note automatically; use the button below to open the page and confirm Chrome is signed in." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,0"/>
+                        <Button Content="Open Chrome check-in…" Click="TestDailyCheckIn_Click" HorizontalAlignment="Left" Margin="0,12,0,0"/>
                     </StackPanel>
                 </Border>
                 <TextBlock Text="DIAGNOSTICS" Style="{StaticResource SectionTitle}" Margin="2,18,0,8"/>

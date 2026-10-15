@@ -11,7 +11,7 @@ object AppSyncCoordinator {
     private val executor = Executors.newSingleThreadExecutor()
     private val running = AtomicBoolean(false)
 
-    fun request(context: Context, trigger: String, progress: ((String) -> Unit)? = null, completion: ((String) -> Unit)? = null) {
+    fun request(context: Context, trigger: String, progress: ((String) -> Unit)? = null, completion: ((String) -> Unit)? = null, fullAlignment: Boolean = false) {
         val appContext = context.applicationContext
         val log = DiagnosticLog.get(appContext)
         if (!running.compareAndSet(false, true)) {
@@ -30,13 +30,21 @@ object AppSyncCoordinator {
                     log.record("sync", "sync begin; trigger=$trigger; provider=${settings.cloudProvider}; local_device=${settings.deviceID.take(8)}")
                     val providerName = when (settings.cloudProvider) { "onedrive" -> "OneDrive"; "google" -> "Google Drive"; else -> "private cloud" }
                     progress?.invoke("Connecting to $providerName…")
-                    val result = RemoteCloudSync(database, settings, PrivateCloudDriveFactory.fromStore(appContext, settings.cloudProvider)).incremental { progress?.invoke(it) }
-                    database.completeIncrementalSync(settings.deviceID)
-                    val weeklyWarning = runWeeklyActionIfDue(appContext, database, settings, log, progress)
-                    val cursors = result.downloadCursors.entries.sortedBy { it.key }.joinToString { "${it.key.take(8)}=${it.value}" }
-                    result.warnings.forEach { log.record("sync-warning", it) }
-                    log.record("sync", "sync complete; trigger=$trigger; provider=${settings.cloudProvider}; uploaded=${result.uploaded}; downloaded=${result.downloaded}; upload_cursor=${result.uploadCursor ?: "none"}; download_cursors=[$cursors]")
-                    "Synced · ${result.uploaded} activity files uploaded, ${result.downloaded} downloaded" + (weeklyWarning?.let { " · $it" } ?: "")
+                    val sync = RemoteCloudSync(database, settings, PrivateCloudDriveFactory.fromStore(appContext, settings.cloudProvider))
+                    if (fullAlignment) {
+                        val result = sync.alignAllData { progress?.invoke(it) }
+                        database.completeIncrementalSync(settings.deviceID)
+                        log.record("sync", "full alignment complete; trigger=$trigger; uploaded=${result.uploaded}; downloaded=${result.downloaded}")
+                        "Data aligned · ${result.downloaded} downloaded, ${result.uploaded} uploaded"
+                    } else {
+                        val result = sync.incremental { progress?.invoke(it) }
+                        if (result.warnings.isEmpty()) database.completeIncrementalSync(settings.deviceID)
+                        val weeklyWarning = runWeeklyActionIfDue(appContext, database, settings, log, progress)
+                        val cursors = result.downloadCursors.entries.sortedBy { it.key }.joinToString { "${it.key.take(8)}=${it.value}" }
+                        result.warnings.forEach { log.record("sync-warning", it) }
+                        log.record("sync", "sync complete; trigger=$trigger; provider=${settings.cloudProvider}; uploaded=${result.uploaded}; downloaded=${result.downloaded}; upload_cursor=${result.uploadCursor ?: "none"}; download_cursors=[$cursors]")
+                        "Synced · ${result.uploaded} activity files uploaded, ${result.downloaded} downloaded" + (weeklyWarning?.let { " · $it" } ?: "")
+                    }
                 }
             } catch (error: Exception) {
                 log.record("sync", "sync failed; trigger=$trigger; provider=${settings.cloudProvider}; ${error.diagnosticSummary()}")

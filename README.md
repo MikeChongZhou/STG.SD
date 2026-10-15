@@ -1,6 +1,6 @@
 # Screen Time Guardian
 
-Screen Time Guardian (STG) 1.1.9 is a native, local-first screen-time record and reminder app for all your devices, including macOS, iOS/iPadOS, Windows, and Android.
+Screen Time Guardian (STG) 1.2.13 is a native, local-first screen-time record and reminder app for all your devices, including macOS, iOS/iPadOS, Windows, and Android.
 
 No data is shared with the developer or any third party.
 
@@ -20,6 +20,8 @@ This repository is a clean implementation of [`stg.系统设计.md`](./stg.系�
 Each device owns its UTC minute bitmaps. One row represents a UTC day and contains exactly 1,440 bits (180 bytes). Reports rebuild local calendar days in the device's current system timezone. The `alldevices` bitmap is derived by bitwise union and can always be rebuilt.
 
 Cloud synchronization uses ordinary JSON files in a user-authorized private-cloud folder. STG does not apply a sync code or application-level encryption. Provider access tokens and security-scoped bookmarks must stay in platform secure storage.
+
+Settings → **Align Local and Cloud Data** runs an explicit full reconciliation on all four platforms. It downloads every device's daily bitmap and weekly/yearly bitmap archives, unions minutes into the local database, updates the cloud file in its existing root or history location when needed, uploads local-only data in the appropriate daily or weekly format, and refreshes daily, weekly, monthly, and yearly statistics. Normal synchronization remains incremental.
 
 All four apps initialize from the same schema-v7 `stg.sqlite` template. It contains the bundled OpenRouter history while all user-data tables start empty. Database timestamps are Unix seconds; existing Apple, Windows, and Android databases are upgraded in place.
 

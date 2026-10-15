@@ -22,9 +22,11 @@
 		5A01BC4460FE5452E87D1A3B /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 105DFC490F36B4C6A2878679 /* Models.swift */; };
 		5B098E1C4D6511E99B5580EF /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 5001DEAE71A62AFA1C116D95 /* Localizable.strings */; };
 		5EF684C810E738CAD224EB76 /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB5CD94AC119DBE4A034811A /* IOKit.framework */; };
+		6934E6C85F6CA4223C6235DC /* STGCompression.c in Sources */ = {isa = PBXBuildFile; fileRef = D2A6D7982EF88103DF3A7F32 /* STGCompression.c */; };
 		697C15E0DF33FB61C941572F /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A149897817968660B6C4469D /* Security.framework */; };
 		6C1864029E37B739C49A2356 /* AuthenticationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9EFB586BA832BFB0657EAE4B /* AuthenticationServices.framework */; };
 		6E5F1597A1466EDDD54E297B /* GoogleDriveClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFF07D6B796505A1CDC48B38 /* GoogleDriveClient.swift */; };
+		785811662A84C4B8D2692881 /* CloudDataAlignment.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5499ABD58E28F804326A4B2 /* CloudDataAlignment.swift */; };
 		7BC2D0733BF2DC04E6D29281 /* ServiceManagement.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2800249DD2D3082D98CAA88B /* ServiceManagement.framework */; };
 		7E3934B3DE4E2DF79AD4F368 /* Views.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15B2600B4B9362617D759379 /* Views.swift */; };
 		80A58D36EA64527E9EBCCD07 /* STGCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A164D08AEF33327607893EB4 /* STGCore.framework */; };
@@ -36,6 +38,7 @@
 		BC43BE0F1BB4266A6237AC8E /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 5242C7FAA8AB273BD59EE4D3 /* libsqlite3.tbd */; };
 		C186D85C14070844CC1571FC /* TimeModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D7AB4AE36748E9436CEB743 /* TimeModel.swift */; };
 		C493BB33B09502C69CC4C8F2 /* GoogleDriveSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAB0D2490403927787DFAA57 /* GoogleDriveSync.swift */; };
+		C5E9D1DFF591F2AD38680141 /* libz.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 7F69E25A1CFBCB061EAAE936 /* libz.tbd */; };
 		CC615FED71FC6942CDDED434 /* SecureStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBDDDAE4205E8F94FD0CA842 /* SecureStore.swift */; };
 		CDCCD8F3878ACDF605508B81 /* stg.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = BF8BCE335A2775B6002E4D21 /* stg.sqlite */; };
 		D6409A067E9F638E39053A8A /* CloudFolderSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25860F5715D7B3A5FE620C1D /* CloudFolderSync.swift */; };
@@ -44,9 +47,17 @@
 		E20AA5C5B1EBAA7247BE74C8 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA997C3C3937291CC6D90585 /* AppModel.swift */; };
 		E84E11B9B317ADEB30683B21 /* OneDriveClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3FE10AF0084F93698263453 /* OneDriveClient.swift */; };
 		F4D212AA82F045C91A0030FF /* OneDriveSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B978A07287F566142FBA744 /* OneDriveSync.swift */; };
+		FD4D889F9C3CF7CBD6BDEDD5 /* DailyCheckInCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2F240327A2AB94B9A645B68 /* DailyCheckInCoordinator.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		6E819F8C5AB5F2D6435CD2F7 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = DDEE46932A51EE7BF3CCCE62 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 19E691EA000FB0FCDDF0D253;
+			remoteInfo = STGCompression;
+		};
 		9500E6A0C6B69AB0D9A55CC0 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = DDEE46932A51EE7BF3CCCE62 /* Project object */;
@@ -89,19 +100,24 @@
 		5F66040DF7B3D01E8F8C1C86 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		71C39509282E086ACC1C0EF9 /* MeetingDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingDetector.swift; sourceTree = "<group>"; };
 		7E9B12871375ACF3069DDE39 /* DiagnosticLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticLog.swift; sourceTree = "<group>"; };
+		7F69E25A1CFBCB061EAAE936 /* libz.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libz.tbd; path = usr/lib/libz.tbd; sourceTree = SDKROOT; };
 		8B978A07287F566142FBA744 /* OneDriveSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OneDriveSync.swift; sourceTree = "<group>"; };
 		937D7D2DA4124B192AC5D197 /* MinuteBitmap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MinuteBitmap.swift; sourceTree = "<group>"; };
 		9EFB586BA832BFB0657EAE4B /* AuthenticationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AuthenticationServices.framework; path = System/Library/Frameworks/AuthenticationServices.framework; sourceTree = SDKROOT; };
 		A1346465E59FBD8CB41FC1DE /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		A149897817968660B6C4469D /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
 		A164D08AEF33327607893EB4 /* STGCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = STGCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		A5499ABD58E28F804326A4B2 /* CloudDataAlignment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudDataAlignment.swift; sourceTree = "<group>"; };
 		AAB0D2490403927787DFAA57 /* GoogleDriveSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleDriveSync.swift; sourceTree = "<group>"; };
 		AD6E2ACE23F1ADEB2E0681D9 /* CoreAudio.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudio.framework; path = System/Library/Frameworks/CoreAudio.framework; sourceTree = SDKROOT; };
 		B3DD4574C9ABDAE9A8175571 /* BitmapRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BitmapRepository.swift; sourceTree = "<group>"; };
 		BA997C3C3937291CC6D90585 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		BBDDDAE4205E8F94FD0CA842 /* SecureStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureStore.swift; sourceTree = "<group>"; };
 		BF8BCE335A2775B6002E4D21 /* stg.sqlite */ = {isa = PBXFileReference; lastKnownFileType = file; path = stg.sqlite; sourceTree = "<group>"; };
+		C80E024444BB0E5605F10B79 /* libSTGCompression.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libSTGCompression.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		D2A6D7982EF88103DF3A7F32 /* STGCompression.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = STGCompression.c; sourceTree = "<group>"; };
 		DB5CD94AC119DBE4A034811A /* IOKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOKit.framework; path = System/Library/Frameworks/IOKit.framework; sourceTree = SDKROOT; };
+		E2F240327A2AB94B9A645B68 /* DailyCheckInCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyCheckInCoordinator.swift; sourceTree = "<group>"; };
 		E5D80805119CA8A2F11C8DE8 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		E9D89E89C360B6210CD6D32B /* OpenRouterTracking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenRouterTracking.swift; sourceTree = "<group>"; };
 		F106D71ECBCFF844EF1F4CFA /* STGApplication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = STGApplication.swift; sourceTree = "<group>"; };
@@ -115,6 +131,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C5E9D1DFF591F2AD38680141 /* libz.tbd in Frameworks */,
 				BC43BE0F1BB4266A6237AC8E /* libsqlite3.tbd in Frameworks */,
 				6C1864029E37B739C49A2356 /* AuthenticationServices.framework in Frameworks */,
 				697C15E0DF33FB61C941572F /* Security.framework in Frameworks */,
@@ -147,6 +164,7 @@
 				AD6E2ACE23F1ADEB2E0681D9 /* CoreAudio.framework */,
 				DB5CD94AC119DBE4A034811A /* IOKit.framework */,
 				5242C7FAA8AB273BD59EE4D3 /* libsqlite3.tbd */,
+				7F69E25A1CFBCB061EAAE936 /* libz.tbd */,
 				A149897817968660B6C4469D /* Security.framework */,
 				2800249DD2D3082D98CAA88B /* ServiceManagement.framework */,
 				1E592C17D745F2F24E62DD0F /* UniformTypeIdentifiers.framework */,
@@ -168,6 +186,7 @@
 		772ED85254FBD637AE8387A7 /* Products */ = {
 			isa = PBXGroup;
 			children = (
+				C80E024444BB0E5605F10B79 /* libSTGCompression.a */,
 				A164D08AEF33327607893EB4 /* STGCore.framework */,
 				F579FE1C432B7CE5FBCB6A2E /* STGMac.app */,
 			);
@@ -202,6 +221,7 @@
 			isa = PBXGroup;
 			children = (
 				B3DD4574C9ABDAE9A8175571 /* BitmapRepository.swift */,
+				A5499ABD58E28F804326A4B2 /* CloudDataAlignment.swift */,
 				25860F5715D7B3A5FE620C1D /* CloudFolderSync.swift */,
 				7E9B12871375ACF3069DDE39 /* DiagnosticLog.swift */,
 				FFF07D6B796505A1CDC48B38 /* GoogleDriveClient.swift */,
@@ -252,6 +272,7 @@
 			isa = PBXGroup;
 			children = (
 				BA997C3C3937291CC6D90585 /* AppModel.swift */,
+				E2F240327A2AB94B9A645B68 /* DailyCheckInCoordinator.swift */,
 				71C39509282E086ACC1C0EF9 /* MeetingDetector.swift */,
 				0ADB465291731253D87F94DD /* SettingsStore.swift */,
 				F106D71ECBCFF844EF1F4CFA /* STGApplication.swift */,
@@ -259,6 +280,14 @@
 				959E443CF27AF669BD93EAD7 /* Resources */,
 			);
 			path = STGMac;
+			sourceTree = "<group>";
+		};
+		D6DF964F5823B13960FDF71A /* STGCompression */ = {
+			isa = PBXGroup;
+			children = (
+				D2A6D7982EF88103DF3A7F32 /* STGCompression.c */,
+			);
+			path = STGCompression;
 			sourceTree = "<group>";
 		};
 		D80B54946D10FEB92C93186A /* Sources */ = {
@@ -272,6 +301,7 @@
 		EF94AAF7BCAA6362FCBF80BD /* Sources */ = {
 			isa = PBXGroup;
 			children = (
+				D6DF964F5823B13960FDF71A /* STGCompression */,
 				97705796D9CBF1486B0F29C6 /* STGCore */,
 			);
 			path = Sources;
@@ -280,6 +310,23 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		19E691EA000FB0FCDDF0D253 /* STGCompression */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 435694182E37532AF7A8838C /* Build configuration list for PBXNativeTarget "STGCompression" */;
+			buildPhases = (
+				7E70D8892D88669B9806FE23 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = STGCompression;
+			packageProductDependencies = (
+			);
+			productName = STGCompression;
+			productReference = C80E024444BB0E5605F10B79 /* libSTGCompression.a */;
+			productType = "com.apple.product-type.library.static";
+		};
 		57BC27BB6AA9123298E9FD0E /* STGCore */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = ED53B0610AA80A234BF9DB7B /* Build configuration list for PBXNativeTarget "STGCore" */;
@@ -291,6 +338,7 @@
 			buildRules = (
 			);
 			dependencies = (
+				B38E986A15E2E0941139BFF7 /* PBXTargetDependency */,
 			);
 			name = STGCore;
 			packageProductDependencies = (
@@ -329,6 +377,10 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					19E691EA000FB0FCDDF0D253 = {
+						DevelopmentTeam = DA6DVPSL36;
+						ProvisioningStyle = Automatic;
+					};
 					57BC27BB6AA9123298E9FD0E = {
 						DevelopmentTeam = DA6DVPSL36;
 						ProvisioningStyle = Automatic;
@@ -355,6 +407,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
+				19E691EA000FB0FCDDF0D253 /* STGCompression */,
 				57BC27BB6AA9123298E9FD0E /* STGCore */,
 				F8C288A25AF29FC76D796FB4 /* STGMac */,
 			);
@@ -383,11 +436,20 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		7E70D8892D88669B9806FE23 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6934E6C85F6CA4223C6235DC /* STGCompression.c in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B1763D3FB935AB40EAC3BE1D /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				E20AA5C5B1EBAA7247BE74C8 /* AppModel.swift in Sources */,
+				FD4D889F9C3CF7CBD6BDEDD5 /* DailyCheckInCoordinator.swift in Sources */,
 				8199926E856EB6AA7962FF94 /* MeetingDetector.swift in Sources */,
 				282DAC8B6C748B30EEC7D401 /* STGApplication.swift in Sources */,
 				12B1422FCC60F94A1D257356 /* SettingsStore.swift in Sources */,
@@ -400,6 +462,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A9C958DD8EEF0AA51059E624 /* BitmapRepository.swift in Sources */,
+				785811662A84C4B8D2692881 /* CloudDataAlignment.swift in Sources */,
 				D6409A067E9F638E39053A8A /* CloudFolderSync.swift in Sources */,
 				1AD11FACAE80A7A92193727D /* DiagnosticLog.swift in Sources */,
 				6E5F1597A1466EDDD54E297B /* GoogleDriveClient.swift in Sources */,
@@ -426,6 +489,11 @@
 			target = 57BC27BB6AA9123298E9FD0E /* STGCore */;
 			targetProxy = 9500E6A0C6B69AB0D9A55CC0 /* PBXContainerItemProxy */;
 		};
+		B38E986A15E2E0941139BFF7 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 19E691EA000FB0FCDDF0D253 /* STGCompression */;
+			targetProxy = 6E819F8C5AB5F2D6435CD2F7 /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
@@ -442,6 +510,22 @@
 /* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
+		2FEA3C936E45D453A88077D5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../apple/STGCore/Sources/STGCompression/include";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.timbertrail.screentimeguardian.macos.compression;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_INCLUDE_PATHS = "$(SRCROOT)/../apple/STGCore/Sources/STGCompression/include";
+			};
+			name = Debug;
+		};
 		372374891FB52C9816DCE220 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -495,8 +579,25 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_INCLUDE_PATHS = "$(SRCROOT)/../apple/STGCore/Sources/STGCompression/include";
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		4A3E532109C90557A7AE5856 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../apple/STGCore/Sources/STGCompression/include";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.timbertrail.screentimeguardian.macos.compression;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_INCLUDE_PATHS = "$(SRCROOT)/../apple/STGCore/Sources/STGCompression/include";
 			};
 			name = Release;
 		};
@@ -505,7 +606,7 @@
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "";
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 31;
+				CURRENT_PROJECT_VERSION = 45;
 				DEFINES_MODULE = YES;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
@@ -516,10 +617,13 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.1.9;
+				LIBRARY_SEARCH_PATHS = "$(BUILT_PRODUCTS_DIR)";
+				MARKETING_VERSION = 1.2.13;
+				OTHER_LDFLAGS = "-lSTGCompression -lz";
 				PRODUCT_BUNDLE_IDENTIFIER = com.timbertrail.screentimeguardian.macos.core;
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
+				SWIFT_INCLUDE_PATHS = "$(SRCROOT)/../apple/STGCore/Sources/STGCompression/include";
 				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Debug;
@@ -584,6 +688,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_INCLUDE_PATHS = "$(SRCROOT)/../apple/STGCore/Sources/STGCompression/include";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 			};
@@ -595,13 +700,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = STGMac.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 31;
+				CURRENT_PROJECT_VERSION = 45;
 				INFOPLIST_FILE = Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.1.9;
+				MARKETING_VERSION = 1.2.13;
 				PRODUCT_BUNDLE_IDENTIFIER = com.timbertrail.screentimeguardian.ios;
 				SDKROOT = macosx;
 			};
@@ -612,7 +717,7 @@
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "";
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 31;
+				CURRENT_PROJECT_VERSION = 45;
 				DEFINES_MODULE = YES;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
@@ -623,10 +728,13 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.1.9;
+				LIBRARY_SEARCH_PATHS = "$(BUILT_PRODUCTS_DIR)";
+				MARKETING_VERSION = 1.2.13;
+				OTHER_LDFLAGS = "-lSTGCompression -lz";
 				PRODUCT_BUNDLE_IDENTIFIER = com.timbertrail.screentimeguardian.macos.core;
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
+				SWIFT_INCLUDE_PATHS = "$(SRCROOT)/../apple/STGCore/Sources/STGCompression/include";
 				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Release;
@@ -637,13 +745,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = STGMac.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 31;
+				CURRENT_PROJECT_VERSION = 45;
 				INFOPLIST_FILE = Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.1.9;
+				MARKETING_VERSION = 1.2.13;
 				PRODUCT_BUNDLE_IDENTIFIER = com.timbertrail.screentimeguardian.ios;
 				SDKROOT = macosx;
 			};
@@ -652,6 +760,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		435694182E37532AF7A8838C /* Build configuration list for PBXNativeTarget "STGCompression" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2FEA3C936E45D453A88077D5 /* Debug */,
+				4A3E532109C90557A7AE5856 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		58CDD0F9F229777198FC6257 /* Build configuration list for PBXNativeTarget "STGMac" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

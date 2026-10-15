@@ -21,21 +21,26 @@ internal partial class SettingsForm : System.Windows.Window
         PostureNotificationsBox.IsChecked = app.Settings.PostureNotificationsEnabled;
         DailyNotificationsBox.IsChecked = app.Settings.DailyNotificationsEnabled;
         DailyCheckInBox.IsChecked = app.Settings.AutoDailyCheckInEnabled;
-        DailyCheckInTextBox.Text = app.Settings.DailyCheckInText;
         foreach (var box in new[] { EyeNotificationsBox, PostureNotificationsBox, DailyNotificationsBox }) { box.Checked += Draft_Changed; box.Unchecked += Draft_Changed; }
-        DailyCheckInBox.Checked += Draft_Changed; DailyCheckInBox.Unchecked += Draft_Changed; DailyCheckInTextBox.TextChanged += Draft_Changed;
+        DailyCheckInBox.Checked += Draft_Changed; DailyCheckInBox.Unchecked += Draft_Changed;
         UpdateCloud(); app.StateChanged += OnStateChanged; Closing += SettingsForm_Closing; Closed += (_, _) => app.StateChanged -= OnStateChanged;
     }
     private void Draft_Changed(object sender, System.Windows.RoutedEventArgs e) => SaveButton.IsEnabled = HasUnsavedChanges();
     private void OnStateChanged(object? sender, EventArgs e) => Dispatcher.InvokeAsync(UpdateCloud);
     private void ConfigureCloud_Click(object sender, System.Windows.RoutedEventArgs e) { new CloudSetupForm(app) { Owner = this }.ShowDialog(); UpdateCloud(); }
+    private async void AlignData_Click(object sender, System.Windows.RoutedEventArgs e)
+    {
+        AlignDataButton.IsEnabled = false;
+        try { await app.AlignAllDataAsync(); }
+        finally { UpdateCloud(); }
+    }
     private void UpdateCloud()
     {
-        var provider = app.Settings.SyncProvider; var signed = app.ProviderSignedIn(provider); ProviderLabel.Text = provider switch { SyncProvider.ICloudDrive => "Apple iCloud Drive", SyncProvider.OneDrive => "Microsoft OneDrive", SyncProvider.GoogleDrive => "Google Drive", _ => L.T("Off") }; AccountLabel.Text = provider == SyncProvider.None ? L.T("Single-device mode") : signed ? L.F("Connected through {0}", app.ProviderAccountLabel(provider)) : L.T("Not signed in"); CloudStatusLabel.Text = app.SyncStatus;
+        var provider = app.Settings.SyncProvider; var signed = app.ProviderSignedIn(provider); ProviderLabel.Text = provider switch { SyncProvider.ICloudDrive => "Apple iCloud Drive", SyncProvider.OneDrive => "Microsoft OneDrive", SyncProvider.GoogleDrive => "Google Drive", _ => L.T("Off") }; AccountLabel.Text = provider == SyncProvider.None ? L.T("Single-device mode") : signed ? L.F("Connected through {0}", app.ProviderAccountLabel(provider)) : L.T("Not signed in"); CloudStatusLabel.Text = app.SyncStatus; AlignDataButton.IsEnabled = signed;
     }
     private void ExportLog_Click(object sender, System.Windows.RoutedEventArgs e) => app.ExportTestLog(this);
     private void ExportData_Click(object sender, System.Windows.RoutedEventArgs e) => app.ExportData(this);
-    private void TestDailyCheckIn_Click(object sender, System.Windows.RoutedEventArgs e) => app.ShowDailyCheckIn(DailyCheckInTextBox.Text, submit: false);
+    private void TestDailyCheckIn_Click(object sender, System.Windows.RoutedEventArgs e) => app.ShowDailyCheckIn(submit: false);
     private void Close_Click(object sender, System.Windows.RoutedEventArgs e) => Close();
     private void Save_Click(object sender, System.Windows.RoutedEventArgs e)
     {
@@ -50,7 +55,6 @@ internal partial class SettingsForm : System.Windows.Window
         app.Settings.PostureNotificationsEnabled = PostureNotificationsBox.IsChecked == true;
         app.Settings.DailyNotificationsEnabled = DailyNotificationsBox.IsChecked == true;
         app.Settings.AutoDailyCheckInEnabled = DailyCheckInBox.IsChecked == true;
-        app.Settings.DailyCheckInText = DailyCheckInTextBox.Text.Trim();
         app.Settings.DailyPlanMinutes = plan; app.Settings.LaunchAtLogin = StartupBox.IsChecked == true; app.Settings.MeetingMode = MeetingModeBox.IsChecked == true;
         app.Settings.EyeCountdown = EyeCountdownBox.SelectedItem as int? ?? 1; app.Settings.PostureCountdown = PostureCountdownBox.SelectedItem as int? ?? 2; app.Settings.DailyCountdown = DailyCountdownBox.SelectedItem as int? ?? 3; app.SaveSettings(); return true;
     }
@@ -62,7 +66,6 @@ internal partial class SettingsForm : System.Windows.Window
             || (PostureNotificationsBox.IsChecked == true) != app.Settings.PostureNotificationsEnabled
             || (DailyNotificationsBox.IsChecked == true) != app.Settings.DailyNotificationsEnabled
             || (DailyCheckInBox.IsChecked == true) != app.Settings.AutoDailyCheckInEnabled
-            || DailyCheckInTextBox.Text.Trim() != app.Settings.DailyCheckInText
             || StartupBox.IsChecked == true != app.Settings.LaunchAtLogin
             || MeetingModeBox.IsChecked == true != app.Settings.MeetingMode
             || (EyeCountdownBox.SelectedItem as int? ?? 1) != app.Settings.EyeCountdown

@@ -7,9 +7,20 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
+    SWIFT_INCLUDE_PATHS: $(SRCROOT)/../apple/STGCore/Sources/STGCompression/include
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: DA6DVPSL36
 targets:
+  STGCompression:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: ../apple/STGCore/Sources/STGCompression/STGCompression.c
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.timbertrail.screentimeguardian.macos.compression
+        HEADER_SEARCH_PATHS: $(SRCROOT)/../apple/STGCore/Sources/STGCompression/include
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/../apple/STGCore/Sources/STGCompression/include
   STGCore:
     type: framework
     platform: macOS
@@ -18,10 +29,15 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.timbertrail.screentimeguardian.macos.core
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/../apple/STGCore/Sources/STGCompression/include
+        LIBRARY_SEARCH_PATHS: $(BUILT_PRODUCTS_DIR)
+        OTHER_LDFLAGS: -lSTGCompression -lz
         GENERATE_INFOPLIST_FILE: YES
-        MARKETING_VERSION: "1.1.9"
-        CURRENT_PROJECT_VERSION: "26"
+        MARKETING_VERSION: "1.2.13"
+        CURRENT_PROJECT_VERSION: "45"
     dependencies:
+      - target: STGCompression
+      - sdk: libz.tbd
       - sdk: libsqlite3.tbd
       - sdk: AuthenticationServices.framework
       - sdk: Security.framework
@@ -37,8 +53,8 @@ targets:
         INFOPLIST_FILE: Info.plist
         CODE_SIGN_ENTITLEMENTS: STGMac.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        MARKETING_VERSION: "1.1.9"
-        CURRENT_PROJECT_VERSION: "26"
+        MARKETING_VERSION: "1.2.13"
+        CURRENT_PROJECT_VERSION: "45"
     dependencies:
       - target: STGCore
       - sdk: AppKit.framework

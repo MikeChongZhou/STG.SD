@@ -160,6 +160,15 @@ public struct BitmapDocument: Codable, Equatable, Sendable {
         bitmapBase64 = bitmap.data.base64EncodedString(); self.updatedAt = updatedAt
     }
 
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        deviceID = try values.decode(String.self, forKey: .deviceID)
+        utcDate = try values.decode(String.self, forKey: .utcDate)
+        bitmapBase64 = try values.decode(String.self, forKey: .bitmapBase64)
+        updatedAt = try values.decode(Date.self, forKey: .updatedAt)
+        reserved = try values.decodeIfPresent([String: String].self, forKey: .reserved) ?? [:]
+    }
+
     public func bitmap() throws -> MinuteBitmap {
         guard let decoded = Data(base64Encoded: bitmapBase64) else { throw STGError.invalidDocument("invalid base64") }
         return try MinuteBitmap(data: decoded)
@@ -178,6 +187,22 @@ public struct BitmapArchiveDocument: Codable, Equatable, Sendable {
 
     public init(kind: String, deviceID: String, periodStart: String, periodEnd: String, rows: [BitmapDocument], createdAt: Date = .now) {
         self.kind = kind; self.deviceID = deviceID; self.periodStart = periodStart; self.periodEnd = periodEnd; self.rows = rows; self.createdAt = createdAt
+    }
+
+    /// Apple archives use camel-case metadata; Android and Windows use snake-case.
+    /// Daily rows share the same wire format on every platform.
+    public static func decodeCloud(_ data: Data) throws -> BitmapArchiveDocument {
+        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+        if let archive = try? decoder.decode(BitmapArchiveDocument.self, from: data) { return archive }
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let kind = json["kind"] as? String, ["week", "year", "weekly_bitmap", "yearly_bitmap"].contains(kind),
+              let device = (json["device_id"] ?? json["deviceID"]) as? String,
+              let start = (json["period_start"] ?? json["periodStart"]) as? String,
+              let end = (json["period_end"] ?? json["periodEnd"]) as? String,
+              let rawRows = json["rows"] as? [[String: Any]] else { throw STGError.invalidDocument("bitmap archive format") }
+        let rows = try rawRows.map { try decoder.decode(BitmapDocument.self, from: JSONSerialization.data(withJSONObject: $0)) }
+        let createdAt = ((json["createdAt"] ?? json["created_at"]) as? String).flatMap { ISO8601DateFormatter().date(from: $0) } ?? .now
+        return BitmapArchiveDocument(kind: kind == "week" || kind == "weekly_bitmap" ? "week" : "year", deviceID: device, periodStart: start, periodEnd: end, rows: rows, createdAt: createdAt)
     }
 }
 

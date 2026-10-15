@@ -1,5 +1,6 @@
 import XCTest
 import SQLite3
+import STGCompression
 @testable import STGCore
 
 final class STGCoreTests: XCTestCase {
@@ -413,6 +414,95 @@ final class STGCoreTests: XCTestCase {
         for date in dates { XCTAssertFalse(FileManager.default.fileExists(atPath: cloud.appendingPathComponent("sync/local_bitmap_\(date).json").path)) }
     }
 
+    func testWeeklyMaintenanceMergesExistingCloudArchiveBeforeReplacingIt() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let cloud = folder.appendingPathComponent("cloud", isDirectory: true)
+        let local = try BitmapRepository(url: folder.appendingPathComponent("local.sqlite"), importsBundledOpenRouterSeed: false, installsBundledDatabaseTemplate: false)
+        let remote = try BitmapRepository(url: folder.appendingPathComponent("remote.sqlite"), importsBundledOpenRouterSeed: false, installsBundledDatabaseTemplate: false)
+        let date = "2026-09-08"
+        XCTAssertTrue(try local.mark(deviceID: "local", instant: XCTUnwrap(ISO8601DateFormatter().date(from: "\(date)T12:00:00Z"))))
+        XCTAssertTrue(try remote.mark(deviceID: "local", instant: XCTUnwrap(ISO8601DateFormatter().date(from: "\(date)T13:00:00Z"))))
+        _ = try await CloudFolderSync(repository: local, deviceID: "local").quickUpload(folder: cloud, utcDates: [date])
+
+        let archive = try remote.bitmapArchive(deviceID: "local", kind: "week", from: "2026-09-07", through: "2026-09-13")
+        let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
+        let archiveURL = cloud.appendingPathComponent("sync/local_week_2026-09-07_2026-09-13.json")
+        try encoder.encode(archive).write(to: archiveURL)
+
+        _ = try await CloudFolderSync(repository: local, deviceID: "local").weeklyMaintenance(
+            folder: cloud, currentWeekStart: "2026-09-14", previousWeekStart: "2026-09-07", previousWeekEnd: "2026-09-13"
+        )
+
+        let merged = try XCTUnwrap(local.documentIfPresent(deviceID: "local", utcDate: date))
+        XCTAssertEqual(try merged.bitmap().count, 2)
+        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+        let saved = try decoder.decode(BitmapArchiveDocument.self, from: Data(contentsOf: archiveURL))
+        XCTAssertEqual(try XCTUnwrap(saved.rows.first { $0.utcDate == date }).bitmap().count, 2)
+    }
+
+    func testInitialCloudRestoreMergesHistoricalWeekWithoutDailyFiles() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let cloud = folder.appendingPathComponent("cloud", isDirectory: true)
+        let history = cloud.appendingPathComponent("history", isDirectory: true)
+        try FileManager.default.createDirectory(at: history, withIntermediateDirectories: true)
+        let local = try BitmapRepository(url: folder.appendingPathComponent("local.sqlite"), importsBundledOpenRouterSeed: false, installsBundledDatabaseTemplate: false)
+        let remote = try BitmapRepository(url: folder.appendingPathComponent("remote.sqlite"), importsBundledOpenRouterSeed: false, installsBundledDatabaseTemplate: false)
+        let date = "2026-08-25"
+        XCTAssertTrue(try local.mark(deviceID: "local", instant: XCTUnwrap(ISO8601DateFormatter().date(from: "\(date)T12:00:00Z"))))
+        XCTAssertTrue(try remote.mark(deviceID: "local", instant: XCTUnwrap(ISO8601DateFormatter().date(from: "\(date)T13:00:00Z"))))
+        let archive = try remote.bitmapArchive(deviceID: "local", kind: "week", from: "2026-08-24", through: "2026-08-30")
+        let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
+        let archiveURL = history.appendingPathComponent("local_week_2026-08-24_2026-08-30.json")
+        try encoder.encode(archive).write(to: archiveURL)
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-10-14T12:00:00Z"))
+
+        let first = try await CloudFolderSync(repository: local, deviceID: "local").incrementalSync(folder: cloud, now: now)
+        XCTAssertEqual(try local.documentIfPresent(deviceID: "local", utcDate: date)?.bitmap().count, 2)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: cloud.appendingPathComponent("sync/local_bitmap_\(date).json").path))
+        XCTAssertNotNil(first.uploadCursor)
+        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+        let merged = try decoder.decode(BitmapArchiveDocument.self, from: Data(contentsOf: archiveURL))
+        XCTAssertEqual(try XCTUnwrap(merged.rows.first { $0.utcDate == date }).bitmap().count, 2)
+        let modifiedAt = try XCTUnwrap(archiveURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
+        _ = try await CloudFolderSync(repository: local, deviceID: "local").incrementalSync(folder: cloud, now: now.addingTimeInterval(60))
+        XCTAssertEqual(try archiveURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate, modifiedAt)
+    }
+
+    func testWeeklyArchiveReadsWindowsAndAndroidMetadata() throws {
+        var bitmap = MinuteBitmap(); bitmap[60] = true
+        let timestamp = "2026-10-10T12:00:00Z"
+        for (deviceKey, startKey, endKey) in [("device_id", "period_start", "period_end"), ("deviceID", "periodStart", "periodEnd")] {
+            let json: [String: Any] = [
+                "kind": "weekly_bitmap", deviceKey: "remote", startKey: "2026-10-05", endKey: "2026-10-11",
+                "rows": [["device_id": "remote", "utc_date": "2026-10-10", "bitmap_base64": bitmap.data.base64EncodedString(), "updated_at": timestamp]]
+            ]
+            let archive = try BitmapArchiveDocument.decodeCloud(JSONSerialization.data(withJSONObject: json))
+            XCTAssertEqual(archive.deviceID, "remote")
+            XCTAssertEqual(try archive.rows.first?.bitmap().count, 1)
+        }
+    }
+
+    func testFullAlignmentAcceptsAndroidArchiveRowsWithoutReserved() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let cloud = folder.appendingPathComponent("cloud", isDirectory: true)
+        let history = cloud.appendingPathComponent("history", isDirectory: true)
+        try FileManager.default.createDirectory(at: history, withIntermediateDirectories: true)
+        let repository = try BitmapRepository(url: folder.appendingPathComponent("local.sqlite"), importsBundledOpenRouterSeed: false, installsBundledDatabaseTemplate: false)
+        var bitmap = MinuteBitmap(); bitmap[60] = true
+        let archive: [String: Any] = [
+            "kind": "weekly_bitmap", "device_id": "android", "period_start": "2026-10-05", "period_end": "2026-10-11",
+            "rows": [["device_id": "android", "utc_date": "2026-10-10", "bitmap_base64": bitmap.data.base64EncodedString(), "updated_at": "2026-10-10T12:00:00Z"]]
+        ]
+        let file = history.appendingPathComponent("android_week_2026-10-05_2026-10-11.json")
+        try JSONSerialization.data(withJSONObject: archive).write(to: file)
+        let result = try await CloudFolderSync(repository: repository, deviceID: "local").alignAllData(folder: cloud)
+        XCTAssertEqual(result.downloaded, 1)
+        XCTAssertEqual(try repository.documentIfPresent(deviceID: "android", utcDate: "2026-10-10")?.bitmap().count, 1)
+    }
+
     func testOpenRouterPreviousUTCMonthWindow() throws {
         let now = ISO8601DateFormatter().date(from: "2026-08-22T16:00:00Z")!
         let window = try OpenRouterTrackingService.dateWindow(period: .month, now: now)
@@ -710,6 +800,148 @@ final class STGCoreTests: XCTestCase {
         let restored = try XCTUnwrap(freshRepository.documentIfPresent(deviceID: "same-device", utcDate: "2026-08-25"))
         XCTAssertEqual(restored.updatedAt, freshNow)
         XCTAssertEqual(try restored.bitmap().count, 2)
+        let cloudDecoder = JSONDecoder(); cloudDecoder.dateDecodingStrategy = .iso8601
+        let cloudDocument = try cloudDecoder.decode(BitmapDocument.self, from: Data(contentsOf: cloud.appendingPathComponent("sync/same-device_bitmap_2026-08-25.json")))
+        XCTAssertEqual(try cloudDocument.bitmap().count, 2)
+    }
+
+    func testInitialCloudFolderSyncRetriesAfterInvalidRemoteBitmap() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let cloud = folder.appendingPathComponent("cloud", isDirectory: true)
+        let sync = cloud.appendingPathComponent("sync", isDirectory: true)
+        try FileManager.default.createDirectory(at: sync, withIntermediateDirectories: true)
+        let remoteFile = sync.appendingPathComponent("remote_bitmap_2026-08-25.json")
+        try Data("invalid JSON".utf8).write(to: remoteFile)
+        let local = try BitmapRepository(url: folder.appendingPathComponent("local.sqlite"), importsBundledOpenRouterSeed: false, installsBundledDatabaseTemplate: false)
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-25T12:00:00Z"))
+        XCTAssertTrue(try local.mark(deviceID: "local", instant: now))
+        let syncer = CloudFolderSync(repository: local, deviceID: "local")
+
+        let failed = try await syncer.incrementalSync(folder: cloud, now: now)
+        XCTAssertEqual(failed.warnings.count, 1)
+        XCTAssertNil(failed.uploadCursor)
+        XCTAssertNil(try local.incrementalUploadCursor(syncTarget: "cloudFolder"))
+
+        let source = try BitmapRepository(url: folder.appendingPathComponent("source.sqlite"), importsBundledOpenRouterSeed: false, installsBundledDatabaseTemplate: false)
+        XCTAssertTrue(try source.mark(deviceID: "remote", instant: now))
+        let document = try XCTUnwrap(source.documentIfPresent(deviceID: "remote", utcDate: "2026-08-25"))
+        let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
+        try encoder.encode(document).write(to: remoteFile)
+        let retried = try await syncer.incrementalSync(folder: cloud, now: now.addingTimeInterval(60))
+        XCTAssertTrue(retried.warnings.isEmpty)
+        XCTAssertNotNil(retried.uploadCursor)
+        XCTAssertNotNil(try local.documentIfPresent(deviceID: "remote", utcDate: "2026-08-25"))
+    }
+
+    func testFullCloudFolderAlignmentMergesDailyAndHistoryInPlace() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let cloud = folder.appendingPathComponent("cloud", isDirectory: true)
+        let sync = cloud.appendingPathComponent("sync", isDirectory: true)
+        let history = cloud.appendingPathComponent("history", isDirectory: true)
+        try FileManager.default.createDirectory(at: sync, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: history, withIntermediateDirectories: true)
+        let local = try BitmapRepository(url: folder.appendingPathComponent("local.sqlite"), importsBundledOpenRouterSeed: false, installsBundledDatabaseTemplate: false)
+        let remote = try BitmapRepository(url: folder.appendingPathComponent("remote.sqlite"), importsBundledOpenRouterSeed: false, installsBundledDatabaseTemplate: false)
+        let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
+        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+        func time(_ value: String) -> Date { ISO8601DateFormatter().date(from: value)! }
+        XCTAssertTrue(try local.mark(deviceID: "same", instant: time("2026-10-10T10:00:00Z")))
+        XCTAssertTrue(try remote.mark(deviceID: "same", instant: time("2026-10-10T11:00:00Z")))
+        XCTAssertTrue(try local.mark(deviceID: "other", instant: time("2026-10-10T12:00:00Z")))
+        XCTAssertTrue(try remote.mark(deviceID: "other", instant: time("2026-10-10T13:00:00Z")))
+        for id in ["same", "other"] {
+            let doc = try XCTUnwrap(remote.documentIfPresent(deviceID: id, utcDate: "2026-10-10"))
+            try encoder.encode(doc).write(to: sync.appendingPathComponent("\(id)_bitmap_2026-10-10.json"))
+        }
+        XCTAssertTrue(try local.mark(deviceID: "same", instant: time("2026-08-25T12:00:00Z")))
+        XCTAssertTrue(try remote.mark(deviceID: "same", instant: time("2026-08-25T13:00:00Z")))
+        let archiveURL = history.appendingPathComponent("same_week_2026-08-24_2026-08-30.json")
+        try encoder.encode(remote.bitmapArchive(deviceID: "same", kind: "week", from: "2026-08-24", through: "2026-08-30")).write(to: archiveURL)
+
+        let result = try await CloudFolderSync(repository: local, deviceID: "same").alignAllData(folder: cloud)
+        XCTAssertEqual(result.downloaded, 3)
+        XCTAssertEqual(result.uploaded, 3)
+        for id in ["same", "other"] {
+            XCTAssertEqual(try local.documentIfPresent(deviceID: id, utcDate: "2026-10-10")?.bitmap().count, 2)
+            let cloudDoc = try decoder.decode(BitmapDocument.self, from: Data(contentsOf: sync.appendingPathComponent("\(id)_bitmap_2026-10-10.json")))
+            XCTAssertEqual(try cloudDoc.bitmap().count, 2)
+        }
+        XCTAssertEqual(try local.documentIfPresent(deviceID: "same", utcDate: "2026-08-25")?.bitmap().count, 2)
+        let cloudArchive = try BitmapArchiveDocument.decodeCloud(Data(contentsOf: archiveURL))
+        XCTAssertEqual(try cloudArchive.rows.first?.bitmap().count, 2)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sync.appendingPathComponent("same_bitmap_2026-08-25.json").path))
+        let second = try await CloudFolderSync(repository: local, deviceID: "same").alignAllData(folder: cloud)
+        XCTAssertEqual(second.uploaded, 0)
+    }
+
+    func testFullAlignmentMergesGzipAndZlibYearArchives() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let history = folder.appendingPathComponent("cloud/history", isDirectory: true)
+        try FileManager.default.createDirectory(at: history, withIntermediateDirectories: true)
+        let local = try BitmapRepository(url: folder.appendingPathComponent("local.sqlite"), importsBundledOpenRouterSeed: false, installsBundledDatabaseTemplate: false)
+        let remote = try BitmapRepository(url: folder.appendingPathComponent("remote.sqlite"), importsBundledOpenRouterSeed: false, installsBundledDatabaseTemplate: false)
+        let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
+        func transform(_ data: Data, decompress: Bool, gzip: Bool) throws -> Data {
+            var output: UnsafeMutablePointer<UInt8>?
+            var count = 0
+            let code = data.withUnsafeBytes { raw in
+                stg_archive_transform(raw.bindMemory(to: UInt8.self).baseAddress, data.count, &output, &count, decompress ? 1 : 0, gzip ? 1 : 0)
+            }
+            XCTAssertEqual(code, 0)
+            let pointer = try XCTUnwrap(output)
+            defer { stg_free_buffer(pointer) }
+            return Data(bytes: pointer, count: count)
+        }
+        let cases = [("same", "2025", "gz", false), ("other", "2024", "zlib", false), ("apple", "2023", "zlib", true)]
+        for (id, year, suffix, appleRawDeflate) in cases {
+            let date = "\(year)-10-10"
+            let first = try XCTUnwrap(ISO8601DateFormatter().date(from: "\(date)T10:00:00Z"))
+            let second = try XCTUnwrap(ISO8601DateFormatter().date(from: "\(date)T11:00:00Z"))
+            XCTAssertTrue(try local.mark(deviceID: id, instant: first))
+            XCTAssertTrue(try remote.mark(deviceID: id, instant: second))
+            let archive = try remote.bitmapArchive(deviceID: id, kind: "year", from: "\(year)-01-01", through: "\(year)-12-31")
+            let file = history.appendingPathComponent("\(id)_year_\(year).json.\(suffix)")
+            let encoded = try encoder.encode(archive)
+            let compressed = appleRawDeflate ? try (encoded as NSData).compressed(using: .zlib) as Data
+                                             : try transform(encoded, decompress: false, gzip: suffix == "gz")
+            try compressed.write(to: file)
+        }
+        try Data("tracking archive".utf8).write(to: history.appendingPathComponent("openrouter_year_2025.json.gz"))
+        let result = try await CloudFolderSync(repository: local, deviceID: "same").alignAllData(folder: folder.appendingPathComponent("cloud"))
+        XCTAssertEqual(result.downloaded, 3)
+        XCTAssertEqual(result.uploaded, 3)
+        for (id, year, suffix, appleRawDeflate) in cases {
+            let file = history.appendingPathComponent("\(id)_year_\(year).json.\(suffix)")
+            let stored = try Data(contentsOf: file)
+            let data = appleRawDeflate ? try (stored as NSData).decompressed(using: .zlib) as Data
+                                       : try transform(stored, decompress: true, gzip: suffix == "gz")
+            let archive = try BitmapArchiveDocument.decodeCloud(data)
+            XCTAssertEqual(try archive.rows.first?.bitmap().count, 2)
+            XCTAssertEqual(try local.documentIfPresent(deviceID: id, utcDate: "\(year)-10-10")?.bitmap().count, 2)
+        }
+    }
+
+    func testFullAlignmentKeepsUnarchivedWeekAsDailyFiles() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let cloud = folder.appendingPathComponent("cloud", isDirectory: true)
+        let sync = cloud.appendingPathComponent("sync", isDirectory: true)
+        try FileManager.default.createDirectory(at: sync, withIntermediateDirectories: true)
+        let local = try BitmapRepository(url: folder.appendingPathComponent("local.sqlite"), importsBundledOpenRouterSeed: false, installsBundledDatabaseTemplate: false)
+        let remote = try BitmapRepository(url: folder.appendingPathComponent("remote.sqlite"), importsBundledOpenRouterSeed: false, installsBundledDatabaseTemplate: false)
+        let first = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-24T10:00:00Z"))
+        let second = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-25T11:00:00Z"))
+        XCTAssertTrue(try remote.mark(deviceID: "device", instant: first))
+        XCTAssertTrue(try local.mark(deviceID: "device", instant: second))
+        let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
+        let remoteDaily = try XCTUnwrap(remote.documentIfPresent(deviceID: "device", utcDate: "2026-08-24"))
+        try encoder.encode(remoteDaily).write(to: sync.appendingPathComponent("device_bitmap_2026-08-24.json"))
+        _ = try await CloudFolderSync(repository: local, deviceID: "device").alignAllData(folder: cloud)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sync.appendingPathComponent("device_bitmap_2026-08-25.json").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: cloud.appendingPathComponent("history/device_week_2026-08-24_2026-08-30.json").path))
     }
 
     func testOpenRouterWeeklyCursorAndModelFilter() throws {

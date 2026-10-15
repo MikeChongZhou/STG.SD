@@ -94,14 +94,13 @@ internal sealed class PrivateCloudSync(BitmapRepository repository, AppSettings 
         }
 
         var downloadCursors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var downloadIDs = devices.Where(value =>
-            !value.Equals("alldevices", StringComparison.OrdinalIgnoreCase) &&
-            (!value.Equals(settings.DeviceID, StringComparison.OrdinalIgnoreCase) || existingUploadCursor is null)).ToList();
+        var initialCloudRestore = existingUploadCursor is null;
+        var downloadIDs = devices.Where(value => !value.Equals("alldevices", StringComparison.OrdinalIgnoreCase) && (!value.Equals(settings.DeviceID, StringComparison.OrdinalIgnoreCase) || initialCloudRestore)).ToList();
         var totalDownloads = downloadIDs.Sum(remoteID =>
         {
             var cursor = remoteID.Equals(settings.DeviceID, StringComparison.OrdinalIgnoreCase) ? null : repository.IncrementalDownloadCursor(remoteID);
             var restoringThisDevice = remoteID.Equals(settings.DeviceID, StringComparison.OrdinalIgnoreCase);
-            return remoteFiles.Count(file => ParseDevice(file.Name)?.Equals(remoteID, StringComparison.OrdinalIgnoreCase) == true && ParseBitmapDate(file.Name) is string date && (cursor is null || string.CompareOrdinal(date, cursor) >= 0) && (restoringThisDevice || lastSync is null || file.ModifiedAt is null || file.ModifiedAt > lastSync));
+            return remoteFiles.Count(file => ParseDevice(file.Name)?.Equals(remoteID, StringComparison.OrdinalIgnoreCase) == true && ParseBitmapDate(file.Name) is string date && ((initialCloudRestore && (restoringThisDevice || repository.StoredBitmap(remoteID, date) is null)) || (!restoringThisDevice && (cursor is null || string.CompareOrdinal(date, cursor) >= 0) && (lastSync is null || file.ModifiedAt is null || file.ModifiedAt > lastSync))));
         });
         if (totalDownloads == 0) progress?.Invoke("Downloading device data — nothing new…");
         foreach (var remoteID in downloadIDs)
@@ -110,7 +109,7 @@ internal sealed class PrivateCloudSync(BitmapRepository repository, AppSettings 
             var cursor = restoringThisDevice ? null : repository.IncrementalDownloadCursor(remoteID);
             var candidates = remoteFiles
                 .Select(file => (File: file, Device: ParseDevice(file.Name), Date: ParseBitmapDate(file.Name)))
-                .Where(value => value.Device?.Equals(remoteID, StringComparison.OrdinalIgnoreCase) == true && value.Date is not null && (cursor is null || string.CompareOrdinal(value.Date, cursor) >= 0) && (restoringThisDevice || lastSync is null || value.File.ModifiedAt is null || value.File.ModifiedAt > lastSync))
+                .Where(value => value.Device?.Equals(remoteID, StringComparison.OrdinalIgnoreCase) == true && value.Date is not null && ((initialCloudRestore && (restoringThisDevice || repository.StoredBitmap(remoteID, value.Date) is null)) || (!restoringThisDevice && (cursor is null || string.CompareOrdinal(value.Date, cursor) >= 0) && (lastSync is null || value.File.ModifiedAt is null || value.File.ModifiedAt > lastSync))) )
                 .OrderBy(value => value.Date, StringComparer.Ordinal);
             foreach (var candidate in candidates)
             {
@@ -137,7 +136,43 @@ internal sealed class PrivateCloudSync(BitmapRepository repository, AppSettings 
 
         repository.UpsertDevice(new(settings.DeviceID, settings.DeviceName, settings.DeviceKind, settings.UpdatedAt));
         var uploaded = 0; string? uploadCursor = null;
-        var uploadDates = TimeModel.IncrementalUploadUtcDates(existingUploadCursor, DateTimeOffset.UtcNow).Where(date => repository.StoredBitmap(settings.DeviceID, date) is not null).ToList();
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var currentWeek = WeekStart(today);
+        var archiveCutoff = currentWeek.AddDays(-7);
+        var archivedWeeks = new HashSet<DateOnly>();
+        var archiveUploads = 0;
+        var archiveDownloads = 0;
+        if (initialCloudRestore)
+        {
+            var history = await drive.ListFolderAsync("history", token);
+            foreach (var file in remoteFiles.Concat(history).Where(file => file.Name.Contains("_week_", StringComparison.Ordinal) && file.Name.EndsWith(".json", StringComparison.Ordinal)))
+            {
+                var archive = DecodeWeeklyArchive(await drive.DownloadAsync(file.ID, token));
+                if (!file.Name.StartsWith($"{archive.DeviceID}_week_", StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("Weekly archive identity mismatch");
+                foreach (var row in archive.Rows) { repository.MergeBitmap(archive.DeviceID, row.UtcDate, MinuteBitmap.FromBase64(row.BitmapBase64), row.UpdatedAt); repository.RebuildAll(row.UtcDate); }
+                archiveDownloads++;
+                if (archive.DeviceID.Equals(settings.DeviceID, StringComparison.OrdinalIgnoreCase)) archivedWeeks.Add(DateOnly.Parse(archive.PeriodStart));
+            }
+            var weeks = repository.BitmapUtcDates(settings.DeviceID).Select(DateOnly.Parse).Where(date => date < currentWeek).Select(WeekStart).Distinct().Order();
+            foreach (var week in weeks.Where(week => archivedWeeks.Contains(week) || week < archiveCutoff))
+            {
+                var end = week.AddDays(6);
+                var name = $"{settings.DeviceID}_week_{week:yyyy-MM-dd}_{end:yyyy-MM-dd}.json";
+                var rootFile = remoteFiles.FirstOrDefault(file => file.Name == name);
+                var historyFile = history.FirstOrDefault(file => file.Name == name);
+                var rows = repository.BitmapArchive(settings.DeviceID, week, end);
+                var archive = new BitmapArchive("weekly_bitmap", settings.DeviceID, $"{week:yyyy-MM-dd}", $"{end:yyyy-MM-dd}", rows, DateTimeOffset.UtcNow);
+                var data = JsonSerializer.SerializeToUtf8Bytes(archive, JsonOptions.Default);
+                if (rootFile is not null) await drive.UploadAsync(name, data, rootFile.ID, token);
+                else if (historyFile is not null || week < archiveCutoff) await drive.UploadFolderAsync("history", name, data, historyFile?.ID, token);
+                else await drive.UploadAsync(name, data, null, token);
+                archivedWeeks.Add(week); archiveUploads++; uploaded++;
+            }
+        }
+        var uploadDates = (initialCloudRestore
+            ? repository.BitmapUtcDates(settings.DeviceID).Where(date => DateOnly.Parse(date) >= archiveCutoff && !archivedWeeks.Contains(WeekStart(DateOnly.Parse(date))))
+            : TimeModel.IncrementalUploadUtcDates(existingUploadCursor, DateTimeOffset.UtcNow))
+            .Where(date => repository.StoredBitmap(settings.DeviceID, date) is not null).ToList();
         if (uploadDates.Count == 0) progress?.Invoke("Uploading local changes — nothing new…");
         foreach (var date in uploadDates)
         {
@@ -148,7 +183,8 @@ internal sealed class PrivateCloudSync(BitmapRepository repository, AppSettings 
             var document = new BitmapDocument(settings.DeviceID, date, stored.Value.Bitmap.ToBase64(), stored.Value.UpdatedAt, []);
             var name = $"{settings.DeviceID}_bitmap_{date}.json";
             await drive.UploadAsync(name, JsonSerializer.SerializeToUtf8Bytes(document, JsonOptions.Default), byName.GetValueOrDefault(name)?.ID, token);
-            repository.SaveIncrementalUploadCursor(uploadTarget, date); uploadCursor = date; uploaded++;
+            if (!initialCloudRestore) repository.SaveIncrementalUploadCursor(uploadTarget, date);
+            uploadCursor = date; uploaded++;
         }
         var settingsName = $"{settings.DeviceID}_setting.json";
         var remoteSettings = byName.GetValueOrDefault(settingsName);
@@ -161,6 +197,12 @@ internal sealed class PrivateCloudSync(BitmapRepository repository, AppSettings 
             progress?.Invoke("Uploading device settings…");
             await drive.UploadAsync(settingsName, JsonSerializer.SerializeToUtf8Bytes(settings, JsonOptions.Default), remoteSettings?.ID, token);
         }
+        if (initialCloudRestore && warnings.Count == 0 && (uploadCursor is not null || archiveUploads > 0 || archiveDownloads > 0 || downloaded > 0))
+        {
+            uploadCursor ??= $"{today:yyyy-MM-dd}";
+            repository.SaveIncrementalUploadCursor(uploadTarget, uploadCursor);
+        }
+        if (initialCloudRestore && warnings.Count != 0) uploadCursor = null;
         return new(uploaded, downloaded, devices, downloadCursors, uploadCursor, warnings);
     }
 
@@ -177,12 +219,23 @@ internal sealed class PrivateCloudSync(BitmapRepository repository, AppSettings 
         {
             token.ThrowIfCancellationRequested();
             var weekEnd = weekStart.AddDays(6);
-            var rows = repository.BitmapArchive(settings.DeviceID, weekStart, weekEnd);
             var archiveName = $"{settings.DeviceID}_week_{weekStart:yyyy-MM-dd}_{weekEnd:yyyy-MM-dd}.json";
+            var rootFile = remote.FirstOrDefault(value => value.Name == archiveName);
+            var historyFile = history.FirstOrDefault(value => value.Name == archiveName);
+            foreach (var existing in new[] { rootFile, historyFile }.Where(file => file is not null))
+            {
+                var prior = DecodeWeeklyArchive(await drive.DownloadAsync(existing!.ID, token));
+                if (!prior.DeviceID.Equals(settings.DeviceID, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("Weekly archive identity mismatch");
+                foreach (var row in prior.Rows) { repository.MergeBitmap(settings.DeviceID, row.UtcDate, MinuteBitmap.FromBase64(row.BitmapBase64), row.UpdatedAt); repository.RebuildAll(row.UtcDate); }
+            }
+            var rows = repository.BitmapArchive(settings.DeviceID, weekStart, weekEnd);
             var archive = new BitmapArchive("weekly_bitmap", settings.DeviceID, $"{weekStart:yyyy-MM-dd}", $"{weekEnd:yyyy-MM-dd}", rows, DateTimeOffset.UtcNow);
-            await drive.UploadAsync(archiveName, JsonSerializer.SerializeToUtf8Bytes(archive, JsonOptions.Default), remote.FirstOrDefault(value => value.Name == archiveName)?.ID, token); uploaded++;
+            var data = JsonSerializer.SerializeToUtf8Bytes(archive, JsonOptions.Default);
+            if (rootFile is null && historyFile is not null) await drive.UploadFolderAsync("history", archiveName, data, historyFile.ID, token);
+            else await drive.UploadAsync(archiveName, data, rootFile?.ID, token);
+            uploaded++;
             foreach (var daily in dailyFiles.Where(value => value.WeekStart == weekStart)) { await drive.DeleteAsync(daily.File.ID, token); deleted++; }
-            repository.RecordArchive($"bitmap-week-{settings.DeviceID}-{weekStart:yyyy-MM-dd}", "weekly_bitmap", weekStart, weekEnd, null, archiveName, null, DateTimeOffset.UtcNow, "uploaded");
+            repository.RecordArchive($"bitmap-week-{settings.DeviceID}-{weekStart:yyyy-MM-dd}", "weekly_bitmap", weekStart, weekEnd, null, rootFile is null && historyFile is not null ? $"history/{archiveName}" : archiveName, null, DateTimeOffset.UtcNow, "uploaded");
         }
         var moved = 0;
         remote = await drive.ListAsync(token);
@@ -197,6 +250,144 @@ internal sealed class PrivateCloudSync(BitmapRepository repository, AppSettings 
     }
 
     private static DateOnly WeekStart(DateOnly date) => date.AddDays(-(((int)date.DayOfWeek + 6) % 7));
+
+    private static BitmapArchive DecodeWeeklyArchive(byte[] data)
+    {
+        using var json = JsonDocument.Parse(data);
+        var root = json.RootElement;
+        var kind = root.GetProperty("kind").GetString();
+        if (kind is not ("week" or "weekly_bitmap" or "year" or "yearly_bitmap")) throw new InvalidDataException("Bitmap archive kind is invalid");
+        if (kind is "weekly_bitmap" or "yearly_bitmap") return JsonSerializer.Deserialize<BitmapArchive>(data, JsonOptions.Default) ?? throw new InvalidDataException("Bitmap archive is invalid");
+        var device = root.GetProperty("deviceID").GetString() ?? throw new InvalidDataException("Weekly archive device is missing");
+        var start = root.GetProperty("periodStart").GetString() ?? throw new InvalidDataException("Weekly archive start is missing");
+        var end = root.GetProperty("periodEnd").GetString() ?? throw new InvalidDataException("Weekly archive end is missing");
+        var rows = JsonSerializer.Deserialize<List<BitmapDocument>>(root.GetProperty("rows").GetRawText(), JsonOptions.Default) ?? throw new InvalidDataException("Weekly archive rows are invalid");
+        return new BitmapArchive(kind == "year" ? "yearly_bitmap" : "weekly_bitmap", device, start, end, rows, DateTimeOffset.UtcNow);
+    }
+
+    public async Task<(int Downloaded, int Uploaded)> AlignAllDataAsync(CancellationToken token = default, Action<string>? progress = null)
+    {
+        var root = await drive.ListAsync(token);
+        var history = await drive.ListFolderAsync("history", token);
+        var dailyFiles = root.Where(file => !string.Equals(ParseDevice(file.Name), "alldevices", StringComparison.OrdinalIgnoreCase) && ParseBitmapDate(file.Name) is not null).ToList();
+        var archiveFiles = root.Select(file => (File: file, Folder: "sync"))
+            .Concat(history.Select(file => (File: file, Folder: "history")))
+            .Where(item => item.File.Name.Contains("_week_", StringComparison.Ordinal) && item.File.Name.EndsWith(".json", StringComparison.Ordinal)
+                || item.Folder == "history" && !item.File.Name.StartsWith("openrouter_", StringComparison.Ordinal) && item.File.Name.Contains("_year_", StringComparison.Ordinal)
+                   && (item.File.Name.EndsWith(".json.gz", StringComparison.Ordinal) || item.File.Name.EndsWith(".json.zlib", StringComparison.Ordinal)))
+            .ToList();
+        var devices = repository.DeviceIDs().ToHashSet(StringComparer.OrdinalIgnoreCase);
+        devices.Add(settings.DeviceID);
+        var originalDaily = new Dictionary<string, string>(StringComparer.Ordinal);
+        var originalArchives = new List<(RemoteFile File, string Folder, BitmapArchive Archive, bool RawDeflate)>();
+        var touched = new HashSet<string>(StringComparer.Ordinal);
+        var downloaded = 0; var uploaded = 0;
+        foreach (var file in dailyFiles)
+        {
+            token.ThrowIfCancellationRequested();
+            progress?.Invoke($"Downloading daily data {++downloaded}/{dailyFiles.Count}…");
+            var document = JsonSerializer.Deserialize<BitmapDocument>(await drive.DownloadAsync(file.ID, token), JsonOptions.Default)
+                ?? throw new InvalidDataException($"Invalid daily bitmap: {file.Name}");
+            if (file.Name != $"{document.DeviceID}_bitmap_{document.UtcDate}.json") throw new InvalidDataException($"Daily bitmap identity mismatch: {file.Name}");
+            repository.MergeBitmap(document.DeviceID, document.UtcDate, MinuteBitmap.FromBase64(document.BitmapBase64), document.UpdatedAt);
+            originalDaily[file.Name] = document.BitmapBase64;
+            devices.Add(document.DeviceID); touched.Add(document.UtcDate);
+        }
+        foreach (var item in archiveFiles)
+        {
+            token.ThrowIfCancellationRequested();
+            progress?.Invoke($"Downloading history {++downloaded}/{dailyFiles.Count + archiveFiles.Count}…");
+            var (unpacked, rawDeflate) = UnpackArchive(await drive.DownloadAsync(item.File.ID, token), item.File.Name);
+            var archive = DecodeWeeklyArchive(unpacked);
+            var marker = archive.Kind == "yearly_bitmap" ? "_year_" : "_week_";
+            if (!item.File.Name.StartsWith($"{archive.DeviceID}{marker}", StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException($"Archive identity mismatch: {item.File.Name}");
+            foreach (var row in archive.Rows)
+            {
+                if (!row.DeviceID.Equals(archive.DeviceID, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException($"Archive row identity mismatch: {item.File.Name}");
+                repository.MergeBitmap(row.DeviceID, row.UtcDate, MinuteBitmap.FromBase64(row.BitmapBase64), row.UpdatedAt);
+                touched.Add(row.UtcDate);
+            }
+            originalArchives.Add((item.File, item.Folder, archive, rawDeflate)); devices.Add(archive.DeviceID);
+        }
+        foreach (var date in touched) repository.RebuildAll(date);
+        foreach (var file in dailyFiles)
+        {
+            var id = ParseDevice(file.Name)!; var date = ParseBitmapDate(file.Name)!;
+            var stored = repository.StoredBitmap(id, date);
+            if (stored is null || stored.Value.Bitmap.ToBase64() == originalDaily[file.Name]) continue;
+            var document = new BitmapDocument(id, date, stored.Value.Bitmap.ToBase64(), stored.Value.UpdatedAt, []);
+            await drive.UploadAsync(file.Name, JsonSerializer.SerializeToUtf8Bytes(document, JsonOptions.Default), file.ID, token);
+            uploaded++;
+        }
+        foreach (var (file, folder, original, rawDeflate) in originalArchives)
+        {
+            var start = DateOnly.Parse(original.PeriodStart); var end = DateOnly.Parse(original.PeriodEnd);
+            var rows = repository.BitmapArchive(original.DeviceID, start, end);
+            var prior = original.Rows.ToDictionary(row => row.UtcDate, row => row.BitmapBase64, StringComparer.Ordinal);
+            if (rows.Count == original.Rows.Count && rows.All(row => prior.GetValueOrDefault(row.UtcDate) == row.BitmapBase64)) continue;
+            var merged = new BitmapArchive(original.Kind, original.DeviceID, original.PeriodStart, original.PeriodEnd, rows, original.CreatedAt);
+            var bytes = PackArchive(JsonSerializer.SerializeToUtf8Bytes(merged, JsonOptions.Default), file.Name, rawDeflate);
+            if (folder == "history") await drive.UploadFolderAsync("history", file.Name, bytes, file.ID, token);
+            else await drive.UploadAsync(file.Name, bytes, file.ID, token);
+            uploaded++;
+        }
+        var rootNames = dailyFiles.Select(file => file.Name).ToHashSet(StringComparer.Ordinal);
+        var currentWeek = WeekStart(DateOnly.FromDateTime(DateTime.UtcNow)); var oldCutoff = currentWeek.AddDays(-7);
+        var newWeeks = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var id in devices.Where(id => id != "alldevices"))
+        foreach (var dateText in repository.BitmapUtcDates(id))
+        {
+            var name = $"{id}_bitmap_{dateText}.json";
+            if (rootNames.Contains(name) || originalArchives.Any(item => item.Archive.DeviceID.Equals(id, StringComparison.OrdinalIgnoreCase)
+                && string.CompareOrdinal(dateText, item.Archive.PeriodStart) >= 0 && string.CompareOrdinal(dateText, item.Archive.PeriodEnd) <= 0)) continue;
+            var date = DateOnly.Parse(dateText);
+            var existingDailyInWeek = dailyFiles.Any(file => ParseDevice(file.Name)?.Equals(id, StringComparison.OrdinalIgnoreCase) == true
+                && ParseBitmapDate(file.Name) is string existingDate && WeekStart(DateOnly.Parse(existingDate)) == WeekStart(date));
+            if (date >= oldCutoff || existingDailyInWeek)
+            {
+                var stored = repository.StoredBitmap(id, dateText);
+                if (stored is null) continue;
+                var document = new BitmapDocument(id, dateText, stored.Value.Bitmap.ToBase64(), stored.Value.UpdatedAt, []);
+                await drive.UploadAsync(name, JsonSerializer.SerializeToUtf8Bytes(document, JsonOptions.Default), null, token);
+                uploaded++;
+            }
+            else
+            {
+                var week = WeekStart(date); var end = week.AddDays(6); var archiveName = $"{id}_week_{week:yyyy-MM-dd}_{end:yyyy-MM-dd}.json";
+                if (!newWeeks.Add(archiveName)) continue;
+                var rows = repository.BitmapArchive(id, week, end);
+                var archive = new BitmapArchive("weekly_bitmap", id, $"{week:yyyy-MM-dd}", $"{end:yyyy-MM-dd}", rows, DateTimeOffset.UtcNow);
+                await drive.UploadFolderAsync("history", archiveName, JsonSerializer.SerializeToUtf8Bytes(archive, JsonOptions.Default), null, token);
+                uploaded++;
+            }
+        }
+        repository.RefreshStatistics(settings);
+        return (downloaded, uploaded);
+    }
+
+    private static (byte[] Data, bool RawDeflate) UnpackArchive(byte[] data, string name)
+    {
+        if (!name.EndsWith(".gz", StringComparison.Ordinal) && !name.EndsWith(".zlib", StringComparison.Ordinal)) return (data, false);
+        static byte[] Decode(byte[] bytes, bool gzip, bool raw)
+        {
+            using var input = new MemoryStream(bytes);
+            using Stream compressed = gzip ? new GZipStream(input, CompressionMode.Decompress)
+                : raw ? new DeflateStream(input, CompressionMode.Decompress) : new ZLibStream(input, CompressionMode.Decompress);
+            using var output = new MemoryStream(); compressed.CopyTo(output); return output.ToArray();
+        }
+        var isGzip = name.EndsWith(".gz", StringComparison.Ordinal);
+        if (isGzip) return (Decode(data, true, false), false);
+        try { return (Decode(data, false, false), false); }
+        catch (InvalidDataException) { return (Decode(data, false, true), true); }
+    }
+    private static byte[] PackArchive(byte[] data, string name, bool rawDeflate)
+    {
+        if (!name.EndsWith(".gz", StringComparison.Ordinal) && !name.EndsWith(".zlib", StringComparison.Ordinal)) return data;
+        using var output = new MemoryStream();
+        using (Stream compressed = name.EndsWith(".gz", StringComparison.Ordinal) ? new GZipStream(output, CompressionLevel.Optimal, true)
+            : rawDeflate ? new DeflateStream(output, CompressionLevel.Optimal, true) : new ZLibStream(output, CompressionLevel.Optimal, true)) compressed.Write(data);
+        return output.ToArray();
+    }
 
     public async Task<(int Uploaded, int DeletedBitmaps, int DeletedWeekly)> YearlyMaintenanceAsync(int year, int trackingCleanupYear, CancellationToken token = default)
     {
@@ -468,56 +659,48 @@ internal sealed class OneDriveClient : IPrivateCloudDrive
 
     public static async Task<OneDriveClient> SignInAsync(System.Windows.Window? owner, CancellationToken token = default)
     {
-        _ = owner;
-        var verifier = Base64Url(RandomNumberGenerator.GetBytes(48));
-        var challenge = Base64Url(SHA256.HashData(Encoding.ASCII.GetBytes(verifier)));
-        var state = Base64Url(RandomNumberGenerator.GetBytes(24));
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        var redirect = $"http://localhost:{port}/";
-        var url = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?" + Query(new()
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
+        using var http = new HttpClient();
+        var start = await http.PostAsync("https://login.microsoftonline.com/common/oauth2/v2.0/devicecode", Form(new()
         {
-            ["client_id"] = CloudConfiguration.MicrosoftClientID, ["redirect_uri"] = redirect, ["response_type"] = "code",
-            ["response_mode"] = "query", ["scope"] = Scope, ["code_challenge"] = challenge,
-            ["code_challenge_method"] = "S256", ["state"] = state, ["prompt"] = "select_account"
-        });
-        Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            ["client_id"] = CloudConfiguration.MicrosoftClientID, ["scope"] = Scope
+        }), cancellation.Token);
+        var startData = await start.Content.ReadAsByteArrayAsync(cancellation.Token);
+        Ensure(start, startData, "Microsoft sign-in could not start");
+        var deviceCode = JsonSerializer.Deserialize<DeviceCodeResponse>(startData, JsonOptions.Default) ?? throw new InvalidOperationException("Microsoft returned an invalid device code");
+        var verificationUri = string.IsNullOrWhiteSpace(deviceCode.VerificationUriComplete) ? deviceCode.VerificationUri : deviceCode.VerificationUriComplete;
+        var form = new OneDriveAuthorizationForm(deviceCode.UserCode, verificationUri) { Owner = owner };
+        form.CancelRequested += (_, _) => cancellation.Cancel();
+        form.Show();
+        Process.Start(new ProcessStartInfo(verificationUri) { UseShellExecute = true });
         try
         {
-            using var connection = await listener.AcceptTcpClientAsync(token);
-            using var stream = connection.GetStream();
-            using var reader = new StreamReader(stream, Encoding.ASCII, false, 4096, true);
-            var requestLine = await reader.ReadLineAsync(token) ?? "";
-            var target = requestLine.Split(' ').ElementAtOrDefault(1) ?? "/";
-            while (!string.IsNullOrEmpty(await reader.ReadLineAsync(token))) { }
-            var callback = new Uri(new Uri(redirect), target);
-            var values = ParseQuery(callback.Query);
-            var valid = values.GetValueOrDefault("state") == state && !string.IsNullOrWhiteSpace(values.GetValueOrDefault("code"));
-            var html = valid ? "<h2>Screen Time Guardian is connected.</h2><p>You may close this window.</p>" : "<h2>Screen Time Guardian could not connect.</h2><p>Return to the app and try again.</p>";
-            var body = Encoding.UTF8.GetBytes($"<!doctype html><meta charset=utf-8><title>STG</title><body style='font-family:Segoe UI;padding:3rem'>{html}</body>");
-            var header = Encoding.ASCII.GetBytes($"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {body.Length}\r\nConnection: close\r\n\r\n");
-            await stream.WriteAsync(header, token); await stream.WriteAsync(body, token);
-            if (!valid) throw new InvalidOperationException(values.GetValueOrDefault("error_description") ?? values.GetValueOrDefault("error") ?? "Microsoft sign-in response was invalid");
-
-            using var http = new HttpClient();
-            var response = await http.PostAsync("https://login.microsoftonline.com/common/oauth2/v2.0/token", Form(new()
+            while (true)
             {
-                ["client_id"] = CloudConfiguration.MicrosoftClientID, ["code"] = values["code"],
-                ["code_verifier"] = verifier, ["grant_type"] = "authorization_code",
-                ["redirect_uri"] = redirect, ["scope"] = Scope
-            }), token);
-            var data = await response.Content.ReadAsByteArrayAsync(token);
-            Ensure(response, data, "Microsoft token request failed");
-            var tokenResponse = JsonSerializer.Deserialize<TokenResponse>(data, JsonOptions.Default) ?? throw new InvalidOperationException("Microsoft returned an invalid token");
-            if (string.IsNullOrWhiteSpace(tokenResponse.RefreshToken)) throw new InvalidOperationException("Microsoft did not return an offline refresh token");
-            var temporary = new OneDriveCredential(tokenResponse.AccessToken, tokenResponse.RefreshToken, DateTimeOffset.UtcNow.AddSeconds(tokenResponse.ExpiresIn), "Microsoft account");
-            var client = new OneDriveClient(temporary);
-            var profile = await client.GetProfileAsync(token);
-            client.credential = temporary with { AccountLabel = profile }; client.Save();
-            return client;
+                await Task.Delay(TimeSpan.FromSeconds(Math.Max(3, deviceCode.Interval)), cancellation.Token);
+                var response = await http.PostAsync("https://login.microsoftonline.com/common/oauth2/v2.0/token", Form(new()
+                {
+                    ["client_id"] = CloudConfiguration.MicrosoftClientID, ["device_code"] = deviceCode.DeviceCode,
+                    ["grant_type"] = "urn:ietf:params:oauth:grant-type:device_code"
+                }), cancellation.Token);
+                var data = await response.Content.ReadAsByteArrayAsync(cancellation.Token);
+                if (!response.IsSuccessStatusCode)
+                {
+                    var pending = JsonDocument.Parse(data).RootElement.TryGetProperty("error", out var error) ? error.GetString() : null;
+                    if (pending is "authorization_pending" or "slow_down") continue;
+                    Ensure(response, data, "Microsoft sign-in failed");
+                }
+                var tokenResponse = JsonSerializer.Deserialize<TokenResponse>(data, JsonOptions.Default) ?? throw new InvalidOperationException("Microsoft returned an invalid token");
+                if (string.IsNullOrWhiteSpace(tokenResponse.RefreshToken)) throw new InvalidOperationException("Microsoft did not return an offline refresh token");
+                var temporary = new OneDriveCredential(tokenResponse.AccessToken, tokenResponse.RefreshToken, DateTimeOffset.UtcNow.AddSeconds(tokenResponse.ExpiresIn), "Microsoft account");
+                var client = new OneDriveClient(temporary);
+                var profile = await client.GetProfileAsync(cancellation.Token);
+                client.credential = temporary with { AccountLabel = profile }; client.Save();
+                form.CloseAfterSuccess();
+                return client;
+            }
         }
-        finally { listener.Stop(); }
+        catch { form.CloseAfterFailure(); throw; }
     }
 
     public static OneDriveClient FromStore() => new(Load() ?? throw new InvalidOperationException("Sign in to OneDrive in Settings first"));
@@ -645,6 +828,7 @@ internal sealed class OneDriveClient : IPrivateCloudDrive
     private static string? ApiError(byte[] data) { try { var root = JsonDocument.Parse(data).RootElement; if (root.TryGetProperty("error_description", out var description)) return description.GetString(); if (root.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object && error.TryGetProperty("message", out var message)) return message.GetString(); } catch { } return null; }
 
     private sealed record TokenResponse([property: JsonPropertyName("access_token")] string AccessToken, [property: JsonPropertyName("refresh_token")] string? RefreshToken, [property: JsonPropertyName("expires_in")] int ExpiresIn);
+    private sealed record DeviceCodeResponse([property: JsonPropertyName("device_code")] string DeviceCode, [property: JsonPropertyName("user_code")] string UserCode, [property: JsonPropertyName("verification_uri")] string VerificationUri, [property: JsonPropertyName("verification_uri_complete")] string? VerificationUriComplete, [property: JsonPropertyName("interval")] int Interval);
     private sealed record OneDriveFile([property: JsonPropertyName("id")] string ID, [property: JsonPropertyName("name")] string Name, [property: JsonPropertyName("lastModifiedDateTime")] DateTimeOffset? LastModifiedDateTime);
     private sealed record OneDriveFileList([property: JsonPropertyName("value")] List<OneDriveFile> Value);
     private sealed record MicrosoftProfile(

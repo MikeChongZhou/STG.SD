@@ -50,7 +50,13 @@ public actor CloudFolderSync {
         }
 
         let existingUploadCursor = try repository.incrementalUploadCursor(syncTarget: uploadCursorTarget)
+        let isInitialCloudRestore = existingUploadCursor == nil
         func changedSinceLastImport(_ file: URL, remoteID: String, utcDate: String) throws -> Bool {
+            if isInitialCloudRestore {
+                if remoteID == deviceID { return true }
+                return try repository.documentIfPresent(deviceID: remoteID, utcDate: utcDate) == nil
+            }
+            if remoteID == deviceID { return false }
             guard let modifiedAt = try file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate else { return true }
             guard let importedAt = try repository.remoteBitmapFileModifiedAt(remoteDeviceID: remoteID, utcDate: utcDate) else { return true }
             return modifiedAt > importedAt
@@ -97,7 +103,39 @@ public actor CloudFolderSync {
             }
         }
 
-        let uploadKeys = try STGTime.incrementalUploadUTCDateKeys(cursor: existingUploadCursor, now: now, initialDays: days)
+        let currentWeek = Self.weekStart(containing: STGTime.utcDateKey(for: now))!
+        let archiveCutoff = Self.weekArchiveCutoff(previousWeekStart: currentWeek)
+        var reconciledArchives = 0
+        var archiveDownloads = 0
+        var archivedWeeks = Set<String>()
+        if isInitialCloudRestore {
+            let history = folder.appendingPathComponent("history", isDirectory: true)
+            let archives = try [sync, history].flatMap { try FileManager.default.contentsOfDirectory(at: $0, includingPropertiesForKeys: nil) }
+            for file in archives where file.lastPathComponent.contains("_week_") && file.pathExtension == "json" {
+                let archive = try BitmapArchiveDocument.decodeCloud(Data(contentsOf: file))
+                guard file.lastPathComponent.hasPrefix("\(archive.deviceID)_week_") else { throw STGError.invalidDocument("iCloud weekly archive identity mismatch") }
+                _ = try repository.importBitmapArchive(archive, mergeSameDevice: true)
+                archiveDownloads += 1
+                if archive.deviceID == deviceID { archivedWeeks.insert(archive.periodStart) }
+            }
+            let dates = try repository.bitmapUTCDates(deviceID: deviceID)
+            let weeks = Set(dates.compactMap(Self.weekStart(containing:)).filter { $0 < currentWeek })
+            for week in weeks.sorted() where archivedWeeks.contains(week) || week < archiveCutoff {
+                guard let end = Self.weekEnd(fromStart: week) else { continue }
+                let name = "\(deviceID)_week_\(week)_\(end).json"
+                let root = sync.appendingPathComponent(name), old = history.appendingPathComponent(name)
+                let destination = FileManager.default.fileExists(atPath: root.path) ? root : old
+                let archive = try repository.bitmapArchive(deviceID: deviceID, kind: "week", from: week, through: end)
+                try atomicWrite(encoder.encode(archive), to: destination)
+                archivedWeeks.insert(week); reconciledArchives += 1
+            }
+        }
+        let uploadKeys = try (isInitialCloudRestore
+            ? repository.bitmapUTCDates(deviceID: deviceID).filter { date in
+                guard let week = Self.weekStart(containing: date) else { return false }
+                return !archivedWeeks.contains(week) && week >= archiveCutoff
+            }
+            : STGTime.incrementalUploadUTCDateKeys(cursor: existingUploadCursor, now: now, initialDays: days))
         let uploadItems = try uploadKeys.compactMap { key -> (String, BitmapDocument)? in
             guard let document = try repository.documentIfPresent(deviceID: deviceID, utcDate: key) else { return nil }
             return (key, document)
@@ -106,13 +144,38 @@ public actor CloudFolderSync {
         for (index, item) in uploadItems.enumerated() {
             let (key, document) = item
             await progress?("Uploading local changes — \(index + 1) of \(uploadItems.count)…")
-            try atomicWrite(encoder.encode(document), to: sync.appendingPathComponent("\(deviceID)_bitmap_\(key).json"))
-            try repository.saveIncrementalUploadCursor(syncTarget: uploadCursorTarget, latestUTCDate: key)
+            let destination = sync.appendingPathComponent("\(deviceID)_bitmap_\(key).json")
+            try atomicWrite(encoder.encode(document), to: destination)
+            if !isInitialCloudRestore { try repository.saveIncrementalUploadCursor(syncTarget: uploadCursorTarget, latestUTCDate: key) }
             result.uploadCursor = key
             result.uploaded += 1
         }
-        try repository.completeIncrementalSync(deviceID: deviceID, at: now)
+        if isInitialCloudRestore && result.warnings.isEmpty && (result.uploadCursor != nil || reconciledArchives > 0 || archiveDownloads > 0 || result.downloaded > 0) {
+            let cursor = result.uploadCursor ?? STGTime.utcDateKey(for: now)
+            try repository.saveIncrementalUploadCursor(syncTarget: uploadCursorTarget, latestUTCDate: cursor)
+            result.uploadCursor = cursor
+        }
+        if isInitialCloudRestore && !result.warnings.isEmpty { result.uploadCursor = nil }
+        if result.warnings.isEmpty { try repository.completeIncrementalSync(deviceID: deviceID, at: now) }
         return result
+    }
+
+    public func alignAllData(folder: URL, progress: SyncProgressHandler? = nil) async throws -> CloudAlignmentResult {
+        let sync = folder.appendingPathComponent("sync", isDirectory: true)
+        let history = folder.appendingPathComponent("history", isDirectory: true)
+        try FileManager.default.createDirectory(at: sync, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: history, withIntermediateDirectories: true)
+        let files = try [sync, history].flatMap { directory in
+            try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil).map {
+                CloudAlignmentFile(id: $0.path, name: $0.lastPathComponent, folder: directory.lastPathComponent)
+            }
+        }
+        return try await CloudDataAlignment.reconcile(repository: repository, localDeviceID: deviceID, files: files,
+            download: { try Data(contentsOf: URL(fileURLWithPath: $0.id)) },
+            upload: { folderName, name, data, _ in
+                let destination = folder.appendingPathComponent(folderName, isDirectory: true).appendingPathComponent(name)
+                try data.write(to: destination, options: .atomic)
+            }, progress: progress)
     }
 
     public func quickUpload(folder: URL, utcDates: Set<String>) throws -> Int {
@@ -189,15 +252,23 @@ public actor CloudFolderSync {
         var uploaded = 0, deleted = 0
         for weekStart in weekStarts {
             guard let weekEnd = Self.weekEnd(fromStart: weekStart) else { continue }
-            let archive = try repository.bitmapArchive(deviceID: deviceID, kind: "week", from: weekStart, through: weekEnd)
             let weekName = "\(deviceID)_week_\(weekStart)_\(weekEnd).json"
+            let existing = sync.appendingPathComponent(weekName)
+            let archived = history.appendingPathComponent(weekName)
+            let remoteURL = FileManager.default.fileExists(atPath: archived.path) && !FileManager.default.fileExists(atPath: existing.path) ? archived : existing
+            for cloudURL in [existing, archived] where FileManager.default.fileExists(atPath: cloudURL.path) {
+                let remote = try BitmapArchiveDocument.decodeCloud(Data(contentsOf: cloudURL))
+                guard remote.deviceID == deviceID, remote.kind == "week" else { throw STGError.invalidDocument("iCloud weekly archive identity mismatch") }
+                _ = try repository.importBitmapArchive(remote, mergeSameDevice: true)
+            }
+            let archive = try repository.bitmapArchive(deviceID: deviceID, kind: "week", from: weekStart, through: weekEnd)
             let data = try encoder.encode(archive)
-            try atomicWrite(data, to: sync.appendingPathComponent(weekName)); uploaded += 1
+            try atomicWrite(data, to: remoteURL); uploaded += 1
             for daily in dailyFiles where daily.weekStart == weekStart {
                 try FileManager.default.removeItem(at: daily.url); deleted += 1
             }
             let checksum = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-            try repository.recordArchive(id: weekName, kind: "week", from: weekStart, through: weekEnd, cloudPath: "sync/\(weekName)", checksum: checksum, uploadedAt: .now, status: "uploaded")
+            try repository.recordArchive(id: weekName, kind: "week", from: weekStart, through: weekEnd, cloudPath: "\(remoteURL.deletingLastPathComponent().lastPathComponent)/\(weekName)", checksum: checksum, uploadedAt: .now, status: "uploaded")
         }
         let archiveCutoff = Self.weekArchiveCutoff(previousWeekStart: previousWeekStart)
         var moved = 0

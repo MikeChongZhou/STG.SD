@@ -303,6 +303,23 @@ public final class BitmapRepository: @unchecked Sendable {
         }
     }
 
+    /// Restores a weekly archive received from another device. Archives are
+    /// authoritative copies of daily bitmap rows after weekly maintenance has
+    /// removed the individual day files from the cloud sync folder.
+    public func importBitmapArchive(_ archive: BitmapArchiveDocument, mergeSameDevice: Bool) throws -> Int {
+        guard archive.kind == "week" || archive.kind == "year" else { throw STGError.invalidDocument("unsupported bitmap archive kind") }
+        var imported = 0
+        for document in archive.rows {
+            guard document.deviceID == archive.deviceID else { throw STGError.invalidDocument("bitmap archive device mismatch") }
+            let bitmap = try document.bitmap()
+            if mergeSameDevice { try mergeBitmap(deviceID: document.deviceID, utcDate: document.utcDate, bitmap: bitmap, updatedAt: document.updatedAt) }
+            else { try upsertIfNewer(deviceID: document.deviceID, utcDate: document.utcDate, bitmap: bitmap, updatedAt: document.updatedAt) }
+            _ = try rebuildAllDevices(utcDate: document.utcDate)
+            imported += 1
+        }
+        return imported
+    }
+
     public func localDayMinutes(deviceID: String, instant: Date, timeZoneID: String) throws -> Int {
         try localDayBitmap(deviceID: deviceID, instant: instant, timeZoneID: timeZoneID).lazy.filter { $0 }.count
     }
@@ -911,6 +928,18 @@ public final class BitmapRepository: @unchecked Sendable {
             return result
         }
         return BitmapArchiveDocument(kind: kind, deviceID: deviceID, periodStart: start, periodEnd: end, rows: rows, createdAt: createdAt)
+    }
+
+    public func bitmapUTCDates(deviceID: String) throws -> [String] {
+        try queue.sync {
+            var statement: OpaquePointer?
+            guard sqlite3_prepare_v2(database, "SELECT utc_date FROM bitmap WHERE device_id=? ORDER BY utc_date", -1, &statement, nil) == SQLITE_OK else { throw error() }
+            defer { sqlite3_finalize(statement) }
+            bind(deviceID, at: 1, to: statement)
+            var dates: [String] = []
+            while sqlite3_step(statement) == SQLITE_ROW, let text = sqlite3_column_text(statement, 0) { dates.append(String(cString: text)) }
+            return dates
+        }
     }
 
     public func deleteBitmapRows(deviceID: String, from start: String, through end: String) throws {

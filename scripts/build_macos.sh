@@ -25,23 +25,15 @@ for LANGUAGE_DIR in "$ROOT/macos/Sources/STGMac/Resources"/*.lproj; do
     cp "$LANGUAGE_DIR/Localizable.strings" "$APP/Contents/Resources/$LANGUAGE_NAME/Localizable.strings"
 done
 STG_SIGN_IDENTITY_VALUE=${STG_SIGN_IDENTITY:-"-"}
-if [ -n "${STG_ENABLE_ICLOUD_ENTITLEMENTS+x}" ]; then
-    STG_ENABLE_ICLOUD_ENTITLEMENTS_VALUE=$STG_ENABLE_ICLOUD_ENTITLEMENTS
-elif [ "$STG_SIGN_IDENTITY_VALUE" = "-" ]; then
-    # Restricted iCloud entitlements on an ad-hoc signature make launchd reject
-    # the executable even when `codesign --verify` reports success.
-    STG_ENABLE_ICLOUD_ENTITLEMENTS_VALUE=0
-else
-    STG_ENABLE_ICLOUD_ENTITLEMENTS_VALUE=1
-fi
-if [ "$STG_ENABLE_ICLOUD_ENTITLEMENTS_VALUE" = "0" ]; then
-    if [ "$STG_SIGN_IDENTITY_VALUE" = "-" ]; then
-        codesign --force --sign - "$APP"
-    else
-        codesign --force --options runtime --timestamp --sign "$STG_SIGN_IDENTITY_VALUE" "$APP"
-    fi
-elif [ "$STG_SIGN_IDENTITY_VALUE" = "-" ]; then
-    codesign --force --sign - --entitlements "$ROOT/macos/STGMac.entitlements" "$APP"
+# Local and distribution builds must both remain sandboxed. Removing this
+# entitlement gives the same bundle identifier a second Application Support
+# directory, which splits the device history and lets the two copies overwrite
+# the same cloud files.
+if [ "$STG_SIGN_IDENTITY_VALUE" = "-" ]; then
+    # Keep the sandbox so this build uses the production data container. iCloud
+    # capabilities need a provisioned Apple signature, so omit only those from
+    # an ad-hoc build; OneDrive and Google Drive remain available.
+    codesign --force --sign - --entitlements "$ROOT/macos/STGMac.local.entitlements" "$APP"
 else
     codesign --force --options runtime --timestamp --sign "$STG_SIGN_IDENTITY_VALUE" --entitlements "$ROOT/macos/STGMac.entitlements" "$APP"
 fi

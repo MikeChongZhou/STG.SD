@@ -32,7 +32,6 @@ public actor OneDriveSync {
         var result = Result()
         let uploadTarget = "oneDrive"
         let existingUploadCursor = try repository.incrementalUploadCursor(syncTarget: uploadTarget)
-        let lastSync = try repository.lastIncrementalSync(deviceID: deviceID)
         credential = try await validCredential()
         let knownDevices = Dictionary(uniqueKeysWithValues: try repository.deviceRecords().map { ($0.deviceID, $0) })
         for file in files where file.name.hasSuffix(".json") {
@@ -50,30 +49,36 @@ public actor OneDriveSync {
                 try repository.upsertDevice(record)
             } catch { result.warnings.append("settings_import_failed; provider=oneDrive; file=\(file.name); \(DiagnosticLog.describe(error))"); continue }
         }
-        let downloadIDs = result.discoveredDeviceIDs.filter {
-            $0 != "alldevices" && ($0 != deviceID || existingUploadCursor == nil)
+        let isInitialCloudRestore = existingUploadCursor == nil
+        func changedSinceLastImport(_ file: OneDriveFile, remoteID: String, utcDate: String) throws -> Bool {
+            if isInitialCloudRestore {
+                if remoteID == deviceID { return true }
+                return try repository.documentIfPresent(deviceID: remoteID, utcDate: utcDate) == nil
+            }
+            if remoteID == deviceID { return false }
+            guard let modifiedAt = file.modifiedAt else { return true }
+            guard let importedAt = try repository.remoteBitmapFileModifiedAt(remoteDeviceID: remoteID, utcDate: utcDate) else { return true }
+            return modifiedAt > importedAt
         }
-        let totalDownloads = try downloadIDs.reduce(into: 0) { total, remoteID in
-            let restoringThisDevice = remoteID == deviceID
-            let cursor = remoteID == deviceID ? nil : try repository.incrementalDownloadCursor(remoteDeviceID: remoteID)
+        // Import state belongs to a cloud file, not to the whole sync run. A
+        // later scan can therefore restore an older day whose individual file
+        // changed after its first scan.
+        let downloadIDs = result.discoveredDeviceIDs.filter { $0 != "alldevices" }
+        let totalDownloads = downloadIDs.reduce(into: 0) { total, remoteID in
             total += files.filter { file in
                 guard CloudFolderSync.deviceID(from: file.name) == remoteID,
                       let date = CloudFolderSync.bitmapUTCDate(from: file.name),
-                      restoringThisDevice || lastSync == nil || file.modifiedAt == nil || file.modifiedAt! > lastSync! else { return false }
-                return cursor == nil || date >= cursor!
+                      ((try? changedSinceLastImport(file, remoteID: remoteID, utcDate: date)) ?? true) else { return false }
+                return true
             }.count
         }
         if totalDownloads == 0 { await progress?("Downloading device data — nothing new…") }
         for remoteID in downloadIDs {
             let restoringThisDevice = remoteID == deviceID
-            let cursor: String?
-            if restoringThisDevice { cursor = nil }
-            else { cursor = try repository.incrementalDownloadCursor(remoteDeviceID: remoteID) }
             let candidates = files.compactMap { file -> (OneDriveFile, String)? in
                 guard CloudFolderSync.deviceID(from: file.name) == remoteID,
                       let date = CloudFolderSync.bitmapUTCDate(from: file.name),
-                      cursor == nil || date >= cursor!,
-                      restoringThisDevice || lastSync == nil || file.modifiedAt == nil || file.modifiedAt! > lastSync! else { return nil }
+                      ((try? changedSinceLastImport(file, remoteID: remoteID, utcDate: date)) ?? true) else { return nil }
                 return (file, date)
             }.sorted { $0.1 < $1.1 }
             for (file, expectedDate) in candidates {
@@ -91,11 +96,46 @@ public actor OneDriveSync {
                         try repository.saveIncrementalDownloadCursor(remoteDeviceID: remoteID, latestUTCDate: expectedDate)
                         result.downloadCursors[remoteID] = expectedDate
                     }
+                    try repository.saveRemoteBitmapFileModifiedAt(remoteDeviceID: remoteID, utcDate: expectedDate, modifiedAt: file.modifiedAt ?? document.updatedAt)
                     result.downloaded += 1
                 } catch { result.warnings.append("bitmap_import_failed; provider=oneDrive; device=\(remoteID.prefix(8)); utc_date=\(expectedDate); file=\(file.name); cursor_not_advanced=true; \(DiagnosticLog.describe(error))"); break }
             }
         }
-        let uploadKeys = try STGTime.incrementalUploadUTCDateKeys(cursor: existingUploadCursor, now: now, initialDays: days)
+        let currentWeek = CloudFolderSync.weekStart(containing: STGTime.utcDateKey(for: now))!
+        let archiveCutoff = CloudFolderSync.weekArchiveCutoff(previousWeekStart: currentWeek)
+        var archivedWeeks = Set<String>()
+        var archiveUploads = 0
+        var archiveDownloads = 0
+        if isInitialCloudRestore {
+            let historyID = try await client.ensureFolder(name: "history", using: credential)
+            let historyFiles = try await client.listFiles(folderID: historyID, using: credential)
+            for file in files + historyFiles where file.name.contains("_week_") && file.name.hasSuffix(".json") {
+                let archive = try BitmapArchiveDocument.decodeCloud(try await client.download(fileID: file.id, using: credential))
+                guard file.name.hasPrefix("\(archive.deviceID)_week_") else { throw STGError.invalidDocument("OneDrive weekly archive identity mismatch") }
+                _ = try repository.importBitmapArchive(archive, mergeSameDevice: true)
+                archiveDownloads += 1
+                if archive.deviceID == deviceID { archivedWeeks.insert(archive.periodStart) }
+            }
+            let weeks = Set(try repository.bitmapUTCDates(deviceID: deviceID).compactMap(CloudFolderSync.weekStart(containing:)).filter { $0 < currentWeek })
+            for week in weeks.sorted() where archivedWeeks.contains(week) || week < archiveCutoff {
+                guard let end = CloudFolderSync.weekEnd(fromStart: week) else { continue }
+                let name = "\(deviceID)_week_\(week)_\(end).json"
+                let rootFile = files.first { $0.name == name }
+                let historyFile = historyFiles.first { $0.name == name }
+                let archive = try repository.bitmapArchive(deviceID: deviceID, kind: "week", from: week, through: end)
+                let data = try encoder.encode(archive)
+                if rootFile != nil { try await client.upload(name: name, data: data, using: credential) }
+                else if historyFile != nil || week < archiveCutoff { try await client.upload(name: name, data: data, folderID: historyID, using: credential) }
+                else { try await client.upload(name: name, data: data, using: credential) }
+                archivedWeeks.insert(week); archiveUploads += 1
+            }
+        }
+        let uploadKeys = try (isInitialCloudRestore
+            ? repository.bitmapUTCDates(deviceID: deviceID).filter { date in
+                guard let week = CloudFolderSync.weekStart(containing: date) else { return false }
+                return !archivedWeeks.contains(week) && week >= archiveCutoff
+            }
+            : STGTime.incrementalUploadUTCDateKeys(cursor: existingUploadCursor, now: now, initialDays: days))
         let uploadItems = try uploadKeys.compactMap { key -> (String, BitmapDocument)? in
             guard let document = try repository.documentIfPresent(deviceID: deviceID, utcDate: key) else { return nil }
             return (key, document)
@@ -105,13 +145,34 @@ public actor OneDriveSync {
         for (index, item) in uploadItems.enumerated() {
             let (key, document) = item
             await progress?("Uploading local changes — \(index + 1) of \(uploadItems.count)…")
-            try await client.upload(name: "\(deviceID)_bitmap_\(key).json", data: encoder.encode(document), using: credential)
-            try repository.saveIncrementalUploadCursor(syncTarget: uploadTarget, latestUTCDate: key)
+            let name = "\(deviceID)_bitmap_\(key).json"
+            try await client.upload(name: name, data: encoder.encode(document), using: credential)
+            if !isInitialCloudRestore { try repository.saveIncrementalUploadCursor(syncTarget: uploadTarget, latestUTCDate: key) }
             result.uploadCursor = key
             result.uploaded += 1
         }
-        try repository.completeIncrementalSync(deviceID: deviceID, at: now)
+        if isInitialCloudRestore && result.warnings.isEmpty && (result.uploadCursor != nil || archiveUploads > 0 || archiveDownloads > 0 || result.downloaded > 0) {
+            let cursor = result.uploadCursor ?? STGTime.utcDateKey(for: now)
+            try repository.saveIncrementalUploadCursor(syncTarget: uploadTarget, latestUTCDate: cursor)
+            result.uploadCursor = cursor
+        }
+        if isInitialCloudRestore && !result.warnings.isEmpty { result.uploadCursor = nil }
+        if result.warnings.isEmpty { try repository.completeIncrementalSync(deviceID: deviceID, at: now) }
         return result
+    }
+
+    public func alignAllData(progress: SyncProgressHandler? = nil) async throws -> CloudAlignmentResult {
+        let credential = try await validCredential()
+        let historyID = try await client.ensureFolder(name: "history", using: credential)
+        let root = try await client.listFiles(using: credential).map { CloudAlignmentFile(id: $0.id, name: $0.name, folder: "sync") }
+        let history = try await client.listFiles(folderID: historyID, using: credential).map { CloudAlignmentFile(id: $0.id, name: $0.name, folder: "history") }
+        return try await CloudDataAlignment.reconcile(repository: repository, localDeviceID: deviceID, files: root + history,
+            download: { file in let credential = try await self.validCredential(); return try await self.client.download(fileID: file.id, using: credential) },
+            upload: { folder, name, data, _ in
+                let credential = try await self.validCredential()
+                if folder == "history" { try await self.client.upload(name: name, data: data, folderID: historyID, using: credential) }
+                else { try await self.client.upload(name: name, data: data, using: credential) }
+            }, progress: progress)
     }
 
     public func quickBidirectional(downloadUTCDateKeys: Set<String>, uploadUTCDateKeys: Set<String>) async throws -> QuickSyncResult {
@@ -172,14 +233,25 @@ public actor OneDriveSync {
             return (file, date, weekStart)
         }
         let weekStarts = Set(dailyFiles.map(\.weekStart)).union([previousWeekStart]).sorted()
+        let historyFiles = try await client.listFiles(folderID: historyID, using: credential)
         var uploaded = 0, deleted = 0
         for weekStart in weekStarts {
             guard let weekEnd = CloudFolderSync.weekEnd(fromStart: weekStart) else { continue }
+            let name = "\(deviceID)_week_\(weekStart)_\(weekEnd).json"
+            let rootFile = files.first { $0.name == name }
+            let historyFile = historyFiles.first { $0.name == name }
+            for existing in [rootFile, historyFile].compactMap({ $0 }) {
+                let remote = try BitmapArchiveDocument.decodeCloud(try await client.download(fileID: existing.id, using: credential))
+                guard remote.deviceID == deviceID, remote.kind == "week" else { throw STGError.invalidDocument("OneDrive weekly archive identity mismatch") }
+                _ = try repository.importBitmapArchive(remote, mergeSameDevice: true)
+            }
             let archive = try repository.bitmapArchive(deviceID: deviceID, kind: "week", from: weekStart, through: weekEnd)
-            let name = "\(deviceID)_week_\(weekStart)_\(weekEnd).json", data = try encoder.encode(archive)
-            try await client.upload(name: name, data: data, using: credential); uploaded += 1
+            let data = try encoder.encode(archive)
+            if rootFile == nil && historyFile != nil { try await client.upload(name: name, data: data, folderID: historyID, using: credential) }
+            else { try await client.upload(name: name, data: data, using: credential) }
+            uploaded += 1
             for daily in dailyFiles where daily.weekStart == weekStart { try await client.delete(fileID: daily.file.id, using: credential); deleted += 1 }
-            try repository.recordArchive(id: name, kind: "week", from: weekStart, through: weekEnd, cloudPath: "sync/\(name)", checksum: SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined(), uploadedAt: .now, status: "uploaded")
+            try repository.recordArchive(id: name, kind: "week", from: weekStart, through: weekEnd, cloudPath: "\(rootFile == nil && historyFile != nil ? "history" : "sync")/\(name)", checksum: SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined(), uploadedAt: .now, status: "uploaded")
         }
         let archiveCutoff = CloudFolderSync.weekArchiveCutoff(previousWeekStart: previousWeekStart)
         var moved = 0

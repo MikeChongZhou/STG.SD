@@ -253,6 +253,40 @@ final class AppModel: ObservableObject {
         } catch { syncStatus = "iCloud Drive sync failed: \(error.localizedDescription)"; diagnosticLog.record("sync failed; stage=incremental; provider=iCloudDrive; local_device=\(settings.deviceID.prefix(8)); \(DiagnosticLog.describe(error))", category: "sync") }
     }
 
+    func alignLocalAndCloudData() async {
+        guard let repository else { syncStatus = "Database unavailable"; return }
+        guard !syncInProgress else { syncStatus = "A sync is already running"; return }
+        let provider = settings.syncProvider ?? .none
+        guard provider != .none, isConnected(provider) else { syncStatus = "Connect a private cloud first"; return }
+        syncInProgress = true; defer { syncInProgress = false }
+        let progress: SyncProgressHandler = { [weak self] message in self?.syncStatus = message }
+        do {
+            let result: CloudAlignmentResult
+            switch provider {
+            case .oneDrive:
+                guard let clientID = oneDriveClientID else { syncStatus = "OneDrive Client ID is unavailable"; return }
+                result = try await OneDriveSync(repository: repository, deviceID: settings.deviceID, clientID: clientID, credentialService: oneDriveCredentialService).alignAllData(progress: progress)
+            case .googleDrive:
+                guard let clientID = googleDriveClientID else { syncStatus = "Google Drive Client ID is unavailable"; return }
+                result = try await GoogleDriveSync(repository: repository, deviceID: settings.deviceID, clientID: clientID, clientSecret: googleDriveClientSecret ?? "", credentialService: googleDriveCredentialService).alignAllData(progress: progress)
+            case .iCloudDrive:
+                guard let folder = await Task.detached(priority: .utility, operation: { Self.iCloudFolder(containerID: self.iCloudContainer) }).value else { syncStatus = "iCloud Drive unavailable"; return }
+                result = try await CloudFolderSync(repository: repository, deviceID: settings.deviceID).alignAllData(folder: folder, progress: progress)
+            case .none: return
+            }
+            let id = settings.deviceID, name = settings.deviceName, kind = settings.deviceKind, limit = settings.dailyPlanMinutes, zone = currentReportTimeZone
+            _ = try await Task.detached(priority: .utility) {
+                try repository.refreshStatistics(localDeviceID: id, localDeviceName: name, localDeviceKind: kind, dailyLimitMinutes: limit, timeZoneID: zone)
+            }.value
+            await refresh()
+            syncStatus = "Data aligned · \(result.downloaded) downloaded, \(result.uploaded) uploaded"
+            diagnosticLog.record("full alignment complete; provider=\(provider.rawValue); downloaded=\(result.downloaded); uploaded=\(result.uploaded); rebuilt_dates=\(result.rebuiltDates)", category: "sync")
+        } catch {
+            syncStatus = "Data alignment failed: \(error.localizedDescription)"
+            diagnosticLog.record("full alignment failed; provider=\(provider.rawValue); \(DiagnosticLog.describe(error))", category: "sync")
+        }
+    }
+
     private func quickUpload(trigger: String) async {
         guard let repository else { return }
         guard !quickUploadInProgress else { diagnosticLog.record("quick upload coalesced; trigger=\(trigger)", category: "sync"); return }

@@ -83,7 +83,11 @@ internal sealed class TrayAppContext : IDisposable
     public void ShowReport() { var window = new ReportForm(this) { Owner = VisibleDashboard }; window.Show(); }
     public void ShowSettings() { var window = new SettingsForm(this) { Owner = VisibleDashboard }; window.ShowDialog(); }
     public void ShowTracking() { var window = new TrackingForm(this) { Owner = VisibleDashboard }; window.Show(); }
-    public void ShowDailyCheckIn(string text, bool submit) => new DailyCheckInWindow(text, submit, message => log.Record("daily-checkin", message)) { Owner = VisibleDashboard }.Show();
+    public void ShowDailyCheckIn(bool submit)
+    {
+        var content = ChromeDailyCheckIn.ContentFor(DateOnly.FromDateTime(DateTime.Now));
+        _ = ChromeDailyCheckIn.OpenAsync(content, submit, message => log.Record("daily-checkin", message));
+    }
     public void ShowAbout() { var window = new AboutForm { Owner = VisibleDashboard }; window.ShowDialog(); }
     private void ShowOnboarding() { if (!Settings.OnboardingComplete) new OnboardingForm(this).ShowDialog(); }
     private DashboardForm? VisibleDashboard => dashboard?.IsVisible == true ? dashboard : null;
@@ -130,7 +134,7 @@ internal sealed class TrayAppContext : IDisposable
         {
             IPrivateCloudDrive drive = Settings.SyncProvider switch { SyncProvider.ICloudDrive => ICloudDriveClient.Connect(), SyncProvider.OneDrive => OneDriveClient.FromStore(), _ => GoogleDriveClient.FromStore() };
             var result = await new PrivateCloudSync(repository, Settings, drive).IncrementalAsync(cancellation.Token, ReportSyncProgress);
-            repository.CompleteIncrementalSync(Settings.DeviceID);
+            if (result.Warnings.Count == 0) repository.CompleteIncrementalSync(Settings.DeviceID);
             var discovered = string.Join(',', result.Devices.Select(value => value[..Math.Min(8, value.Length)]).Order());
             var completionStatus = $"Synced · {result.Uploaded} activity files uploaded, {result.Downloaded} downloaded";
             SyncStatus = completionStatus;
@@ -143,6 +147,29 @@ internal sealed class TrayAppContext : IDisposable
         catch (OperationCanceledException) when (exitInProgress) { log.Record("sync", "active incremental sync cancelled; reason=application_quit"); }
         catch (Exception error) { SyncStatus = $"Sync failed: {error.Message}"; log.Record("sync", $"sync failed; provider={Settings.SyncProvider}; {DiagnosticLog.Describe(error)}"); }
         finally { if (ReferenceEquals(activeSyncCancellation, cancellation)) activeSyncCancellation = null; syncInProgress = false; if (!disposed) Changed(); }
+    }
+
+    public async Task AlignAllDataAsync()
+    {
+        if (syncInProgress) { SyncStatus = "A sync is already running"; Changed(); return; }
+        if (Settings.SyncProvider == SyncProvider.None || !ProviderSignedIn(Settings.SyncProvider)) { SyncStatus = "Connect a private cloud first"; Changed(); return; }
+        syncInProgress = true; SyncStatus = "Scanning all cloud data…"; Changed();
+        using var cancellation = new CancellationTokenSource(); activeSyncCancellation = cancellation;
+        try
+        {
+            IPrivateCloudDrive drive = Settings.SyncProvider switch { SyncProvider.ICloudDrive => ICloudDriveClient.Connect(), SyncProvider.OneDrive => OneDriveClient.FromStore(), _ => GoogleDriveClient.FromStore() };
+            var result = await new PrivateCloudSync(repository, Settings, drive).AlignAllDataAsync(cancellation.Token, ReportSyncProgress);
+            repository.CompleteIncrementalSync(Settings.DeviceID);
+            RefreshTotals();
+            SyncStatus = $"Data aligned · {result.Downloaded} downloaded, {result.Uploaded} uploaded";
+            log.Record("sync", $"full alignment complete; provider={Settings.SyncProvider}; downloaded={result.Downloaded}; uploaded={result.Uploaded}");
+        }
+        catch (Exception error)
+        {
+            SyncStatus = "Data alignment failed: " + error.Message;
+            log.Record("sync", $"full alignment failed; provider={Settings.SyncProvider}; {DiagnosticLog.Describe(error)}");
+        }
+        finally { activeSyncCancellation = null; syncInProgress = false; if (!disposed) Changed(); }
     }
 
     private void ReportSyncProgress(string message)
@@ -257,8 +284,9 @@ internal sealed class TrayAppContext : IDisposable
         var label = today.ToString("yyyy-MM-dd");
         if (Settings.LastDailyCheckInLocalDate == label) { log.Record("daily-checkin", $"skipped; reason=already_attempted; local_date={label}"); return; }
         Settings.LastDailyCheckInLocalDate = label; settingsStore.Save(Settings);
-        log.Record("daily-checkin", $"started; local_date={label}; source=first_reminder; text_length={Settings.DailyCheckInText.Length}");
-        ShowDailyCheckIn(Settings.DailyCheckInText, submit: true);
+        var content = ChromeDailyCheckIn.ContentFor(today);
+        log.Record("daily-checkin", $"started; local_date={label}; source=first_reminder; mood={content.Mood}; note_length={content.Note.Length}");
+        _ = ChromeDailyCheckIn.OpenAsync(content, submit: true, message => log.Record("daily-checkin", message));
     }
 
     private void RefreshTotals()

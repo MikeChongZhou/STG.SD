@@ -281,6 +281,12 @@ class BitmapDatabase(context: Context) : SQLiteOpenHelper(prepareDatabase(contex
         return result
     }
 
+    @Synchronized fun bitmapDates(deviceID: String): List<java.time.LocalDate> {
+        val result = mutableListOf<java.time.LocalDate>()
+        readableDatabase.rawQuery("SELECT utc_date FROM bitmap WHERE device_id=? ORDER BY utc_date", arrayOf(deviceID)).use { cursor -> while (cursor.moveToNext()) result += java.time.LocalDate.parse(cursor.getString(0)) }
+        return result
+    }
+
     @Synchronized fun deleteBitmapRows(deviceID: String, start: java.time.LocalDate, end: java.time.LocalDate): Int = writableDatabase.delete("bitmap", "device_id IN (?,'alldevices') AND utc_date>=? AND utc_date<=?", arrayOf(deviceID, start.toString(), end.toString()))
 
     @Synchronized fun openRouterArchive(year: Int): List<WeeklyRankingRow> {
