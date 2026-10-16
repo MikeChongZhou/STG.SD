@@ -71,8 +71,8 @@
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
                         <CheckBox x:Name="DailyCheckInBox" Content="Automatically check in to 1Point3Acres at the first daily break reminder" Margin="0,0,0,10"/>
-                        <TextBlock Text="STG opens installed Chrome and uses its existing signed-in session. It chooses today's mood and note automatically; use the button below to open the page and confirm Chrome is signed in." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,0"/>
-                        <Button Content="Open Chrome check-in…" Click="TestDailyCheckIn_Click" HorizontalAlignment="Left" Margin="0,12,0,0"/>
+                        <TextBlock Text="STG opens installed Chrome and uses its existing signed-in session. It chooses today's mood and note automatically. Preview fills both fields without submitting." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,0"/>
+                        <Button Content="Preview Chrome check-in…" Click="TestDailyCheckIn_Click" HorizontalAlignment="Left" Margin="0,12,0,0"/>
                     </StackPanel>
                 </Border>
                 <TextBlock Text="DIAGNOSTICS" Style="{StaticResource SectionTitle}" Margin="2,18,0,8"/>

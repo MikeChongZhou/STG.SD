@@ -10,9 +10,9 @@
     <Nullable>enable</Nullable>
     <AssemblyName>ScreenTimeGuardian</AssemblyName>
     <RootNamespace>ScreenTimeGuardian</RootNamespace>
-    <Version>1.2.13</Version>
-    <AssemblyVersion>1.2.13</AssemblyVersion>
-    <FileVersion>1.2.13</FileVersion>
+    <Version>1.2.15</Version>
+    <AssemblyVersion>1.2.15</AssemblyVersion>
+    <FileVersion>1.2.15</FileVersion>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\stg.ico</ApplicationIcon>
   </PropertyGroup>

@@ -33,6 +33,7 @@ final class AppModel: ObservableObject {
     private var reminderStateLocalDate = ""
     private let reminderEngine = ReminderEngine()
     private lazy var dailyCheckIn = DailyCheckInCoordinator(diagnosticLog: diagnosticLog)
+    private var dailyCheckInInFlight = false
     private var timer: Timer?
     private var observers: [NSObjectProtocol] = []
     private let sessionID: String
@@ -171,21 +172,26 @@ final class AppModel: ObservableObject {
 
     func testDailyCheckIn() {
         let content = Self.dailyCheckInContent(for: .now)
-        dailyCheckIn.checkIn(mood: content.mood, note: content.note, trigger: "settings_test")
+        dailyCheckIn.checkIn(mood: content.mood, note: content.note, trigger: "settings_preview", submit: false)
     }
 
     private func runDailyCheckInIfNeeded(now: Date) {
         guard settings.autoDailyCheckInEnabled else { return }
-        let key = "dailyCheckInLastAttemptLocalDate"
+        let key = "dailyCheckInLastSuccessLocalDate"
         let date = Self.dateLabel(now, zone: TimeZone.current.identifier)
         guard UserDefaults.standard.string(forKey: key) != date else {
-            diagnosticLog.record("skipped; reason=already_attempted; local_date=\(date)", category: "daily-checkin")
+            diagnosticLog.record("skipped; reason=already_checked_in; local_date=\(date)", category: "daily-checkin")
             return
         }
-        UserDefaults.standard.set(date, forKey: key)
+        guard !dailyCheckInInFlight else { return }
+        dailyCheckInInFlight = true
         let content = Self.dailyCheckInContent(for: now)
         diagnosticLog.record("started; local_date=\(date); source=first_reminder; mood=\(content.mood)", category: "daily-checkin")
-        dailyCheckIn.checkIn(mood: content.mood, note: content.note, trigger: "first_reminder")
+        dailyCheckIn.checkIn(mood: content.mood, note: content.note, trigger: "first_reminder") { [weak self] confirmed in
+            guard let self else { return }
+            self.dailyCheckInInFlight = false
+            if confirmed { UserDefaults.standard.set(date, forKey: key) }
+        }
     }
 
     private static func dailyCheckInContent(for date: Date) -> (mood: String, note: String) {

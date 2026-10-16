@@ -16,7 +16,7 @@ struct DashboardView: View {
                     card("Report", "All Devices: \(duration(model.allMinutes))\nThis Mac: \(duration(model.localMinutes))", "chart.bar.fill") { open(.report) }
                     card("Tracking", "Latest week · Top models\n\(model.latestTrackingTopTwo)", "waveform.path.ecg") { open(.tracking) }
                     card("Settings", "Daily Limit: \(duration(model.settings.dailyPlanMinutes))\n\(meetingStatus)", "gearshape.fill") { open(.settings) }
-                    card("About", "Version 1.2.13\nLocal + private cloud", "info.circle.fill") { open(.about) }
+                    card("About", "Version 1.2.15\nLocal + private cloud", "info.circle.fill") { open(.about) }
                 }
                 HStack {
                     Circle().fill(model.isScreenAvailable ? .green : .gray).frame(width: 8)
@@ -82,8 +82,8 @@ struct SettingsView: View {
                     GroupBox("Daily check-in") {
                         VStack(alignment: .leading, spacing: 10) {
                             Toggle("Automatically check in to 1Point3Acres at the first daily break reminder", isOn: $draft.autoDailyCheckInEnabled)
-                            Text("STG uses the Google Chrome already installed on this Mac, including its existing sign-in session. It generates a mood and note automatically. In Chrome, enable View › Developer › Allow JavaScript from Apple Events once.").font(.caption).foregroundStyle(.secondary)
-                            Button("Test automatic check-in") { model.testDailyCheckIn() }
+                            Text("STG uses the Google Chrome already installed on this Mac, including its existing sign-in session. It generates a mood and note automatically. Preview fills both fields without submitting. In Chrome, enable View › Developer › Allow JavaScript from Apple Events once.").font(.caption).foregroundStyle(.secondary)
+                            Button("Preview automatic check-in") { model.testDailyCheckIn() }
                         }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
                     }
                     GroupBox("Private cloud") {
@@ -523,7 +523,7 @@ struct AboutView: View {
             VStack(alignment: .leading, spacing: 14) {
                 HStack { Spacer(); Image(systemName: "shield.lefthalf.filled").font(.system(size: 56)).foregroundStyle(.blue); Spacer() }
                 Text("Screen Time Guardian").font(.title.bold()).frame(maxWidth: .infinity)
-                Text("Version 1.2.13\nCopyright © 2026 Fairy Phoenix Foundation.")
+                Text("Version 1.2.15\nCopyright © 2026 Fairy Phoenix Foundation.")
                 Text("This app records minute-level estimates of screen use, either on this Mac alone or across your devices, and reminds you to take breaks.")
                 Text("Privacy: Your screen-use data remains on this Mac and, if enabled, in your chosen private-cloud account. STG does not send it to the developer or anyone else.")
                 Text("Accuracy: STG estimates screen use from macOS activity signals, so its totals may differ from other system usage statistics.")

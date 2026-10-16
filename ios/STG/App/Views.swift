@@ -970,6 +970,7 @@ struct TrackingView: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Picker("Metric", selection: $metric) { ForEach(OpenRouterWeeklyMetric.allCases) { Text($0.label).tag($0) } }
+                    ScrollViewReader { chartScroll in
                     ScrollView(.horizontal, showsIndicators: false) {
                         Chart {
                             ForEach(weeklyRows) { row in
@@ -990,7 +991,7 @@ struct TrackingView: View {
                             }
                         }
                         .chartYAxis {
-                            AxisMarks(position: .leading) { value in
+                            AxisMarks(position: .trailing) { value in
                                 AxisGridLine(); AxisTick()
                                 AxisValueLabel { if let number = value.as(Double.self) { Text(trackingAxisLabel(number)) } }
                             }
@@ -998,6 +999,10 @@ struct TrackingView: View {
                         .chartPlotStyle { plotArea in plotArea.padding(.trailing, 20) }
                         .frame(minWidth: weeklyChartWidth, minHeight: (trackingCompactLayout ? 440 : 410) * weeklyChartZoom)
                         .dynamicTypeSize(...DynamicTypeSize.large)
+                        .id("weekly-chart-end")
+                    }
+                    .onAppear { chartScroll.scrollTo("weekly-chart-end", anchor: .trailing) }
+                    .onChange(of: weeklyRows.count) { _, _ in chartScroll.scrollTo("weekly-chart-end", anchor: .trailing) }
                     }
                     .simultaneousGesture(weeklyChartZoomGesture)
                     .simultaneousGesture(TapGesture(count: 2).onEnded { weeklyChartFullscreen = true })
@@ -1034,7 +1039,7 @@ struct TrackingView: View {
                     .chartYScale(domain: 0...weeklyChartMaximum, range: .plotDimension(startPadding: 24, endPadding: 44))
                     .chartLegend(.hidden)
                     .chartXAxis { AxisMarks(values: weeklyAxisWeeks) { value in AxisGridLine(); AxisTick(); AxisValueLabel { if let week = value.as(String.self) { Text(weeklyAxisLabel(week)) } } } }
-                    .chartYAxis { AxisMarks(position: .leading) { value in AxisGridLine(); AxisTick(); AxisValueLabel { if let number = value.as(Double.self) { Text(trackingAxisLabel(number)) } } } }
+                    .chartYAxis { AxisMarks(position: .trailing) { value in AxisGridLine(); AxisTick(); AxisValueLabel { if let number = value.as(Double.self) { Text(trackingAxisLabel(number)) } } } }
                 }
             }
     }
@@ -1201,7 +1206,7 @@ struct AboutView: View {
             VStack(alignment: .leading, spacing: 16) {
                 HStack { Spacer(); Image(systemName: "shield.lefthalf.filled").font(.system(size: 64)).foregroundStyle(.blue); Spacer() }
                 Text("Screen Time Guardian").font(.title.bold()).frame(maxWidth: .infinity)
-                Text("Version 1.2.13\nCopyright © 2026 Fairy Phoenix Foundation.")
+                Text("Version 1.2.15\nCopyright © 2026 Fairy Phoenix Foundation.")
                 Text("This app records minute-level estimates of screen use on this device or across all your devices, and reminds you to take breaks.")
                 Text("Privacy: Your screen-use data stays on this device and, if enabled, in the private cloud you choose. It is never sent to the app developer or any other service.")
                 Text("Accuracy: Apple does not make Screen Time data available to third-party apps. STG estimates usage from DeviceActivity data, so its totals may differ from those shown in Settings → Screen Time.")

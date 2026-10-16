@@ -21,58 +21,73 @@ internal static class ChromeDailyCheckIn
         return choices[(date.DayOfYear - 1) % choices.Length];
     }
 
-    public static Task OpenAsync(DailyCheckInContent content, bool submit, Action<string> log)
+    public static Task<bool> OpenAsync(DailyCheckInContent content, bool submit, Action<string> log)
         => Task.Run(() => OpenAndSubmit(content, submit, log));
 
-    private static void OpenAndSubmit(DailyCheckInContent content, bool submit, Action<string> log)
+    private static bool OpenAndSubmit(DailyCheckInContent content, bool submit, Action<string> log)
     {
         try
         {
             var chrome = FindChrome();
-            Process.Start(new ProcessStartInfo(chrome, $"--new-window {Url}") { UseShellExecute = true });
+            Process.Start(new ProcessStartInfo(chrome, $"--new-tab {Url}") { UseShellExecute = true });
             log($"chrome requested; submit={submit}; mood={content.Mood}; note_length={content.Note.Length}");
-            if (!submit) return;
 
             var deadline = DateTime.UtcNow.AddSeconds(30);
+            var submissionClicked = false;
             while (DateTime.UtcNow < deadline)
             {
                 var page = FindCheckInPage();
-                if (page is not null && TrySubmit(page, content, out var result))
+                if (page is not null)
                 {
-                    log($"chrome automation complete; result={result}; mood={content.Mood}; note_length={content.Note.Length}");
-                    return;
+                    if (submit && AlreadyCheckedIn(page)) { log("chrome automation complete; result=already_checked_in"); return true; }
+                    if (!submissionClicked && TryPrepare(page, content, out var submitButton))
+                    {
+                        if (!submit) { log($"chrome automation complete; result=prepared_without_submitting; mood={content.Mood}; note_length={content.Note.Length}"); return false; }
+                        if (submitButton is not null && submitButton.TryGetCurrentPattern(InvokePattern.Pattern, out var submitPattern))
+                        {
+                            ((InvokePattern)submitPattern).Invoke();
+                            submissionClicked = true;
+                            log("chrome submission clicked; waiting for confirmation");
+                        }
+                    }
                 }
                 Thread.Sleep(750);
             }
-            log("chrome automation incomplete; page left open for manual sign-in or submission");
+            log(submissionClicked ? "chrome automation incomplete; result=submission_not_confirmed" : "chrome automation incomplete; result=form_not_ready_or_not_logged_in");
+            return false;
         }
         catch (Exception error)
         {
             log($"chrome automation failed; {DiagnosticLog.Describe(error)}");
+            return false;
         }
     }
 
-    private static bool TrySubmit(AutomationElement page, DailyCheckInContent content, out string result)
+    private static bool AlreadyCheckedIn(AutomationElement page)
     {
-        result = "form_not_ready";
+        var buttons = page.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button));
+        return buttons.Cast<AutomationElement>().Any(button => button.Current.Name.Contains("今日已签到", StringComparison.Ordinal));
+    }
+
+    private static bool TryPrepare(AutomationElement page, DailyCheckInContent content, out AutomationElement? submit)
+    {
         var buttons = page.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button));
         AutomationElement? mood = null;
-        AutomationElement? submit = null;
+        submit = null;
+        var moodLabel = content.Mood.Split(' ', StringSplitOptions.RemoveEmptyEntries).Last();
         foreach (AutomationElement button in buttons)
         {
             var name = button.Current.Name;
-            if (name.Contains(content.Mood, StringComparison.Ordinal) || name.Contains(content.Mood[2..], StringComparison.Ordinal)) mood = button;
-            if (name.Contains("提交签到", StringComparison.Ordinal)) submit = button;
+            if (name.Contains(content.Mood, StringComparison.Ordinal) || name.Contains(moodLabel, StringComparison.Ordinal)) mood = button;
+            if (name.Contains("提交签到", StringComparison.Ordinal) || name.Contains("今日已签到", StringComparison.Ordinal)) submit = button;
         }
         var entries = page.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit));
         var entry = entries.Cast<AutomationElement>().FirstOrDefault(element => element.TryGetCurrentPattern(ValuePattern.Pattern, out _));
         if (mood is null || submit is null || entry is null) return false;
-
-        ((InvokePattern)mood.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
+        if (!mood.TryGetCurrentPattern(InvokePattern.Pattern, out var moodPattern)) return false;
+        ((InvokePattern)moodPattern).Invoke();
         ((ValuePattern)entry.GetCurrentPattern(ValuePattern.Pattern)).SetValue(content.Note);
-        ((InvokePattern)submit.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
-        result = "submitted";
-        return true;
+        return ((ValuePattern)entry.GetCurrentPattern(ValuePattern.Pattern)).Current.Value == content.Note;
     }
 
     private static AutomationElement? FindCheckInPage()

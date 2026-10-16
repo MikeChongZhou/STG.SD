@@ -21,7 +21,7 @@ internal sealed class AppSettings
     [JsonPropertyName("daily_notifications_enabled")] public bool DailyNotificationsEnabled { get; set; } = true;
     [JsonPropertyName("auto_daily_check_in_enabled")] public bool AutoDailyCheckInEnabled { get; set; }
     [JsonPropertyName("daily_check_in_text")] public string DailyCheckInText { get; set; } = "";
-    [JsonPropertyName("last_daily_check_in_local_date")] public string? LastDailyCheckInLocalDate { get; set; }
+    [JsonPropertyName("last_daily_check_in_success_local_date")] public string? LastDailyCheckInSuccessLocalDate { get; set; }
     [JsonIgnore] public SyncProvider SyncProvider { get; set; } = SyncProvider.None;
     [JsonIgnore] public bool OnboardingComplete { get; set; }
     [JsonPropertyName("updated_at")] public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;

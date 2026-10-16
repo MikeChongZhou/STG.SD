@@ -282,11 +282,27 @@ internal sealed class TrayAppContext : IDisposable
     {
         if (!Settings.AutoDailyCheckInEnabled) return;
         var label = today.ToString("yyyy-MM-dd");
-        if (Settings.LastDailyCheckInLocalDate == label) { log.Record("daily-checkin", $"skipped; reason=already_attempted; local_date={label}"); return; }
-        Settings.LastDailyCheckInLocalDate = label; settingsStore.Save(Settings);
+        if (Settings.LastDailyCheckInSuccessLocalDate == label) { log.Record("daily-checkin", $"skipped; reason=already_checked_in; local_date={label}"); return; }
+        if (dailyCheckInInFlight) return;
+        dailyCheckInInFlight = true;
         var content = ChromeDailyCheckIn.ContentFor(today);
         log.Record("daily-checkin", $"started; local_date={label}; source=first_reminder; mood={content.Mood}; note_length={content.Note.Length}");
-        _ = ChromeDailyCheckIn.OpenAsync(content, submit: true, message => log.Record("daily-checkin", message));
+        _ = CompleteDailyCheckInAsync(content, label);
+    }
+
+    private bool dailyCheckInInFlight;
+    private async Task CompleteDailyCheckInAsync(DailyCheckInContent content, string label)
+    {
+        try
+        {
+            if (await ChromeDailyCheckIn.OpenAsync(content, submit: true, message => log.Record("daily-checkin", message)))
+            {
+                Settings.LastDailyCheckInSuccessLocalDate = label;
+                settingsStore.Save(Settings);
+            }
+        }
+        catch (Exception error) { log.Record("daily-checkin", $"completion failed; {DiagnosticLog.Describe(error)}"); }
+        finally { dailyCheckInInFlight = false; }
     }
 
     private void RefreshTotals()
