@@ -6,6 +6,8 @@ Run `bash scripts/build_macos.sh`. The locally ad-hoc-signed bundle (`com.timber
 
 For TestFlight, run `bash scripts/build_macos_testflight.sh --upload`. The script reads the Google Desktop OAuth client secret from `STG_GOOGLE_CLIENT_SECRET` or Git-ignored `android/local.properties`, injects it into the signed archive, and checks the archived app before upload. A missing secret stops the release instead of producing a Mac app that cannot complete Google Drive sign-in.
 
+After each macOS TestFlight upload, verify the build in App Store Connect. Resolve any Export Compliance Information prompt using the app's actual encryption behavior; a successful Xcode upload alone does not make a build available. Confirm that the internal FUT group lists the new macOS build with status **Testing** (FUT uses automatic distribution for Xcode builds). Add the external EFUT group only when that wider tester audience is explicitly authorized, then check whether TestFlight beta review is required. Record the final build and group statuses in the release handoff.
+
 In Settings, choose the sync provider explicitly. Until then STG stays in single-device mode. Selecting a provider immediately begins account connection. iCloud uses the system Apple Account and the private ubiquity container. OneDrive uses OAuth authorization code flow with PKCE in the system browser and Microsoft Graph App Folder. Google Drive uses OAuth/PKCE and its hidden `appDataFolder`. None of these paths uses a local folder picker.
 
 Export diagnostics from Settings → Diagnostics → **Export Test Log…**. After a successful export, the active log is cleared.
