@@ -8,7 +8,7 @@
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
-<key>CFBundleShortVersionString</key><string>1.2.15</string>
+<key>CFBundleShortVersionString</key><string>1.2.17</string>
 <key>CFBundleVersion</key><string>48</string>
 <key>LSUIElement</key><true/>
 <key>NSHighResolutionCapable</key><true/>

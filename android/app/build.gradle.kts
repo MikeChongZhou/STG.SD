@@ -18,7 +18,7 @@ android {
         minSdk = 28
         targetSdk = 36
         versionCode = 25
-        versionName = "1.2.15"
+        versionName = "1.2.17"
         val googleSecret = providers.environmentVariable("STG_GOOGLE_CLIENT_SECRET")
             .orElse(localProperties.getProperty("STG_GOOGLE_CLIENT_SECRET", "")).get()
             .replace("\\", "\\\\").replace("\"", "\\\"")

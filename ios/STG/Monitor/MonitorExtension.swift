@@ -97,6 +97,7 @@ final class MonitorExtension: DeviceActivityMonitor {
                 activityName: activity.rawValue,
                 eventName: event.rawValue,
                 receivedAt: receivedAt,
+                previousThresholdReceivedAt: callbackAdmission.previousReceivedAt,
                 markingLimitMinutes: callbackAdmission.markingLimitMinutes
             )
             await Self.processingGate.release()
@@ -109,6 +110,7 @@ final class MonitorExtension: DeviceActivityMonitor {
         activityName: String,
         eventName: String,
         receivedAt now: Date,
+        previousThresholdReceivedAt: Date?,
         markingLimitMinutes: Int
     ) async {
         do {
@@ -186,14 +188,31 @@ final class MonitorExtension: DeviceActivityMonitor {
             let notificationSettings = try SharedEnvironment.loadMonitorSettings()
             guard let kind = notificationSettings.mobileReminderKind(dailyMinutes: all, breakKind: threshold % 40 == 0 ? .posture : .eye) else { return }
             SharedEnvironment.diagnosticLog.record("threshold reminder prepared; generation=\(generation); device=\(settings.deviceID.prefix(8)); threshold=\(threshold)m; stored_aggregate=\(all)m; reminder=\(kind.rawValue); silent=\(settings.meetingMode)", category: "monitor")
-            await post(generation: generation, threshold: threshold, kind: kind, minutes: all, silent: settings.meetingMode)
+            await post(generation: generation, threshold: threshold, kind: kind, minutes: all, silent: settings.meetingMode, previousThresholdReceivedAt: previousThresholdReceivedAt)
         } catch {
             SharedEnvironment.diagnosticLog.record("threshold processing failed; generation=\(generation); threshold=\(threshold)m; error_type=\(String(reflecting: type(of: error))); error=\(error.localizedDescription)", category: "monitor")
             return
         }
     }
 
-    private func post(generation: String, threshold: Int, kind: ReminderKind, minutes: Int, silent: Bool) async {
+    private func post(generation: String, threshold: Int, kind: ReminderKind, minutes: Int, silent: Bool, previousThresholdReceivedAt: Date?) async {
+        if kind != .dailyLimit {
+            guard let previousThresholdReceivedAt else {
+                SharedEnvironment.diagnosticLog.record(
+                    "break reminder skipped; generation=\(generation); threshold=\(threshold)m; kind=\(kind.rawValue); reason=no_previous_threshold_today; no_notification=true",
+                    category: "monitor"
+                )
+                return
+            }
+            let elapsedSeconds = Date().timeIntervalSince(previousThresholdReceivedAt)
+            guard elapsedSeconds <= 25 * 60 else {
+                SharedEnvironment.diagnosticLog.record(
+                    "break reminder skipped; generation=\(generation); threshold=\(threshold)m; kind=\(kind.rawValue); elapsed_seconds=\(Int(elapsedSeconds)); maximum_seconds=1500; no_notification=true",
+                    category: "monitor"
+                )
+                return
+            }
+        }
         let content = UNMutableNotificationContent()
         switch kind {
         case .eye:
