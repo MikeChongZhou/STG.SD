@@ -1,6 +1,13 @@
 #!/bin/sh
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+if [ -z "${STG_GOOGLE_CLIENT_SECRET:-}" ] && [ -f "$ROOT/android/local.properties" ]; then
+    STG_GOOGLE_CLIENT_SECRET=$(awk -F= '$1 == "STG_GOOGLE_CLIENT_SECRET" { sub(/^[^=]*=/, ""); print; exit }' "$ROOT/android/local.properties")
+fi
+if [ -z "${STG_GOOGLE_CLIENT_SECRET:-}" ]; then
+    echo "macOS build requires STG_GOOGLE_CLIENT_SECRET or Git-ignored android/local.properties." >&2
+    exit 1
+fi
 mkdir -p "$ROOT/.build/module-cache" "$ROOT/dist"
 export CLANG_MODULE_CACHE_PATH="$ROOT/.build/module-cache"
 export SWIFT_MODULECACHE_PATH="$ROOT/.build/module-cache"
@@ -12,9 +19,7 @@ fi
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$ROOT/.build/macos-current/release/STGMac" "$APP/Contents/MacOS/STGMac"
 cp "$ROOT/macos/Info.plist" "$APP/Contents/Info.plist"
-if [ -n "${STG_GOOGLE_CLIENT_SECRET:-}" ]; then
-    plutil -replace STGGoogleClientSecret -string "$STG_GOOGLE_CLIENT_SECRET" "$APP/Contents/Info.plist"
-fi
+plutil -replace STGGoogleClientSecret -string "$STG_GOOGLE_CLIENT_SECRET" "$APP/Contents/Info.plist"
 cp "$ROOT/macos/assets/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 cp "$ROOT/apple/STGCore/Sources/STGCore/Resources/stg.sqlite" "$APP/Contents/Resources/stg.sqlite"
 # SwiftUI's implicit localized-string lookup uses Bundle.main. Mirror the app

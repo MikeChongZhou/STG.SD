@@ -2,7 +2,9 @@
 
 ## macOS
 
-Run `bash scripts/build_macos.sh`. The locally ad-hoc-signed bundle (`com.timbertrail.screentimeguardian.ios`) is written to `dist/Screen Time Guardian.app`. Local and distribution builds both retain the app sandbox entitlement, so they use the same macOS app container and database. The local build omits only the provisioned iCloud capabilities; OneDrive and Google Drive remain available. A working iCloud release requires an Apple Development/Developer ID signature and provisioning profile that authorizes this bundle ID and `iCloud.com.timbertrail.screentimeguardian`; a release should also be notarized.
+Run `bash scripts/build_macos.sh`. The locally ad-hoc-signed bundle (`com.timbertrail.screentimeguardian.ios`) is written to `dist/Screen Time Guardian.app`. The build reads the Google Desktop OAuth client secret from `STG_GOOGLE_CLIENT_SECRET` or Git-ignored `android/local.properties` and stops if neither is configured. Local and distribution builds both retain the app sandbox entitlement, so they use the same macOS app container and database. The local build omits only the provisioned iCloud capabilities; OneDrive and Google Drive remain available. A working iCloud release requires an Apple Development/Developer ID signature and provisioning profile that authorizes this bundle ID and `iCloud.com.timbertrail.screentimeguardian`; a release should also be notarized.
+
+For TestFlight, run `bash scripts/build_macos_testflight.sh --upload`. The script reads the Google Desktop OAuth client secret from `STG_GOOGLE_CLIENT_SECRET` or Git-ignored `android/local.properties`, injects it into the signed archive, and checks the archived app before upload. A missing secret stops the release instead of producing a Mac app that cannot complete Google Drive sign-in.
 
 In Settings, choose the sync provider explicitly. Until then STG stays in single-device mode. Selecting a provider immediately begins account connection. iCloud uses the system Apple Account and the private ubiquity container. OneDrive uses OAuth authorization code flow with PKCE in the system browser and Microsoft Graph App Folder. Google Drive uses OAuth/PKCE and its hidden `appDataFolder`. None of these paths uses a local folder picker.
 
@@ -28,7 +30,7 @@ Google Drive requires a Google OAuth native client ID in each target's `STGGoogl
 
 ## Android
 
-Install Android Studio/JDK 17 and run `bash scripts/build_android.sh`. The debug APK is written to `dist/android/ScreenTimeGuardian-1.2.17-debug.apk` and supports Android 9 (API 28) or later.
+Install Android Studio/JDK 17 and run `bash scripts/build_android.sh`. The debug APK is written to `dist/android/ScreenTimeGuardian-1.2.18-debug.apk` and supports Android 9 (API 28) or later.
 
 On first use grant notifications, overlay/full-screen reminder access, and Usage Access, then optionally complete private-cloud setup. Android does not use a folder picker: OneDrive uses OAuth/PKCE with `Files.ReadWrite.AppFolder` and Microsoft Graph App Folder; Google Drive uses OAuth/PKCE with the Google Desktop client registration and the hidden `appDataFolder`. The app verifies the account and completes an initial sync before saving the provider. Access and refresh tokens are encrypted with Android Keystore, and logs never include tokens or account addresses. For Google builds, provide `STG_GOOGLE_CLIENT_SECRET` either as an environment variable or as the same key in the Git-ignored `android/local.properties`; Gradle injects it into `BuildConfig` without writing it to tracked source files. The `local.properties` option is required when launching directly from Android Studio unless Android Studio itself was started with that environment variable.
 

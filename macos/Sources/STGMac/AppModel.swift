@@ -689,10 +689,15 @@ final class AppModel: ObservableObject {
         guard let clientID = googleDriveClientID else {
             syncStatus = "Google Drive sign-in unavailable: OAuth Client ID is missing"; diagnosticLog.record("Google Drive sign-in blocked; missing_client_id", category: "sync"); return
         }
+        guard let clientSecret = googleDriveClientSecret else {
+            syncStatus = "Google Drive sign-in unavailable: this build is missing its OAuth client secret"
+            diagnosticLog.record("Google Drive sign-in blocked; missing_client_secret", category: "sync")
+            return
+        }
         syncStatus = "Opening Google account sign-in…"; diagnosticLog.record("Google Drive sign-in begin", category: "sync")
         Task {
             do {
-                let client = GoogleDriveClient(clientID: clientID, clientSecret: googleDriveClientSecret ?? "")
+                let client = GoogleDriveClient(clientID: clientID, clientSecret: clientSecret)
                 let request = try await client.authorizationRequest(callbackScheme: googleCallbackScheme)
                 let callback = try await webAuthentication.authenticate(url: request.authorizationURL, callbackScheme: request.callbackScheme)
                 let credential = try await client.credential(callbackURL: callback, request: request)

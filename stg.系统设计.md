@@ -264,7 +264,7 @@ Body: You’ve used your screen for xh ym today. Time to walk around for 5-min a
 6. 构建与部署
 6.1 版本构建
 - 每次修改，版本号向前进一步，基础版本1.0.0, 下一个版本1.0.1。
-- 当前四个平台对齐的产品版本为1.2.17；Windows用户可见版本显示为`1.2.17`，不得显示为`1.2.17.0`。
+- 当前四个平台对齐的产品版本为1.2.18；Windows用户可见版本显示为`1.2.18`，不得显示为`1.2.18.0`。
 - Android最低支持版本为Android 9（API 28）。
 - Windows 发布包应优先使用 framework-dependent 模式，以缩小目标程序体积。
 - Windows 目标机器缺少 .NET Desktop Runtime 时，应由 .NET apphost 检测并提示缺失运行库和 Microsoft 安装链接；文档中也应明确提供安装链接。
