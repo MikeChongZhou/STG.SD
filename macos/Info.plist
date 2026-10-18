@@ -8,8 +8,8 @@
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
-<key>CFBundleShortVersionString</key><string>1.2.18</string>
-<key>CFBundleVersion</key><string>49</string>
+<key>CFBundleShortVersionString</key><string>1.2.20</string>
+<key>CFBundleVersion</key><string>51</string>
 <key>LSUIElement</key><true/>
 <key>NSHighResolutionCapable</key><true/>
 <key>NSAppleEventsUsageDescription</key><string>Screen Time Guardian uses Google Chrome only for the optional daily check-in that you enable in Settings.</string>

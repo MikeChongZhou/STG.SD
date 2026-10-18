@@ -290,13 +290,15 @@ public enum OneDriveCredentialStore {
     public static func save(_ credential: OneDriveCredential, service: String, accessGroup: String? = nil) throws {
         let data = try JSONEncoder().encode(credential)
         let query = query(service: service, accessGroup: accessGroup)
-        SecItemDelete(query as CFDictionary)
+        let updateStatus = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        if updateStatus == errSecSuccess { return }
+        guard updateStatus == errSecItemNotFound else { throw keychainSaveError(updateStatus) }
         var add = query; add[kSecValueData as String] = data; add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-        let status = SecItemAdd(add as CFDictionary, nil)
-        guard status == errSecSuccess else {
-            let systemMessage = SecCopyErrorMessageString(status, nil) as String? ?? "unknown Keychain error"
-            throw STGError.invalidDocument("Unable to store Microsoft credential in Keychain: \(systemMessage) (OSStatus \(status))")
-        }
+        let addStatus = SecItemAdd(add as CFDictionary, nil)
+        if addStatus == errSecSuccess { return }
+        if addStatus == errSecDuplicateItem,
+           SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary) == errSecSuccess { return }
+        throw keychainSaveError(addStatus)
     }
 
     public static func load(service: String, accessGroup: String? = nil) -> OneDriveCredential? {
@@ -315,6 +317,11 @@ public enum OneDriveCredentialStore {
         var value: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service]
         if let accessGroup, !accessGroup.isEmpty { value[kSecAttrAccessGroup as String] = accessGroup }
         return value
+    }
+
+    private static func keychainSaveError(_ status: OSStatus) -> STGError {
+        let systemMessage = SecCopyErrorMessageString(status, nil) as String? ?? "unknown Keychain error"
+        return STGError.invalidDocument("Unable to store Microsoft credential in Keychain: \(systemMessage) (OSStatus \(status))")
     }
 }
 

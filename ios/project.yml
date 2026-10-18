@@ -34,7 +34,7 @@ targets:
         LIBRARY_SEARCH_PATHS: $(BUILT_PRODUCTS_DIR)
         OTHER_LDFLAGS: -lSTGCompression -lz
         GENERATE_INFOPLIST_FILE: YES
-        MARKETING_VERSION: "1.2.18"
+        MARKETING_VERSION: "1.2.20"
         CURRENT_PROJECT_VERSION: "46"
     dependencies:
       - target: STGCompression
@@ -78,7 +78,7 @@ targets:
       path: STG/App/Info.plist
       properties:
         CFBundleDisplayName: Screen Time Guardian
-        CFBundleShortVersionString: "1.2.18"
+        CFBundleShortVersionString: "1.2.20"
         CFBundleVersion: "46"
         ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
@@ -146,7 +146,7 @@ targets:
       path: STG/Monitor/Info.plist
       properties:
         CFBundleDisplayName: STG Monitor
-        CFBundleShortVersionString: "1.2.18"
+        CFBundleShortVersionString: "1.2.20"
         CFBundleVersion: "46"
         STGOneDriveClientID: "a4ff927c-e45a-413e-b5c3-45b026719171"
         STGKeychainAccessGroup: "$(AppIdentifierPrefix)group.com.timbertrail.screentimeguardian"

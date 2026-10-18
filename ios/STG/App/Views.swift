@@ -1206,7 +1206,7 @@ struct AboutView: View {
             VStack(alignment: .leading, spacing: 16) {
                 HStack { Spacer(); Image(systemName: "shield.lefthalf.filled").font(.system(size: 64)).foregroundStyle(.blue); Spacer() }
                 Text("Screen Time Guardian").font(.title.bold()).frame(maxWidth: .infinity)
-                Text("Version 1.2.18\nCopyright © 2026 Fairy Phoenix Foundation.")
+                Text("Version 1.2.20\nCopyright © 2026 Fairy Phoenix Foundation.")
                 Text("This app records minute-level estimates of screen use on this device or across all your devices, and reminds you to take breaks.")
                 Text("Privacy: Your screen-use data stays on this device and, if enabled, in the private cloud you choose. It is never sent to the app developer or any other service.")
                 Text("Accuracy: Apple does not make Screen Time data available to third-party apps. STG estimates usage from DeviceActivity data, so its totals may differ from those shown in Settings → Screen Time.")

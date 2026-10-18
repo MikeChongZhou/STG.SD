@@ -214,9 +214,20 @@ public enum GoogleDriveCredentialStore {
     public static func save(_ credential: GoogleDriveCredential, service: String, accessGroup: String? = nil) throws {
         let data = try JSONEncoder().encode(credential)
         let query = query(service: service, accessGroup: accessGroup)
-        SecItemDelete(query as CFDictionary)
-        var add = query; add[kSecValueData as String] = data; add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-        guard SecItemAdd(add as CFDictionary, nil) == errSecSuccess else { throw STGError.invalidDocument("Unable to store Google credential in Keychain") }
+        let updateStatus = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        if updateStatus == errSecSuccess { return }
+        guard updateStatus == errSecItemNotFound else {
+            throw keychainSaveError(updateStatus)
+        }
+        var add = query
+        add[kSecValueData as String] = data
+        add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        let addStatus = SecItemAdd(add as CFDictionary, nil)
+        if addStatus == errSecSuccess { return }
+        // A concurrent refresh can create the item between the update and add.
+        if addStatus == errSecDuplicateItem,
+           SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary) == errSecSuccess { return }
+        throw keychainSaveError(addStatus)
     }
 
     public static func load(service: String, accessGroup: String? = nil) -> GoogleDriveCredential? {
@@ -235,6 +246,11 @@ public enum GoogleDriveCredentialStore {
         var value: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service]
         if let accessGroup, !accessGroup.isEmpty { value[kSecAttrAccessGroup as String] = accessGroup }
         return value
+    }
+
+    private static func keychainSaveError(_ status: OSStatus) -> STGError {
+        let message = SecCopyErrorMessageString(status, nil) as String? ?? "unknown Keychain error"
+        return STGError.invalidDocument("Unable to store Google credential in Keychain: \(message) (OSStatus \(status))")
     }
 }
 
