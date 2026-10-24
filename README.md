@@ -1,6 +1,6 @@
 # Screen Time Guardian
 
-Screen Time Guardian (STG) 1.2.20 is a native, local-first screen-time record and reminder app for all your devices, including macOS, iOS/iPadOS, Windows, and Android.
+Screen Time Guardian (STG) 1.2.22 is a native, local-first screen-time record and reminder app for all your devices, including macOS, iOS/iPadOS, Windows, and Android.
 
 No data is shared with the developer or any third party.
 
@@ -22,6 +22,8 @@ Each device owns its UTC minute bitmaps. One row represents a UTC day and contai
 Cloud synchronization uses ordinary JSON files in a user-authorized private-cloud folder. STG does not apply a sync code or application-level encryption. Provider access tokens and security-scoped bookmarks must stay in platform secure storage.
 
 Settings → **Align Local and Cloud Data** runs an explicit full reconciliation on all four platforms. It downloads every device's daily bitmap and weekly/yearly bitmap archives, unions minutes into the local database, updates the cloud file in its existing root or history location when needed, uploads local-only data in the appropriate daily or weekly format, and refreshes daily, weekly, monthly, and yearly statistics. Normal synchronization remains incremental.
+
+Reminder modes are **Quiet**, **Light**, and **Alert** on all four platforms. Quiet temporarily disables all three notification categories and restores their previous selection when another mode is chosen. Light delivers silent reminders: macOS and Windows show a compact top-of-screen window for 10 seconds; Android posts a non-interrupting notification that expires after 10 seconds, with heads-up display controlled by Android notification settings; iOS retains the system notification appearance. Alert uses the normal reminder presentation. On macOS and Windows, the modes are also available as mutually exclusive menu items. Recording and cloud synchronization continue in every mode.
 
 All four apps initialize from the same schema-v7 `stg.sqlite` template. It contains the bundled OpenRouter history while all user-data tables start empty. Database timestamps are Unix seconds; existing Apple, Windows, and Android databases are upgraded in place.
 

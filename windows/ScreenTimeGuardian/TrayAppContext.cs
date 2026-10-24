@@ -14,6 +14,7 @@ internal sealed class TrayAppContext : IDisposable
     private readonly DiagnosticLog log;
     private readonly WinForms.NotifyIcon tray;
     private readonly WinForms.Timer timer;
+    private readonly List<WinForms.ToolStripMenuItem> reminderModeItems = [];
     private DashboardForm? dashboard;
     private bool screenAvailable = true;
     private bool sessionAvailable = true;
@@ -57,6 +58,14 @@ internal sealed class TrayAppContext : IDisposable
         var menu = new WinForms.ContextMenuStrip { Font = new Font("Segoe UI", 10) };
         Add(menu, L.T("Screen Time Guardian"), ShowMain); Add(menu, L.T("Report"), ShowReport); Add(menu, L.T("Tracking"), ShowTracking);
         menu.Items.Add(new WinForms.ToolStripSeparator()); Add(menu, L.T("Sync Now"), () => _ = SyncAsync()); Add(menu, L.T("Settings"), ShowSettings); Add(menu, L.T("About"), ShowAbout);
+        menu.Items.Add(new WinForms.ToolStripSeparator());
+        foreach (var mode in new[] { "quiet", "light", "alert" })
+        {
+            var item = new WinForms.ToolStripMenuItem(L.T(char.ToUpperInvariant(mode[0]) + mode[1..])) { Tag = mode };
+            item.Click += (_, _) => { Settings.SetNotificationMode(mode); SaveSettings(); };
+            reminderModeItems.Add(item); menu.Items.Add(item);
+        }
+        UpdateReminderModeMenu();
         menu.Items.Add(new WinForms.ToolStripSeparator()); Add(menu, "Quit", Exit);
         var applicationIcon = Icon.ExtractAssociatedIcon(Environment.ProcessPath ?? "") ?? SystemIcons.Shield;
         tray = new WinForms.NotifyIcon { Text = "Screen Time Guardian", Icon = applicationIcon, Visible = true, ContextMenuStrip = menu };
@@ -202,8 +211,13 @@ internal sealed class TrayAppContext : IDisposable
     {
         Settings.DeviceName = Environment.MachineName;
         Settings.ReportTimeZone = CurrentReportTimeZone;
-        settingsStore.Save(Settings); repository.UpsertDevice(new(Settings.DeviceID, Settings.DeviceName, Settings.DeviceKind, Settings.UpdatedAt)); ConfigureStartup(); RefreshSyncStatus(); RefreshTotals();
+        settingsStore.Save(Settings); repository.UpsertDevice(new(Settings.DeviceID, Settings.DeviceName, Settings.DeviceKind, Settings.UpdatedAt)); ConfigureStartup(); RefreshSyncStatus(); RefreshTotals(); UpdateReminderModeMenu();
         log.Record("settings", $"saved; plan={Settings.DailyPlanMinutes}m; timezone={Settings.ReportTimeZone}; provider={Settings.SyncProvider}; meeting={Settings.MeetingMode}"); Changed();
+    }
+
+    private void UpdateReminderModeMenu()
+    {
+        foreach (var item in reminderModeItems) item.Checked = (string)item.Tag! == Settings.NotificationMode;
     }
 
     public void ExportTestLog(System.Windows.Window? owner)
@@ -265,16 +279,14 @@ internal sealed class TrayAppContext : IDisposable
         if (kind is not null)
         {
             repository.SaveReminderState(Settings.DeviceID, new(lastEye, lastPosture, lastReminder), now);
-            var automaticMeeting = CheckMeetingNow(); var meetingMode = Settings.MeetingMode || automaticMeeting.IsMeeting;
-            var meetingReason = Settings.MeetingMode ? "manual setting" : automaticMeeting.IsMeeting ? string.Join("; ", automaticMeeting.Reasons) : "no microphone or camera activity";
-            log.Record("meeting", $"check at reminder; manual={Settings.MeetingMode}; automatic={automaticMeeting.IsMeeting}; effective={meetingMode}; reason={meetingReason}");
-            log.Record("reminder", $"reminder; kind={kind}; previous_slot={priorReminder}; next_slot={lastReminder}; all_used={AllMinutes}m; local_used={LocalMinutes}m; silent={meetingMode}");
-            new ReminderForm(kind, AllMinutes, Settings, meetingMode).Show();
-            RunDailyCheckInIfNeeded(today);
-            log.Record("sync", $"incremental sync requested; trigger=reminder; kind={kind}");
-            _ = SyncAsync();
+            var light = Settings.NotificationMode == "light";
+            log.Record("reminder", $"reminder; kind={kind}; previous_slot={priorReminder}; next_slot={lastReminder}; all_used={AllMinutes}m; local_used={LocalMinutes}m; mode={Settings.NotificationMode}");
+            new ReminderForm(kind, AllMinutes, Settings, light).Show();
         }
         else log.Record("reminder", $"20m block complete; no reminder due; previous_slot={priorReminder}; all_used={AllMinutes}m");
+        RunDailyCheckInIfNeeded(today);
+        log.Record("sync", $"incremental sync requested; trigger=20m_block; notification={kind ?? "none"}");
+        _ = SyncAsync();
         Changed();
     }
 
@@ -286,7 +298,7 @@ internal sealed class TrayAppContext : IDisposable
         if (dailyCheckInInFlight) return;
         dailyCheckInInFlight = true;
         var content = ChromeDailyCheckIn.ContentFor(today);
-        log.Record("daily-checkin", $"started; local_date={label}; source=first_reminder; mood={content.Mood}; note_length={content.Note.Length}");
+        log.Record("daily-checkin", $"started; local_date={label}; source=first_20m_block; mood={content.Mood}; note_length={content.Note.Length}");
         _ = CompleteDailyCheckInAsync(content, label);
     }
 

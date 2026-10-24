@@ -41,3 +41,11 @@
 
 "— · No eligible completed days" = "— · 无符合条件的已结束日期";
 "Align Local and Cloud Data" = "对齐本地和云端数据";
+
+"Quiet" = "静默";
+"Light" = "轻提醒";
+"Alert" = "标准提醒";
+"Reminder Mode" = "提醒模式";
+"Reminder Mode: %@" = "提醒模式：%@";
+"Quiet keeps recording and syncing. Light shows a silent, compact 10-second reminder." = "静默模式继续记录并同步；轻提醒模式显示静音、紧凑的10秒提醒。";
+"Automatically check in to 1Point3Acres after the first 20-minute use block each day" = "每天首次连续使用屏幕20分钟后自动到一亩三分地签到";

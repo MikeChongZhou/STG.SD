@@ -187,8 +187,9 @@ final class MonitorExtension: DeviceActivityMonitor {
             // Reload after sync so a preference saved while this callback awaited is respected.
             let notificationSettings = try SharedEnvironment.loadMonitorSettings()
             guard let kind = notificationSettings.mobileReminderKind(dailyMinutes: all, breakKind: threshold % 40 == 0 ? .posture : .eye) else { return }
-            SharedEnvironment.diagnosticLog.record("threshold reminder prepared; generation=\(generation); device=\(settings.deviceID.prefix(8)); threshold=\(threshold)m; stored_aggregate=\(all)m; reminder=\(kind.rawValue); silent=\(settings.meetingMode)", category: "monitor")
-            await post(generation: generation, threshold: threshold, kind: kind, minutes: all, silent: settings.meetingMode, previousThresholdReceivedAt: previousThresholdReceivedAt)
+            let silent = notificationSettings.notificationMode == "light"
+            SharedEnvironment.diagnosticLog.record("threshold reminder prepared; generation=\(generation); device=\(settings.deviceID.prefix(8)); threshold=\(threshold)m; stored_aggregate=\(all)m; reminder=\(kind.rawValue); mode=\(notificationSettings.notificationMode)", category: "monitor")
+            await post(generation: generation, threshold: threshold, kind: kind, minutes: all, silent: silent, previousThresholdReceivedAt: previousThresholdReceivedAt)
         } catch {
             SharedEnvironment.diagnosticLog.record("threshold processing failed; generation=\(generation); threshold=\(threshold)m; error_type=\(String(reflecting: type(of: error))); error=\(error.localizedDescription)", category: "monitor")
             return

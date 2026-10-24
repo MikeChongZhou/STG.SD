@@ -112,3 +112,9 @@
 
 "— · No eligible completed days" = "— · No eligible completed days";
 "Align Local and Cloud Data" = "Align Local and Cloud Data";
+
+"Quiet" = "Quiet";
+"Light" = "Light";
+"Alert" = "Alert";
+"Reminder Mode" = "Reminder Mode";
+"Quiet keeps recording and syncing. Light delivers silent reminders." = "Quiet keeps recording and syncing. Light delivers silent reminders.";

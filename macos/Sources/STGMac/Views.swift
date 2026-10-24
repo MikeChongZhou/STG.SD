@@ -16,7 +16,7 @@ struct DashboardView: View {
                     card("Report", "All Devices: \(duration(model.allMinutes))\nThis Mac: \(duration(model.localMinutes))", "chart.bar.fill") { open(.report) }
                     card("Tracking", "Latest week · Top models\n\(model.latestTrackingTopTwo)", "waveform.path.ecg") { open(.tracking) }
                     card("Settings", "Daily Limit: \(duration(model.settings.dailyPlanMinutes))\n\(meetingStatus)", "gearshape.fill") { open(.settings) }
-                    card("About", "Version 1.2.20\nLocal + private cloud", "info.circle.fill") { open(.about) }
+                    card("About", "Version 1.2.22\nLocal + private cloud", "info.circle.fill") { open(.about) }
                 }
                 HStack {
                     Circle().fill(model.isScreenAvailable ? .green : .gray).frame(width: 8)
@@ -29,7 +29,7 @@ struct DashboardView: View {
     }
 
     private var meetingStatus: String {
-        NSLocalizedString(model.settings.meetingMode ? "Meeting Mode: On" : "Meeting auto-detect: On", comment: "Dashboard meeting detection state")
+        String(format: NSLocalizedString("Reminder Mode: %@", comment: "Dashboard reminder mode"), NSLocalizedString(model.settings.notificationMode.capitalized, comment: "Reminder mode"))
     }
 
     private func card(_ title: String, _ body: String, _ icon: String, action: @escaping () -> Void) -> some View {
@@ -66,22 +66,26 @@ struct SettingsView: View {
                     }
                     GroupBox("Notification Options") {
                         VStack(alignment: .leading, spacing: 12) {
-                            Toggle("Eye Break Notifications", isOn: $draft.eyeNotificationsEnabled)
-                            Toggle("Posture Notifications", isOn: $draft.postureNotificationsEnabled)
-                            Toggle("Daily Usage Notifications", isOn: $draft.dailyNotificationsEnabled)
-                            Text("Usage is still recorded when all options are off.").font(.caption).foregroundStyle(.secondary)
+                            Picker("Reminder Mode", selection: Binding(get: { draft.notificationMode }, set: { draft.setNotificationMode($0) })) {
+                                Text("Quiet").tag("quiet")
+                                Text("Light").tag("light")
+                                Text("Alert").tag("alert")
+                            }.pickerStyle(.segmented)
+                            Toggle("Eye Break Notifications", isOn: $draft.eyeNotificationsEnabled).disabled(draft.notificationMode == "quiet")
+                            Toggle("Posture Notifications", isOn: $draft.postureNotificationsEnabled).disabled(draft.notificationMode == "quiet")
+                            Toggle("Daily Usage Notifications", isOn: $draft.dailyNotificationsEnabled).disabled(draft.notificationMode == "quiet")
+                            Text("Quiet keeps recording and syncing. Light shows a silent, compact 10-second reminder.").font(.caption).foregroundStyle(.secondary)
                         }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
                     }
                     GroupBox("General") {
                         VStack(alignment: .leading, spacing: 12) {
-                            Toggle("Manual meeting-mode override", isOn: $draft.meetingMode)
                             Toggle("Launch automatically at login", isOn: $draft.launchAtLogin)
                             Text(model.launchAtLoginStatus).font(.caption).foregroundStyle(.secondary)
                         }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
                     }
                     GroupBox("Daily check-in") {
                         VStack(alignment: .leading, spacing: 10) {
-                            Toggle("Automatically check in to 1Point3Acres at the first daily break reminder", isOn: $draft.autoDailyCheckInEnabled)
+                            Toggle("Automatically check in to 1Point3Acres after the first 20-minute use block each day", isOn: $draft.autoDailyCheckInEnabled)
                             Text("STG uses the Google Chrome already installed on this Mac, including its existing sign-in session. It generates a mood and note automatically. Preview fills both fields without submitting. In Chrome, enable View › Developer › Allow JavaScript from Apple Events once.").font(.caption).foregroundStyle(.secondary)
                             Button("Preview automatic check-in") { model.testDailyCheckIn() }
                         }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
@@ -523,7 +527,7 @@ struct AboutView: View {
             VStack(alignment: .leading, spacing: 14) {
                 HStack { Spacer(); Image(systemName: "shield.lefthalf.filled").font(.system(size: 56)).foregroundStyle(.blue); Spacer() }
                 Text("Screen Time Guardian").font(.title.bold()).frame(maxWidth: .infinity)
-                Text("Version 1.2.20\nCopyright © 2026 Fairy Phoenix Foundation.")
+                Text("Version 1.2.22\nCopyright © 2026 Fairy Phoenix Foundation.")
                 Text("This app records minute-level estimates of screen use, either on this Mac alone or across your devices, and reminds you to take breaks.")
                 Text("Privacy: Your screen-use data remains on this Mac and, if enabled, in your chosen private-cloud account. STG does not send it to the developer or anyone else.")
                 Text("Accuracy: STG estimates screen use from macOS activity signals, so its totals may differ from other system usage statistics.")
@@ -678,12 +682,20 @@ private func trackingISOWeekLabel(_ dateText: String) -> String {
 
 struct ReminderView: View {
     let decision: ReminderDecision
+    var compact = false
     @State private var remaining: Int
     let close: () -> Void
-    init(decision: ReminderDecision, close: @escaping () -> Void) { self.decision = decision; self.close = close; _remaining = State(initialValue: decision.silent ? 0 : decision.closeCountdownMinutes * 60) }
+    init(decision: ReminderDecision, compact: Bool = false, close: @escaping () -> Void) { self.decision = decision; self.compact = compact; self.close = close; _remaining = State(initialValue: decision.silent ? 0 : decision.closeCountdownMinutes * 60) }
     var body: some View {
-        VStack(spacing: 18) { Image(systemName: icon).font(.system(size: 50)).foregroundStyle(.blue); Text(title).font(.largeTitle.bold()); Text(message).font(.title3).multilineTextAlignment(.center); if decision.silent { Text("Meeting mode: can close immediately") } else if remaining > 0 { Text("Close available in \(remaining)s").monospacedDigit() }; Button("Close", action: close).disabled(remaining > 0) }
-            .padding(32).frame(width: 520, height: 360).task { while remaining > 0 { try? await Task.sleep(for: .seconds(1)); remaining -= 1 } }
+        Group {
+            if compact {
+                HStack(spacing: 12) { Image(systemName: icon).foregroundStyle(.blue); Text(title).fontWeight(.semibold); Text(message).lineLimit(1); Spacer(minLength: 4); Button("Close", action: close) }
+                    .padding(.horizontal, 16).frame(width: 520, height: 62)
+            } else {
+                VStack(spacing: 18) { Image(systemName: icon).font(.system(size: 50)).foregroundStyle(.blue); Text(title).font(.largeTitle.bold()); Text(message).font(.title3).multilineTextAlignment(.center); if remaining > 0 { Text("Close available in \(remaining)s").monospacedDigit() }; Button("Close", action: close).disabled(remaining > 0) }
+                    .padding(32).frame(width: 520, height: 360)
+            }
+        }.task { while remaining > 0 { try? await Task.sleep(for: .seconds(1)); remaining -= 1 } }
     }
     private var title: String { decision.kind == .eye ? "Eye Break" : decision.kind == .posture ? "Posture Break" : "Daily Limit Reached" }
     private var message: String { decision.kind == .eye ? "Look 20 feet away for 20 seconds." : decision.kind == .posture ? "Stand or walk for 4 minutes and rest your eyes." : "You've used your screen for \(duration(decision.usedMinutes)). Take a 5-minute walk." }

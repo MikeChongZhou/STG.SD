@@ -662,7 +662,6 @@ struct SettingsView: View {
                     Picker("Hours", selection: planHours) { ForEach(0...24, id: \.self) { Text("\($0) h").tag($0) } }
                     Picker("Minutes", selection: planMinutes) { ForEach([0, 15, 30, 45], id: \.self) { Text("\($0) m").tag($0) } }.disabled(draft.dailyPlanMinutes / 60 >= 24)
                 }
-                Toggle("Meeting Mode", isOn: $draft.meetingMode)
             }
             Section("Private Cloud") {
                 LabeledContent("Provider", value: syncProviderName(draft.syncProvider ?? .none))
@@ -678,10 +677,15 @@ struct SettingsView: View {
                 Text("Select individual apps or websites. Categories aren’t supported because they may reduce accuracy.").font(.footnote).foregroundStyle(.secondary)
             }
             Section("Notification Options") {
-                Toggle("Eye Break Notifications", isOn: $draft.eyeNotificationsEnabled)
-                Toggle("Posture Notifications", isOn: $draft.postureNotificationsEnabled)
-                Toggle("Daily Usage Notifications", isOn: $draft.dailyNotificationsEnabled)
-                Text("Usage is still recorded when all options are off.").font(.footnote).foregroundStyle(.secondary)
+                Picker("Reminder Mode", selection: Binding(get: { draft.notificationMode }, set: { draft.setNotificationMode($0) })) {
+                    Text("Quiet").tag("quiet")
+                    Text("Light").tag("light")
+                    Text("Alert").tag("alert")
+                }
+                Toggle("Eye Break Notifications", isOn: $draft.eyeNotificationsEnabled).disabled(draft.notificationMode == "quiet")
+                Toggle("Posture Notifications", isOn: $draft.postureNotificationsEnabled).disabled(draft.notificationMode == "quiet")
+                Toggle("Daily Usage Notifications", isOn: $draft.dailyNotificationsEnabled).disabled(draft.notificationMode == "quiet")
+                Text("Quiet keeps recording and syncing. Light delivers silent reminders.").font(.footnote).foregroundStyle(.secondary)
             }
             Section("Display") {
                 Picker("Chart Size", selection: $reportChartDisplay) {
@@ -1206,7 +1210,7 @@ struct AboutView: View {
             VStack(alignment: .leading, spacing: 16) {
                 HStack { Spacer(); Image(systemName: "shield.lefthalf.filled").font(.system(size: 64)).foregroundStyle(.blue); Spacer() }
                 Text("Screen Time Guardian").font(.title.bold()).frame(maxWidth: .infinity)
-                Text("Version 1.2.20\nCopyright © 2026 Fairy Phoenix Foundation.")
+                Text("Version 1.2.22\nCopyright © 2026 Fairy Phoenix Foundation.")
                 Text("This app records minute-level estimates of screen use on this device or across all your devices, and reminds you to take breaks.")
                 Text("Privacy: Your screen-use data stays on this device and, if enabled, in the private cloud you choose. It is never sent to the app developer or any other service.")
                 Text("Accuracy: Apple does not make Screen Time data available to third-party apps. STG estimates usage from DeviceActivity data, so its totals may differ from those shown in Settings → Screen Time.")

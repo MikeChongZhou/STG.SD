@@ -51,8 +51,6 @@
                                     <StackPanel Margin="0,0,10,0"><TextBlock Text="Posture delay" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/><StackPanel Orientation="Horizontal" Margin="0,7,0,0"><ComboBox x:Name="PostureCountdownBox" Width="68"/><TextBlock Text="min" Margin="6,0,0,0" VerticalAlignment="Center"/></StackPanel></StackPanel>
                                     <StackPanel Margin="0,0,10,0"><TextBlock Text="Daily-limit delay" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/><StackPanel Orientation="Horizontal" Margin="0,7,0,0"><ComboBox x:Name="DailyCountdownBox" Width="68"/><TextBlock Text="min" Margin="6,0,0,0" VerticalAlignment="Center"/></StackPanel></StackPanel>
                                 </UniformGrid>
-                                <Separator Margin="0,16"/>
-                                <CheckBox x:Name="MeetingModeBox" Content="Manual meeting mode — silent and immediately closeable"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -61,16 +59,17 @@
                 <TextBlock Text="Notification Options" Style="{StaticResource SectionTitle}" Margin="2,18,0,8"/>
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
+                        <ComboBox x:Name="ReminderModeBox" Width="160" HorizontalAlignment="Left" Margin="0,0,0,12"/>
                         <CheckBox x:Name="EyeNotificationsBox" Content="Eye Break Notifications" Margin="0,0,0,12"/>
                         <CheckBox x:Name="PostureNotificationsBox" Content="Posture Notifications" Margin="0,0,0,12"/>
                         <CheckBox x:Name="DailyNotificationsBox" Content="Daily Usage Notifications" Margin="0,0,0,12"/>
-                        <TextBlock Text="Usage is still recorded when all options are off." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
+                        <TextBlock Text="Quiet keeps recording and syncing. Light shows a silent, compact 10-second reminder." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
                     </StackPanel>
                 </Border>
                 <TextBlock Text="DAILY CHECK-IN" Style="{StaticResource SectionTitle}" Margin="2,18,0,8"/>
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
-                        <CheckBox x:Name="DailyCheckInBox" Content="Automatically check in to 1Point3Acres at the first daily break reminder" Margin="0,0,0,10"/>
+                        <CheckBox x:Name="DailyCheckInBox" Content="Automatically check in to 1Point3Acres after the first 20-minute use block each day" Margin="0,0,0,10"/>
                         <TextBlock Text="STG opens installed Chrome and uses its existing signed-in session. It chooses today's mood and note automatically. Preview fills both fields without submitting." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,0"/>
                         <Button Content="Preview Chrome check-in…" Click="TestDailyCheckIn_Click" HorizontalAlignment="Left" Margin="0,12,0,0"/>
                     </StackPanel>

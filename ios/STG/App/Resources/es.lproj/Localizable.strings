@@ -112,3 +112,9 @@
 
 "— · No eligible completed days" = "— · No hay días completos válidos";
 "Align Local and Cloud Data" = "Alinear datos locales y de la nube";
+
+"Quiet" = "Silencio";
+"Light" = "Suave";
+"Alert" = "Alerta";
+"Reminder Mode" = "Modo de aviso";
+"Quiet keeps recording and syncing. Light delivers silent reminders." = "El modo Silencio sigue registrando y sincronizando; Suave muestra avisos sin sonido.";

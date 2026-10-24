@@ -41,3 +41,11 @@
 
 "— · No eligible completed days" = "— · No eligible completed days";
 "Align Local and Cloud Data" = "Align Local and Cloud Data";
+
+"Quiet" = "Quiet";
+"Light" = "Light";
+"Alert" = "Alert";
+"Reminder Mode" = "Reminder Mode";
+"Reminder Mode: %@" = "Reminder Mode: %@";
+"Quiet keeps recording and syncing. Light shows a silent, compact 10-second reminder." = "Quiet keeps recording and syncing. Light shows a silent, compact 10-second reminder.";
+"Automatically check in to 1Point3Acres after the first 20-minute use block each day" = "Automatically check in to 1Point3Acres after the first 20-minute use block each day";

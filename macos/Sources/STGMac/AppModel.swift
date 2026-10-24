@@ -186,8 +186,8 @@ final class AppModel: ObservableObject {
         guard !dailyCheckInInFlight else { return }
         dailyCheckInInFlight = true
         let content = Self.dailyCheckInContent(for: now)
-        diagnosticLog.record("started; local_date=\(date); source=first_reminder; mood=\(content.mood)", category: "daily-checkin")
-        dailyCheckIn.checkIn(mood: content.mood, note: content.note, trigger: "first_reminder") { [weak self] confirmed in
+        diagnosticLog.record("started; local_date=\(date); source=first_20m_block; mood=\(content.mood)", category: "daily-checkin")
+        dailyCheckIn.checkIn(mood: content.mood, note: content.note, trigger: "first_20m_block") { [weak self] confirmed in
             guard let self else { return }
             self.dailyCheckInInFlight = false
             if confirmed { UserDefaults.standard.set(date, forKey: key) }
@@ -553,7 +553,9 @@ final class AppModel: ObservableObject {
             let priorLastEye = reminderState.lastEyeAt
             let priorLastPosture = reminderState.lastPostureAt
             let priorLastReminder = reminderState.lastReminder
+            let priorContinuousMinutes = reminderState.continuousMinutes
             let decision = reminderEngine.evaluate(active: isScreenAvailable, now: now, localMinuteIsSet: previousWasUsed, allDeviceDailyMinutes: allMinutes, settings: settings, state: &reminderState)
+            let completedBlock = isScreenAvailable && (previousWasUsed ? priorContinuousMinutes + 1 : 1) >= 20
             if reminderState.lastEyeAt != priorLastEye || reminderState.lastPostureAt != priorLastPosture || reminderState.lastReminder != priorLastReminder {
                 try repository.saveReminderState(deviceID: settings.deviceID, state: reminderState, updatedAt: now)
             }
@@ -561,8 +563,10 @@ final class AppModel: ObservableObject {
                 diagnosticLog.record("reminder; kind=\(decision.kind.rawValue); previous_slot=\(priorLastReminder?.rawValue ?? "none"); next_slot=\(reminderState.lastReminder?.rawValue ?? "none"); all_used=\(decision.usedMinutes)m; local_used=\(localMinutes)m; countdown=\(decision.closeCountdownMinutes)m; silent=\(decision.silent)", category: "reminder")
                 lastReminder = decision
                 NotificationCenter.default.post(name: .stgReminder, object: decision)
+            }
+            if completedBlock {
                 runDailyCheckInIfNeeded(now: now)
-                diagnosticLog.record("incremental sync requested; trigger=reminder; kind=\(decision.kind.rawValue)", category: "sync")
+                diagnosticLog.record("incremental sync requested; trigger=20m_block; notification=\(decision.map { settings.notificationEnabled(for: $0.kind) } ?? false)", category: "sync")
                 await synchronize()
             }
             try repository.updateRuntimeState(deviceID: settings.deviceID, continuousMinutes: reminderState.continuousMinutes, localDailyMinutes: localMinutes, aggregateDailyMinutes: allMinutes, localDate: Self.dateLabel(now, zone: currentReportTimeZone), at: now)

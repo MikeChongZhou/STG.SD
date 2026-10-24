@@ -37,6 +37,12 @@ final class STGApplication: NSObject, NSApplicationDelegate, NSWindowDelegate {
         add(NSLocalizedString("Main", comment: ""), #selector(showMain), to: menu)
         add(NSLocalizedString("Report", comment: ""), #selector(showReport), to: menu)
         add(NSLocalizedString("Settings", comment: ""), #selector(showSettings), to: menu)
+        menu.addItem(.separator())
+        for (tag, title, action) in [(1, "Quiet", #selector(selectQuiet)), (2, "Light", #selector(selectLight)), (3, "Alert", #selector(selectAlert))] {
+            let item = NSMenuItem(title: NSLocalizedString(title, comment: "Reminder mode"), action: action, keyEquivalent: "")
+            item.tag = tag; item.target = self; menu.addItem(item)
+        }
+        menu.addItem(.separator())
         add(NSLocalizedString("Tracking", comment: ""), #selector(showTracking), to: menu)
         add(NSLocalizedString("About", comment: ""), #selector(showAbout), to: menu)
         menu.addItem(.separator()); add(NSLocalizedString("Quit", comment: ""), #selector(quit), to: menu)
@@ -99,9 +105,21 @@ final class STGApplication: NSObject, NSApplicationDelegate, NSWindowDelegate {
         pendingStatusClick = nil
         guard !terminationPreparationInProgress else { return }
         guard let button = statusItem.button, let window = button.window else { return }
+        let selected = model.settings.notificationMode
+        for item in statusMenu.items where (1...3).contains(item.tag) {
+            item.state = item.tag == (selected == "quiet" ? 1 : selected == "light" ? 2 : 3) ? .on : .off
+        }
         let buttonFrameOnScreen = window.convertToScreen(button.convert(button.bounds, to: nil))
         let menuAnchor = NSPoint(x: buttonFrameOnScreen.minX, y: buttonFrameOnScreen.minY - 1)
         statusMenu.popUp(positioning: statusMenu.items.first, at: menuAnchor, in: nil)
+    }
+
+    @objc private func selectQuiet() { setReminderMode("quiet") }
+    @objc private func selectLight() { setReminderMode("light") }
+    @objc private func selectAlert() { setReminderMode("alert") }
+    private func setReminderMode(_ mode: String) {
+        model.settings.setNotificationMode(mode)
+        model.saveSettings()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { if !flag { showMain() }; return true }
@@ -184,13 +202,20 @@ final class STGApplication: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func showReminder(_ originalDecision: ReminderDecision) {
         guard model.settings.notificationEnabled(for: originalDecision.kind) else { return }
+        let light = model.settings.notificationMode == "light"
         var decision = originalDecision
-        let detection = MeetingDetector.detect()
-        if model.settings.meetingMode || detection.isInMeeting { decision.silent = true }
-        model.diagnosticLog.record("meeting check; manual=\(model.settings.meetingMode); detected=\(detection.isInMeeting); reason=\(detection.reason); reminder_close=\(decision.silent ? "immediate" : "countdown")", category: "meeting")
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 360), styleMask: [.titled], backing: .buffered, defer: false)
-        window.level = .floating; window.center(); window.isReleasedWhenClosed = false
-        window.contentView = NSHostingView(rootView: ReminderView(decision: decision) { [weak window] in window?.close() })
-        reminderWindow?.close(); reminderWindow = window; NSApp.activate(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil)
+        decision.silent = light
+        let size = NSSize(width: light ? 520 : 520, height: light ? 86 : 360)
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.titled], backing: .buffered, defer: false)
+        window.level = .floating; window.isReleasedWhenClosed = false
+        if light, let screen = NSScreen.main {
+            let frame = screen.visibleFrame
+            window.setFrameOrigin(NSPoint(x: frame.midX - size.width / 2, y: frame.maxY - size.height - 8))
+        } else { window.center() }
+        window.contentView = NSHostingView(rootView: ReminderView(decision: decision, compact: light) { [weak window] in window?.close() })
+        reminderWindow?.close(); reminderWindow = window
+        if light { window.orderFrontRegardless() }
+        else { NSApp.activate(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil) }
+        if light { DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak window] in window?.close() } }
     }
 }

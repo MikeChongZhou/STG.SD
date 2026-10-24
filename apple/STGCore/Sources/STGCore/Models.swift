@@ -101,6 +101,28 @@ public struct STGSettings: Codable, Equatable, Sendable {
     public var dailyCloseCountdownMinutes = 3
     public var launchAtLogin = true
     public var meetingMode = false
+    private var notificationModeValue: String?
+    private var quietEyeNotifications: Bool?
+    private var quietPostureNotifications: Bool?
+    private var quietDailyNotifications: Bool?
+    public var notificationMode: String { notificationModeValue == "light" || notificationModeValue == "quiet" ? notificationModeValue! : "alert" }
+    public mutating func setNotificationMode(_ mode: String) {
+        guard ["quiet", "light", "alert"].contains(mode) else { return }
+        if mode == "quiet" && notificationMode != "quiet" {
+            quietEyeNotifications = eyeNotificationsEnabled
+            quietPostureNotifications = postureNotificationsEnabled
+            quietDailyNotifications = dailyNotificationsEnabled
+            eyeNotificationsEnabled = false
+            postureNotificationsEnabled = false
+            dailyNotificationsEnabled = false
+        } else if mode != "quiet" && notificationMode == "quiet" {
+            eyeNotificationsEnabled = quietEyeNotifications ?? true
+            postureNotificationsEnabled = quietPostureNotifications ?? true
+            dailyNotificationsEnabled = quietDailyNotifications ?? true
+        }
+        notificationModeValue = mode
+        meetingMode = false
+    }
     /// Desktop-local automation preferences. They are deliberately omitted from SettingDocument.
     public var autoDailyCheckInEnabled = false
     public var dailyCheckInText = ""

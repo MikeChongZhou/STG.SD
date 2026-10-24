@@ -41,3 +41,11 @@
 
 "— · No eligible completed days" = "— · No hay días completos válidos";
 "Align Local and Cloud Data" = "Alinear datos locales y de la nube";
+
+"Quiet" = "Silencio";
+"Light" = "Suave";
+"Alert" = "Alerta";
+"Reminder Mode" = "Modo de aviso";
+"Reminder Mode: %@" = "Modo de aviso: %@";
+"Quiet keeps recording and syncing. Light shows a silent, compact 10-second reminder." = "Silencio sigue registrando y sincronizando; Suave muestra un aviso compacto y silencioso durante 10 segundos.";
+"Automatically check in to 1Point3Acres after the first 20-minute use block each day" = "Registrarse automáticamente en 1Point3Acres tras el primer bloque diario de 20 minutos de uso";

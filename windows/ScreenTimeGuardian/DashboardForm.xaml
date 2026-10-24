@@ -24,13 +24,13 @@
                 <Button Click="Settings_Click" Margin="0,0,14,14" Padding="18" MinHeight="136" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
                     <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="44"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                         <TextBlock Text="&#xE713;" FontFamily="Segoe Fluent Icons" FontSize="25" Foreground="{StaticResource AccentBrush}" Margin="0,2,0,0"/>
-                        <StackPanel Grid.Column="1"><TextBlock Text="Settings" FontWeight="SemiBold" FontSize="20"/><TextBlock Margin="0,11,0,0" FontSize="15"><Run Text="Daily Limit: "/><Run x:Name="PlanValue" FontWeight="SemiBold"/></TextBlock><TextBlock Margin="0,5,0,0" FontSize="15"><Run x:Name="MeetingModeLabel" Text="Meeting Mode: "/><Run x:Name="MeetingModeValue" FontWeight="SemiBold"/></TextBlock></StackPanel>
+                        <StackPanel Grid.Column="1"><TextBlock Text="Settings" FontWeight="SemiBold" FontSize="20"/><TextBlock Margin="0,11,0,0" FontSize="15"><Run Text="Daily Limit: "/><Run x:Name="PlanValue" FontWeight="SemiBold"/></TextBlock><TextBlock Margin="0,5,0,0" FontSize="15"><Run x:Name="MeetingModeLabel" Text="Reminder Mode: "/><Run x:Name="MeetingModeValue" FontWeight="SemiBold"/></TextBlock></StackPanel>
                     </Grid>
                 </Button>
                 <Button Click="About_Click" Margin="0,0,14,14" Padding="18" MinHeight="136" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
                     <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="44"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                         <TextBlock Text="&#xE946;" FontFamily="Segoe Fluent Icons" FontSize="25" Foreground="{StaticResource AccentBrush}" Margin="0,2,0,0"/>
-                        <StackPanel Grid.Column="1"><TextBlock Text="About" FontWeight="SemiBold" FontSize="20"/><TextBlock Text="Version 1.2.20" Margin="0,11,0,0"/><TextBlock Text="Local + private cloud" Foreground="{StaticResource MutedBrush}" Margin="0,5,0,0"/></StackPanel>
+                        <StackPanel Grid.Column="1"><TextBlock Text="About" FontWeight="SemiBold" FontSize="20"/><TextBlock Text="Version 1.2.22" Margin="0,11,0,0"/><TextBlock Text="Local + private cloud" Foreground="{StaticResource MutedBrush}" Margin="0,5,0,0"/></StackPanel>
                     </Grid>
                 </Button>
             </UniformGrid>

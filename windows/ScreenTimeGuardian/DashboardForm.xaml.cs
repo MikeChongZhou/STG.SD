@@ -14,8 +14,8 @@ internal partial class DashboardForm : System.Windows.Window
     private void RefreshView()
     {
         AllValue.Text = Duration(app.AllMinutes); LocalValue.Text = Duration(app.LocalMinutes); PlanValue.Text = Duration(app.Settings.DailyPlanMinutes);
-        MeetingModeLabel.Text = L.T(app.Settings.MeetingMode ? "Meeting Mode: " : "Meeting auto-detect: ");
-        MeetingModeValue.Text = L.T("On"); SyncStatusLabel.Text = app.SyncStatus; TrackingSummary.Text = app.LatestTrackingTopTwo;
+        MeetingModeLabel.Text = L.T("Reminder Mode: ");
+        MeetingModeValue.Text = L.T(char.ToUpperInvariant(app.Settings.NotificationMode[0]) + app.Settings.NotificationMode[1..]); SyncStatusLabel.Text = app.SyncStatus; TrackingSummary.Text = app.LatestTrackingTopTwo;
     }
     private void OnClosing(object? sender, CancelEventArgs e) { e.Cancel = true; Hide(); }
     private void Report_Click(object sender, System.Windows.RoutedEventArgs e) => app.ShowReport();

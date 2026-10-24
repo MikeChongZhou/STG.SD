@@ -39,7 +39,7 @@ public struct ReminderEngine: Sendable {
         // Every evaluation consumes one 20-minute continuous-use block,
         // including a block suppressed by the 17/37-minute safety windows.
         state.continuousMinutes = 0
-        let silent = settings.meetingMode
+        let silent = settings.notificationMode == "light"
         let followsEyeReminder = state.lastReminder == .eye
 
         if followsEyeReminder {

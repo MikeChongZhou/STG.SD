@@ -42,7 +42,8 @@ class UsageMonitorService : Service() {
         val localUsed = database.localDayMinutes(settings.deviceID, now, java.time.ZoneId.systemDefault().id)
         diagnosticLog.record("record", "active minute sample; device=${settings.deviceID.take(8)}; utc_date=${TimeModel.utcDate(now)}; newly_marked=$newlyMarked; continuous=${continuous}m; aggregate=${used}m")
         var kind: String? = null; val previousSlot = lastReminder
-        if (continuous >= 20) {
+        val completedBlock = continuous >= 20
+        if (completedBlock) {
             continuous = 0
             if (lastReminder == "eye") {
                 if (settings.dailyNotificationsEnabled && used >= settings.dailyPlanMinutes) { kind = "daily"; lastReminder = "posture"; lastEye = elapsed; lastPosture = elapsed }
@@ -56,17 +57,23 @@ class UsageMonitorService : Service() {
             // Advance disabled slots too, so the other reminder keeps its cadence after restart.
             if (lastReminder != previousSlot && kind == null) database.saveReminderState(settings.deviceID, AndroidReminderState(lastEye, lastPosture, lastReminder))
         }
-        if (kind != null) { database.saveReminderState(settings.deviceID, AndroidReminderState(lastEye, lastPosture, lastReminder)); diagnosticLog.record("reminder", "reminder selected; kind=$kind; previous_slot=$previousSlot; next_slot=$lastReminder; used=${used}m; continuous=${continuous}m; state_saved=true"); showReminder(kind, used, settings); diagnosticLog.record("sync", "incremental sync requested; trigger=reminder; kind=$kind"); AppSyncCoordinator.request(this, "reminder:$kind") }
+        if (kind != null) { database.saveReminderState(settings.deviceID, AndroidReminderState(lastEye, lastPosture, lastReminder)); diagnosticLog.record("reminder", "reminder selected; kind=$kind; previous_slot=$previousSlot; next_slot=$lastReminder; used=${used}m; continuous=${continuous}m; state_saved=true"); showReminder(kind, used, settings) }
+        if (completedBlock) { diagnosticLog.record("sync", "incremental sync requested; trigger=20m_block; notification=${kind ?: "none"}"); AppSyncCoordinator.request(this, "20m_block") }
         database.updateRuntimeState(settings.deviceID, continuous, localUsed, used, now.atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString(), elapsed)
     }
     private fun showReminder(kind: String, used: Int, settings: AppSettings) {
-        val detected = MeetingDetector(this).checkAndLog(); val meeting = settings.meetingMode || detected.isInMeeting
-        val intent = Intent(this, ReminderActivity::class.java).putExtra("kind", kind).putExtra("used", used).putExtra("countdown", when(kind) { "eye" -> settings.eyeCountdown; "posture" -> settings.postureCountdown; else -> settings.dailyCountdown }).putExtra("meeting", meeting).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val light = settings.notificationMode == "light"
+        val intent = if (light) Intent(this, MainActivity::class.java) else Intent(this, ReminderActivity::class.java).putExtra("kind", kind).putExtra("used", used).putExtra("countdown", when(kind) { "eye" -> settings.eyeCountdown; "posture" -> settings.postureCountdown; else -> settings.dailyCountdown }).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val pending = PendingIntent.getActivity(this, kind.hashCode(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val title = getString(if (kind == "eye") R.string.eye_break_title else if (kind == "posture") R.string.posture_break_title else R.string.daily_limit_title)
         val message = if (kind == "eye") getString(R.string.eye_break_body) else if (kind == "posture") getString(R.string.posture_break_body) else getString(R.string.daily_limit_body, used / 60, used % 60)
-        val channel = if (meeting) "stg-silent" else "stg-alert"; val notification = NotificationCompat.Builder(this, channel).setSmallIcon(R.drawable.ic_stg_notification).setContentTitle(title).setContentText(message).setPriority(NotificationCompat.PRIORITY_HIGH).setContentIntent(pending).setFullScreenIntent(pending, true).setAutoCancel(true).build()
-        val notificationID = (System.currentTimeMillis() % Int.MAX_VALUE).toInt(); getSystemService(NotificationManager::class.java).notify(notificationID, notification); diagnosticLog.record("reminder", "notification enqueued; id=$notificationID; kind=$kind; used=${used}m; meeting=$meeting; silent=$meeting"); startActivity(intent)
+        val channel = if (light) "stg-light-v2" else "stg-alert"
+        val builder = NotificationCompat.Builder(this, channel).setSmallIcon(R.drawable.ic_stg_notification).setContentTitle(title).setContentText(message).setPriority(NotificationCompat.PRIORITY_HIGH).setContentIntent(pending).setAutoCancel(true)
+        if (light) builder.setTimeoutAfter(10_000) else builder.setFullScreenIntent(pending, true)
+        val notification = builder.build()
+        val notificationID = (System.currentTimeMillis() % Int.MAX_VALUE).toInt(); getSystemService(NotificationManager::class.java).notify(notificationID, notification); diagnosticLog.record("reminder", "notification enqueued; id=$notificationID; kind=$kind; used=${used}m; mode=${settings.notificationMode}");
+        if (light) handler.postDelayed({ getSystemService(NotificationManager::class.java).cancel(notificationID) }, 10_000)
+        if (!light) startActivity(intent)
     }
-    private fun createChannels() { if (Build.VERSION.SDK_INT < 26) return; val manager = getSystemService(NotificationManager::class.java); manager.createNotificationChannel(NotificationChannel("stg-service", "STG service", NotificationManager.IMPORTANCE_LOW)); manager.createNotificationChannel(NotificationChannel("stg-alert", "STG reminders", NotificationManager.IMPORTANCE_HIGH)); manager.createNotificationChannel(NotificationChannel("stg-silent", "STG meeting reminders", NotificationManager.IMPORTANCE_DEFAULT).apply { setSound(null, null) }) }
+    private fun createChannels() { if (Build.VERSION.SDK_INT < 26) return; val manager = getSystemService(NotificationManager::class.java); manager.createNotificationChannel(NotificationChannel("stg-service", "STG service", NotificationManager.IMPORTANCE_LOW)); manager.createNotificationChannel(NotificationChannel("stg-alert", "STG reminders", NotificationManager.IMPORTANCE_HIGH)); manager.createNotificationChannel(NotificationChannel("stg-light-v2", "STG light reminders", NotificationManager.IMPORTANCE_HIGH).apply { setSound(null, null); enableVibration(false) }) }
 }

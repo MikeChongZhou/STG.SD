@@ -91,6 +91,24 @@ final class STGCoreTests: XCTestCase {
         }
     }
 
+    func testQuietModeRestoresSelectedNotificationKindsAcrossSave() throws {
+        var settings = STGSettings(deviceID: "test", deviceName: "Phone", deviceKind: .ios)
+        settings.eyeNotificationsEnabled = true
+        settings.postureNotificationsEnabled = false
+        settings.dailyNotificationsEnabled = true
+        settings.setNotificationMode("quiet")
+        XCTAssertEqual(settings.notificationMode, "quiet")
+        XCTAssertFalse(settings.eyeNotificationsEnabled)
+        XCTAssertFalse(settings.postureNotificationsEnabled)
+        XCTAssertFalse(settings.dailyNotificationsEnabled)
+        var restored = try JSONDecoder().decode(STGSettings.self, from: JSONEncoder().encode(settings))
+        restored.setNotificationMode("light")
+        XCTAssertTrue(restored.eyeNotificationsEnabled)
+        XCTAssertFalse(restored.postureNotificationsEnabled)
+        XCTAssertTrue(restored.dailyNotificationsEnabled)
+        XCTAssertEqual(restored.notificationMode, "light")
+    }
+
     func testDesktopNotificationOptionsKeepAlternatingWhenDisabled() {
         let engine = ReminderEngine()
         let start = Date(timeIntervalSince1970: 1_700_000_000)

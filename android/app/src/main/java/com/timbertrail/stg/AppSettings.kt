@@ -24,8 +24,22 @@ data class AppSettings(
     var dailyNotificationsEnabled: Boolean = true,
     var launchAtLogin: Boolean = true,
     var chartSize: String = "system",
-    var updatedAt: Long = java.time.Instant.now().epochSecond
+    var updatedAt: Long = java.time.Instant.now().epochSecond,
+    var notificationMode: String = "alert",
+    var quietEyeNotifications: Boolean? = null,
+    var quietPostureNotifications: Boolean? = null,
+    var quietDailyNotifications: Boolean? = null
 ) {
+    fun applyNotificationMode(mode: String) {
+        if (mode !in listOf("quiet", "light", "alert")) return
+        if (mode == "quiet" && notificationMode != "quiet") {
+            quietEyeNotifications = eyeNotificationsEnabled; quietPostureNotifications = postureNotificationsEnabled; quietDailyNotifications = dailyNotificationsEnabled
+            eyeNotificationsEnabled = false; postureNotificationsEnabled = false; dailyNotificationsEnabled = false
+        } else if (mode != "quiet" && notificationMode == "quiet") {
+            eyeNotificationsEnabled = quietEyeNotifications ?: true; postureNotificationsEnabled = quietPostureNotifications ?: true; dailyNotificationsEnabled = quietDailyNotifications ?: true
+        }
+        notificationMode = mode; meetingMode = false
+    }
     fun toJson() = JSONObject().apply {
         put("device_id", deviceID); put("device_name", deviceName); put("device_kind", "android")
         put("daily_plan_minutes", dailyPlanMinutes); put("report_time_zone", reportTimeZone)
@@ -44,8 +58,13 @@ class SettingsStore(context: Context) {
         preferences.getInt("dailyPlan", 600), preferences.getString("reportZone", ZoneId.systemDefault().id)!!,
         preferences.getInt("eyeCountdown", 1), preferences.getInt("postureCountdown", 2), preferences.getInt("dailyCountdown", 3),
         preferences.getBoolean("meetingMode", false), preferences.getString("cloudProvider", "off")!!, preferences.getString("cloudAccount", "")!!, preferences.getBoolean("eyeNotificationsEnabled", preferences.getBoolean("breakNotificationsEnabled", true)), preferences.getBoolean("postureNotificationsEnabled", preferences.getBoolean("breakNotificationsEnabled", true)), preferences.getBoolean("dailyNotificationsEnabled", true), preferences.getBoolean("launchAtLogin", true), preferences.getString("chartSize", "system")!!, normalizeSeconds(preferences.getLong("updatedAt", java.time.Instant.now().epochSecond))
-    )
-    fun save(value: AppSettings) { value.updatedAt = java.time.Instant.now().epochSecond; preferences.edit().putString("deviceID", value.deviceID).putString("deviceName", value.deviceName).putInt("dailyPlan", value.dailyPlanMinutes).putString("reportZone", value.reportTimeZone).putInt("eyeCountdown", value.eyeCountdown).putInt("postureCountdown", value.postureCountdown).putInt("dailyCountdown", value.dailyCountdown).putBoolean("meetingMode", value.meetingMode).putBoolean("eyeNotificationsEnabled", value.eyeNotificationsEnabled).putBoolean("postureNotificationsEnabled", value.postureNotificationsEnabled).putBoolean("dailyNotificationsEnabled", value.dailyNotificationsEnabled).putBoolean("launchAtLogin", value.launchAtLogin).putString("chartSize", value.chartSize).putString("cloudProvider", value.cloudProvider).putString("cloudAccount", value.cloudAccount).remove("cloudTreeUri").putLong("updatedAt", value.updatedAt).apply() }
+    ).apply {
+        notificationMode = preferences.getString("notificationMode", "alert") ?: "alert"
+        quietEyeNotifications = if (preferences.contains("quietEyeNotifications")) preferences.getBoolean("quietEyeNotifications", true) else null
+        quietPostureNotifications = if (preferences.contains("quietPostureNotifications")) preferences.getBoolean("quietPostureNotifications", true) else null
+        quietDailyNotifications = if (preferences.contains("quietDailyNotifications")) preferences.getBoolean("quietDailyNotifications", true) else null
+    }
+    fun save(value: AppSettings) { value.updatedAt = java.time.Instant.now().epochSecond; preferences.edit().putString("deviceID", value.deviceID).putString("deviceName", value.deviceName).putInt("dailyPlan", value.dailyPlanMinutes).putString("reportZone", value.reportTimeZone).putInt("eyeCountdown", value.eyeCountdown).putInt("postureCountdown", value.postureCountdown).putInt("dailyCountdown", value.dailyCountdown).putBoolean("meetingMode", value.meetingMode).putBoolean("eyeNotificationsEnabled", value.eyeNotificationsEnabled).putBoolean("postureNotificationsEnabled", value.postureNotificationsEnabled).putBoolean("dailyNotificationsEnabled", value.dailyNotificationsEnabled).putBoolean("launchAtLogin", value.launchAtLogin).putString("chartSize", value.chartSize).putString("cloudProvider", value.cloudProvider).putString("cloudAccount", value.cloudAccount).putString("notificationMode", value.notificationMode).putBoolean("quietEyeNotifications", value.quietEyeNotifications ?: true).putBoolean("quietPostureNotifications", value.quietPostureNotifications ?: true).putBoolean("quietDailyNotifications", value.quietDailyNotifications ?: true).remove("cloudTreeUri").putLong("updatedAt", value.updatedAt).apply() }
     fun language() = preferences.getString("appLanguage", "system") ?: "system"
     fun saveLanguage(value: String) = preferences.edit().putString("appLanguage", value).apply()
     private fun normalizeSeconds(value: Long) = if (kotlin.math.abs(value) >= 100_000_000_000L) value / 1000 else value

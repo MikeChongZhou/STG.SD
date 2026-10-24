@@ -16,6 +16,24 @@ internal sealed class AppSettings
     [JsonPropertyName("daily_close_countdown_minutes")] public int DailyCountdown { get; set; } = 3;
     [JsonPropertyName("launch_at_login")] public bool LaunchAtLogin { get; set; } = true;
     [JsonPropertyName("meeting_mode")] public bool MeetingMode { get; set; }
+    [JsonPropertyName("notification_mode")] public string NotificationMode { get; set; } = "alert";
+    [JsonPropertyName("quiet_eye_notifications")] public bool? QuietEyeNotifications { get; set; }
+    [JsonPropertyName("quiet_posture_notifications")] public bool? QuietPostureNotifications { get; set; }
+    [JsonPropertyName("quiet_daily_notifications")] public bool? QuietDailyNotifications { get; set; }
+    public void SetNotificationMode(string mode)
+    {
+        if (mode is not ("quiet" or "light" or "alert")) return;
+        if (mode == "quiet" && NotificationMode != "quiet")
+        {
+            QuietEyeNotifications = EyeNotificationsEnabled; QuietPostureNotifications = PostureNotificationsEnabled; QuietDailyNotifications = DailyNotificationsEnabled;
+            EyeNotificationsEnabled = PostureNotificationsEnabled = DailyNotificationsEnabled = false;
+        }
+        else if (mode != "quiet" && NotificationMode == "quiet")
+        {
+            EyeNotificationsEnabled = QuietEyeNotifications ?? true; PostureNotificationsEnabled = QuietPostureNotifications ?? true; DailyNotificationsEnabled = QuietDailyNotifications ?? true;
+        }
+        NotificationMode = mode; MeetingMode = false;
+    }
     [JsonPropertyName("eye_notifications_enabled")] public bool EyeNotificationsEnabled { get; set; } = true;
     [JsonPropertyName("posture_notifications_enabled")] public bool PostureNotificationsEnabled { get; set; } = true;
     [JsonPropertyName("daily_notifications_enabled")] public bool DailyNotificationsEnabled { get; set; } = true;
