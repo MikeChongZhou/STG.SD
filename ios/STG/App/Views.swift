@@ -5,6 +5,7 @@ import SwiftUI
 import UserNotifications
 
 struct RootView: View {
+    @AppStorage("app_language") private var appLanguage = "system"
     @StateObject var model: AppModel
     @StateObject private var activity = DeviceActivityController()
     @Environment(\.scenePhase) private var scenePhase
@@ -18,7 +19,7 @@ struct RootView: View {
             NavigationStack { TrackingView(model: model) }.tabItem { Label("Tracking", systemImage: "waveform.path.ecg") }.tag(2)
             NavigationStack { SettingsView(model: model, activity: activity) { selectedTab = 0 } }.tabItem { Label("Settings", systemImage: "gear") }.tag(3)
             NavigationStack { AboutView() }.tabItem { Label("About", systemImage: "info.circle") }.tag(4)
-        }.task {
+        }.environment(\.locale, appLanguage == "system" ? .autoupdatingCurrent : Locale(identifier: appLanguage)).task {
             model.beginDeferredStartup()
             await model.refresh()
             initialLoadComplete = true
@@ -637,6 +638,7 @@ struct MinuteBitmapView: View {
 }
 
 struct SettingsView: View {
+    @AppStorage("app_language") private var appLanguage = "system"
     @ObservedObject var model: AppModel
     @ObservedObject var activity: DeviceActivityController
     let close: () -> Void
@@ -688,6 +690,15 @@ struct SettingsView: View {
                 Text("Quiet keeps recording and syncing. Light delivers silent reminders.").font(.footnote).foregroundStyle(.secondary)
             }
             Section("Display") {
+                Picker("Language", selection: $appLanguage) {
+                    Text("Follow System").tag("system")
+                    Text("English").tag("en")
+                    Text("中文").tag("zh-Hans")
+                    Text("Español").tag("es")
+                }.onChange(of: appLanguage) { _, language in
+                    if language == "system" { UserDefaults.standard.removeObject(forKey: "AppleLanguages") }
+                    else { UserDefaults.standard.set([language], forKey: "AppleLanguages") }
+                }
                 Picker("Chart Size", selection: $reportChartDisplay) {
                     ForEach(ReportChartDisplay.allCases) { Text($0.label).tag($0.rawValue) }
                 }
@@ -1210,7 +1221,7 @@ struct AboutView: View {
             VStack(alignment: .leading, spacing: 16) {
                 HStack { Spacer(); Image(systemName: "shield.lefthalf.filled").font(.system(size: 64)).foregroundStyle(.blue); Spacer() }
                 Text("Screen Time Guardian").font(.title.bold()).frame(maxWidth: .infinity)
-                Text("Version 1.2.22\nCopyright © 2026 Fairy Phoenix Foundation.")
+                Text("Version 1.2.25\nCopyright © 2026 Fairy Phoenix Foundation.")
                 Text("This app records minute-level estimates of screen use on this device or across all your devices, and reminds you to take breaks.")
                 Text("Privacy: Your screen-use data stays on this device and, if enabled, in the private cloud you choose. It is never sent to the app developer or any other service.")
                 Text("Accuracy: Apple does not make Screen Time data available to third-party apps. STG estimates usage from DeviceActivity data, so its totals may differ from those shown in Settings → Screen Time.")

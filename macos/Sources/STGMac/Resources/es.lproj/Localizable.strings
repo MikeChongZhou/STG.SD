@@ -27,7 +27,7 @@
 "Export lifecycle, screen-use, reminder, database, and synchronization events without cloud credentials." = "Exporta eventos de actividad, uso de pantalla, avisos, base de datos y sincronización sin credenciales de la nube.";
 "through the latest completed UTC day" = "hasta el último día UTC completo"; "Updated by the weekly action in incremental sync" = "Actualizado por la acción semanal de sincronización incremental";
 "Prices are OpenRouter's observed effective weighted prices (including cache and provider discounts). Revenue is an estimate, not OpenRouter financial reporting." = "Los precios son promedios efectivos ponderados observados por OpenRouter e incluyen caché y descuentos del proveedor. Los ingresos son una estimación, no datos financieros de OpenRouter.";
-"Version 1.2.18\nCopyright © 2026 Fairy Phoenix Foundation." = "Versión 1.2.18\nCopyright © 2026 Fairy Phoenix Foundation.";
+"Version 1.2.25\nCopyright © 2026 Fairy Phoenix Foundation." = "Versión 1.2.25\nCopyright © 2026 Fairy Phoenix Foundation.";
 "This app records minute-level estimates of screen use, either on this Mac alone or across your devices, and reminds you to take breaks." = "Esta app registra estimaciones por minuto del uso de pantalla en este Mac o en todos tus dispositivos y te recuerda descansar.";
 "Privacy: Your screen-use data remains on this Mac and, if enabled, in your chosen private-cloud account. STG does not send it to the developer or anyone else." = "Privacidad: los datos de uso permanecen en este Mac y, si lo activas, en la nube privada que elijas. STG no los envía al desarrollador ni a terceros.";
 "Accuracy: STG estimates screen use from macOS activity signals, so its totals may differ from other system usage statistics." = "Precisión: STG estima el uso con señales de actividad de macOS, por lo que los totales pueden diferir de otras estadísticas del sistema.";
@@ -49,3 +49,6 @@
 "Reminder Mode: %@" = "Modo de aviso: %@";
 "Quiet keeps recording and syncing. Light shows a silent, compact 10-second reminder." = "Silencio sigue registrando y sincronizando; Suave muestra un aviso compacto y silencioso durante 10 segundos.";
 "Automatically check in to 1Point3Acres after the first 20-minute use block each day" = "Registrarse automáticamente en 1Point3Acres tras el primer bloque diario de 20 minutos de uso";
+
+"Language" = "Idioma";
+"Follow System" = "Seguir el sistema";

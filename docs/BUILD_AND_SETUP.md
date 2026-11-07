@@ -1,5 +1,11 @@
 # Build and setup
 
+## This Mac's development environment
+
+The current development machine has Xcode at `/Applications/Xcode.app` (developer directory `/Applications/Xcode.app/Contents/Developer`; Xcode 26.6), Android Studio at `/Applications/Android Studio.app`, Android SDK at `/Users/mikechongzhou/Library/Android/sdk`, and Android Studio's bundled JDK at `/Applications/Android Studio.app/Contents/jbr/Contents/Home` (currently Java 21). Android Studio reads `android/local.properties`, whose `sdk.dir` points to that SDK. The SDK includes platform tools, the emulator, installed Android platforms, and system images. CoreSimulator devices are under `/Users/mikechongzhou/Library/Developer/CoreSimulator/Devices`; an iOS runtime volume is mounted under `/Library/Developer/CoreSimulator/Volumes/iOS_23F77`.
+
+Use the repository build scripts below so SDK, JDK, cache, and output paths stay consistent. If `simctl` reports that CoreSimulatorService or `simdiskimaged` is unavailable inside a restricted automation session, that does **not** establish that the simulator or runtime is absent from the Mac. Check with Xcode or an unrestricted terminal before drawing that conclusion. A generic iOS device build may also invoke simulator-backed asset tooling and fail for the same service-access reason.
+
 ## macOS
 
 Run `bash scripts/build_macos.sh`. The locally ad-hoc-signed bundle (`com.timbertrail.screentimeguardian.ios`) is written to `dist/Screen Time Guardian.app`. The build reads the Google Desktop OAuth client secret from `STG_GOOGLE_CLIENT_SECRET` or Git-ignored `android/local.properties` and stops if neither is configured. Local and distribution builds both retain the app sandbox entitlement, so they use the same macOS app container and database. The local build omits only the provisioned iCloud capabilities; OneDrive and Google Drive remain available. A working iCloud release requires an Apple Development/Developer ID signature and provisioning profile that authorizes this bundle ID and `iCloud.com.timbertrail.screentimeguardian`; a release should also be notarized.
@@ -32,7 +38,7 @@ Google Drive requires a Google OAuth native client ID in each target's `STGGoogl
 
 ## Android
 
-Install Android Studio/JDK 17 and run `bash scripts/build_android.sh`. The debug APK is written to `dist/android/ScreenTimeGuardian-1.2.22-debug.apk` and supports Android 9 (API 28) or later.
+Use the installed Android Studio and its bundled JDK, then run `bash scripts/build_android.sh`. The debug APK is written to `dist/android/ScreenTimeGuardian-1.2.25-debug.apk` and supports Android 9 (API 28) or later.
 
 On first use grant notifications, overlay/full-screen reminder access, and Usage Access, then optionally complete private-cloud setup. Android does not use a folder picker: OneDrive uses OAuth/PKCE with `Files.ReadWrite.AppFolder` and Microsoft Graph App Folder; Google Drive uses OAuth/PKCE with the Google Desktop client registration and the hidden `appDataFolder`. The app verifies the account and completes an initial sync before saving the provider. Access and refresh tokens are encrypted with Android Keystore, and logs never include tokens or account addresses. For Google builds, provide `STG_GOOGLE_CLIENT_SECRET` either as an environment variable or as the same key in the Git-ignored `android/local.properties`; Gradle injects it into `BuildConfig` without writing it to tracked source files. The `local.properties` option is required when launching directly from Android Studio unless Android Studio itself was started with that environment variable.
 

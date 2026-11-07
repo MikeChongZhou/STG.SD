@@ -1,4 +1,5 @@
 using Microsoft.Win32;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO.Compression;
 using System.Text.Json;
@@ -34,6 +35,7 @@ internal sealed class TrayAppContext : IDisposable
     public int LocalMinutes { get; private set; }
     public int AllMinutes { get; private set; }
     public string SyncStatus { get; private set; } = "Sync off";
+    public string StartupStatus { get; private set; } = "";
     public UsageStatisticsSummary StatisticsSummary { get; private set; } = new(null, null, null, null, null, false);
     public string CurrentReportTimeZone => TimeZoneInfo.Local.Id;
     public event EventHandler? StateChanged;
@@ -41,7 +43,7 @@ internal sealed class TrayAppContext : IDisposable
     public TrayAppContext()
     {
         dataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ScreenTimeGuardian");
-        settingsStore = new(dataFolder); log = new(dataFolder); Settings = settingsStore.Load(); Settings.ReportTimeZone = CurrentReportTimeZone;
+        settingsStore = new(dataFolder); log = new(dataFolder); Settings = settingsStore.Load(); L.Language = Settings.Language; Settings.ReportTimeZone = CurrentReportTimeZone;
         repository = new(Path.Combine(dataFolder, "stg.sqlite"));
         repository.UpsertDevice(new(Settings.DeviceID, Settings.DeviceName, Settings.DeviceKind, Settings.UpdatedAt));
         var reminderState = repository.LoadReminderState(Settings.DeviceID);
@@ -464,12 +466,70 @@ internal sealed class TrayAppContext : IDisposable
     }
     private void ConfigureStartup()
     {
-        using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true);
-        if (key is null) { log.Record("lifecycle", $"startup reconciliation failed; requested={Settings.LaunchAtLogin}; registry_unavailable=true"); return; }
-        if (Settings.LaunchAtLogin) key.SetValue("ScreenTimeGuardian", $"\"{Environment.ProcessPath}\"");
-        else key.DeleteValue("ScreenTimeGuardian", false);
-        var active = key.GetValue("ScreenTimeGuardian") is not null;
-        log.Record("lifecycle", $"startup reconciled; requested={Settings.LaunchAtLogin}; registered={active}");
+        const string runKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
+        const string valueName = "ScreenTimeGuardian";
+        try
+        {
+            using var key = Registry.CurrentUser.CreateSubKey(runKeyPath, true);
+            if (key is null) throw new InvalidOperationException("The current user's startup registry key is unavailable.");
+            var previous = key.GetValue(valueName) as string;
+            if (!Settings.LaunchAtLogin)
+            {
+                if (previous is not null) key.DeleteValue(valueName, false);
+                StartupStatus = L.T("Automatic startup is off.");
+                log.Record("lifecycle", $"startup reconciled; requested=false; removed_own_entry={previous is not null}");
+                return;
+            }
+
+            var current = Environment.ProcessPath;
+            if (string.IsNullOrWhiteSpace(current) || !Path.GetFileName(current).Equals("ScreenTimeGuardian.exe", StringComparison.OrdinalIgnoreCase))
+                current = Path.Combine(AppContext.BaseDirectory, "ScreenTimeGuardian.exe");
+            if (!File.Exists(current)) throw new FileNotFoundException("The STG executable for automatic startup was not found.", current);
+
+            // Prefer an installed copy only when it is at least as new as the running copy.
+            var installed = FindInstalledExecutable();
+            var target = installed is not null && IsSameOrNewer(installed, current) ? installed : current;
+            var command = $"\"{Path.GetFullPath(target)}\"";
+            if (!string.Equals(previous, command, StringComparison.OrdinalIgnoreCase)) key.SetValue(valueName, command, RegistryValueKind.String);
+            var registered = string.Equals(key.GetValue(valueName) as string, command, StringComparison.OrdinalIgnoreCase);
+            StartupStatus = registered
+                ? installed is null || !string.Equals(target, installed, StringComparison.OrdinalIgnoreCase)
+                    ? L.T("Startup entry points to this folder. Keep the app here.")
+                    : L.T("Startup entry points to the installed app.")
+                : L.T("Automatic startup could not be verified.");
+            log.Record("lifecycle", $"startup reconciled; requested=true; registered={registered}; updated={previous != command}; previous={previous ?? "none"}; target={target}; installed={installed ?? "none"}");
+        }
+        catch (Exception error)
+        {
+            StartupStatus = L.T("Automatic startup could not be configured.");
+            log.Record("lifecycle", $"startup reconciliation failed; requested={Settings.LaunchAtLogin}; {DiagnosticLog.Describe(error)}");
+        }
+    }
+
+    private static string? FindInstalledExecutable()
+    {
+        const string uninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\{8FBAF6E7-94D8-484A-B46B-DF1AE3BB824D}_is1";
+        foreach (var hive in new[] { Registry.CurrentUser, Registry.LocalMachine })
+        {
+            try
+            {
+                using var entry = hive.OpenSubKey(uninstallKey);
+                var folder = entry?.GetValue("InstallLocation") as string;
+                if (string.IsNullOrWhiteSpace(folder)) continue;
+                var candidate = Path.Combine(folder.Trim().Trim('"'), "ScreenTimeGuardian.exe");
+                if (File.Exists(candidate)) return Path.GetFullPath(candidate);
+            }
+            catch (System.Security.SecurityException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+        return null;
+    }
+
+    private static bool IsSameOrNewer(string candidate, string running)
+    {
+        var candidateVersion = FileVersionInfo.GetVersionInfo(candidate).FileVersion;
+        var runningVersion = FileVersionInfo.GetVersionInfo(running).FileVersion;
+        return Version.TryParse(candidateVersion, out var installed) && Version.TryParse(runningVersion, out var current) && installed >= current;
     }
     internal static string ProviderName(SyncProvider provider) => provider switch { SyncProvider.ICloudDrive => "iCloud Drive", SyncProvider.OneDrive => "OneDrive", SyncProvider.GoogleDrive => "Google Drive", _ => "Off" };
     private string ShortDeviceID => Settings.DeviceID[..Math.Min(8, Settings.DeviceID.Length)];

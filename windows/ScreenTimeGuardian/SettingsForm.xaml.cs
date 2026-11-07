@@ -15,6 +15,9 @@ internal partial class SettingsForm : System.Windows.Window
         var countdowns = Enumerable.Range(0, 31).ToArray(); EyeCountdownBox.ItemsSource = countdowns; PostureCountdownBox.ItemsSource = countdowns; DailyCountdownBox.ItemsSource = countdowns;
         PlanHourBox.SelectedItem = app.Settings.DailyPlanMinutes / 60; PlanMinuteBox.SelectedItem = app.Settings.DailyPlanMinutes % 60;
         StartupBox.IsChecked = app.Settings.LaunchAtLogin;
+        LanguageBox.ItemsSource = new[] { L.T("Follow System"), "English", "中文", "Español" };
+        LanguageBox.SelectedIndex = app.Settings.Language switch { "en" => 1, "zh" => 2, "es" => 3, _ => 0 };
+        LanguageBox.SelectionChanged += Draft_Changed;
         draftMode = app.Settings.NotificationMode;
         ReminderModeBox.ItemsSource = new[] { L.T("Quiet"), L.T("Light"), L.T("Alert") };
         ReminderModeBox.SelectedIndex = draftMode == "quiet" ? 0 : draftMode == "light" ? 1 : 2;
@@ -62,7 +65,7 @@ internal partial class SettingsForm : System.Windows.Window
     }
     private void UpdateCloud()
     {
-        var provider = app.Settings.SyncProvider; var signed = app.ProviderSignedIn(provider); ProviderLabel.Text = provider switch { SyncProvider.ICloudDrive => "Apple iCloud Drive", SyncProvider.OneDrive => "Microsoft OneDrive", SyncProvider.GoogleDrive => "Google Drive", _ => L.T("Off") }; AccountLabel.Text = provider == SyncProvider.None ? L.T("Single-device mode") : signed ? L.F("Connected through {0}", app.ProviderAccountLabel(provider)) : L.T("Not signed in"); CloudStatusLabel.Text = app.SyncStatus; AlignDataButton.IsEnabled = signed;
+        var provider = app.Settings.SyncProvider; var signed = app.ProviderSignedIn(provider); ProviderLabel.Text = provider switch { SyncProvider.ICloudDrive => "Apple iCloud Drive", SyncProvider.OneDrive => "Microsoft OneDrive", SyncProvider.GoogleDrive => "Google Drive", _ => L.T("Off") }; AccountLabel.Text = provider == SyncProvider.None ? L.T("Single-device mode") : signed ? L.F("Connected through {0}", app.ProviderAccountLabel(provider)) : L.T("Not signed in"); CloudStatusLabel.Text = app.SyncStatus; AlignDataButton.IsEnabled = signed; StartupStatusLabel.Text = app.StartupStatus;
     }
     private void ExportLog_Click(object sender, System.Windows.RoutedEventArgs e) => app.ExportTestLog(this);
     private void ExportData_Click(object sender, System.Windows.RoutedEventArgs e) => app.ExportData(this);
@@ -90,7 +93,12 @@ internal partial class SettingsForm : System.Windows.Window
         }
         app.Settings.AutoDailyCheckInEnabled = DailyCheckInBox.IsChecked == true;
         app.Settings.DailyPlanMinutes = plan; app.Settings.LaunchAtLogin = StartupBox.IsChecked == true;
-        app.Settings.EyeCountdown = EyeCountdownBox.SelectedItem as int? ?? 1; app.Settings.PostureCountdown = PostureCountdownBox.SelectedItem as int? ?? 2; app.Settings.DailyCountdown = DailyCountdownBox.SelectedItem as int? ?? 3; app.SaveSettings(); return true;
+        var language = new[] { "system", "en", "zh", "es" }[Math.Clamp(LanguageBox.SelectedIndex, 0, 3)];
+        var languageChanged = app.Settings.Language != language;
+        app.Settings.Language = language;
+        app.Settings.EyeCountdown = EyeCountdownBox.SelectedItem as int? ?? 1; app.Settings.PostureCountdown = PostureCountdownBox.SelectedItem as int? ?? 2; app.Settings.DailyCountdown = DailyCountdownBox.SelectedItem as int? ?? 3; app.SaveSettings();
+        if (languageChanged) { L.Language = language; System.Windows.MessageBox.Show(this, L.T("Restart Screen Time Guardian to apply the language throughout the app."), L.T("Language"), System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information); }
+        return true;
     }
     private bool HasUnsavedChanges()
     {
@@ -102,6 +110,7 @@ internal partial class SettingsForm : System.Windows.Window
             || (DailyNotificationsBox.IsChecked == true) != app.Settings.DailyNotificationsEnabled
             || (DailyCheckInBox.IsChecked == true) != app.Settings.AutoDailyCheckInEnabled
             || StartupBox.IsChecked == true != app.Settings.LaunchAtLogin
+            || new[] { "system", "en", "zh", "es" }[Math.Clamp(LanguageBox.SelectedIndex, 0, 3)] != app.Settings.Language
             || (EyeCountdownBox.SelectedItem as int? ?? 1) != app.Settings.EyeCountdown
             || (PostureCountdownBox.SelectedItem as int? ?? 2) != app.Settings.PostureCountdown
             || (DailyCountdownBox.SelectedItem as int? ?? 3) != app.Settings.DailyCountdown;

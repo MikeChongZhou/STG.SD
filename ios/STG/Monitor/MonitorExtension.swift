@@ -206,9 +206,9 @@ final class MonitorExtension: DeviceActivityMonitor {
                 return
             }
             let elapsedSeconds = Date().timeIntervalSince(previousThresholdReceivedAt)
-            guard elapsedSeconds <= 25 * 60 else {
+            guard (15 * 60...25 * 60).contains(elapsedSeconds) else {
                 SharedEnvironment.diagnosticLog.record(
-                    "break reminder skipped; generation=\(generation); threshold=\(threshold)m; kind=\(kind.rawValue); elapsed_seconds=\(Int(elapsedSeconds)); maximum_seconds=1500; no_notification=true",
+                    "break reminder skipped; generation=\(generation); threshold=\(threshold)m; kind=\(kind.rawValue); elapsed_seconds=\(Int(elapsedSeconds)); minimum_seconds=900; maximum_seconds=1500; no_notification=true",
                     category: "monitor"
                 )
                 return

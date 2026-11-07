@@ -46,6 +46,7 @@ final class AppModel: ObservableObject {
     private static let sessionHeartbeatAtKey = "runtime_session_heartbeat_at"
     private static let sessionCleanShutdownKey = "runtime_session_clean_shutdown"
     private static let sessionTerminationReasonKey = "runtime_session_termination_reason"
+    private static let loginItemBundlePathKey = "login_item_registered_bundle_path"
 
     init() {
         sessionID = UUID().uuidString.lowercased()
@@ -144,14 +145,38 @@ final class AppModel: ObservableObject {
 
     func reconcileLaunchAtLogin(trigger: String) {
         let service = SMAppService.mainApp
+        let currentPath = Bundle.main.bundleURL.standardizedFileURL.path
+        let previousPath = UserDefaults.standard.string(forKey: Self.loginItemBundlePathKey)
+        let currentIsInstalled = Self.isInApplications(Bundle.main.bundleURL)
+        let keepInstalledCopy = previousPath.map { $0 != currentPath && Self.isInApplications(URL(fileURLWithPath: $0)) && !currentIsInstalled } ?? false
+        var registeredThisRun = false
         do {
             if settings.launchAtLogin {
-                if service.status == .notRegistered || service.status == .notFound { try service.register() }
+                if let previousPath, previousPath != currentPath, !keepInstalledCopy,
+                   (service.status == .enabled || service.status == .requiresApproval) {
+                    // Migrate only this app's known registration when its bundle has moved.
+                    try service.unregister()
+                    diagnosticLog.record("login item unregistered from previous app copy; previous_path=\(previousPath); current_path=\(currentPath)", category: "lifecycle")
+                }
+                if !keepInstalledCopy && (service.status == .notRegistered || service.status == .notFound) {
+                    try service.register()
+                    registeredThisRun = true
+                }
             } else if service.status == .enabled || service.status == .requiresApproval {
                 try service.unregister()
             }
-            launchAtLoginStatus = Self.loginItemDescription(service.status, requested: settings.launchAtLogin)
-            diagnosticLog.record("login item reconciled; trigger=\(trigger); requested=\(settings.launchAtLogin); status=\(service.status.rawValue)", category: "lifecycle")
+            if settings.launchAtLogin && !keepInstalledCopy && (currentIsInstalled || previousPath != nil || registeredThisRun)
+                && (service.status == .enabled || service.status == .requiresApproval) {
+                UserDefaults.standard.set(currentPath, forKey: Self.loginItemBundlePathKey)
+            } else if !settings.launchAtLogin {
+                UserDefaults.standard.removeObject(forKey: Self.loginItemBundlePathKey)
+            }
+            launchAtLoginStatus = keepInstalledCopy && settings.launchAtLogin
+                ? service.status == .enabled
+                    ? "Login starts the installed copy in Applications; this copy is outside Applications"
+                    : "Open the installed copy in Applications to restore login startup"
+                : Self.loginItemDescription(service.status, requested: settings.launchAtLogin)
+            diagnosticLog.record("login item reconciled; trigger=\(trigger); requested=\(settings.launchAtLogin); status=\(service.status.rawValue); current_path=\(currentPath); previous_path=\(previousPath ?? "none"); kept_installed_copy=\(keepInstalledCopy)", category: "lifecycle")
         } catch {
             launchAtLoginStatus = "Login-item update failed: \(error.localizedDescription)"
             diagnosticLog.record("login item reconciliation failed; trigger=\(trigger); requested=\(settings.launchAtLogin); status=\(service.status.rawValue); error_type=\(String(reflecting: type(of: error))); error=\(error.localizedDescription)", category: "lifecycle")
@@ -629,6 +654,13 @@ final class AppModel: ObservableObject {
         case .notFound: return "Install Screen Time Guardian in Applications before enabling login startup"
         @unknown default: return "Login-item status is unavailable"
         }
+    }
+
+    private static func isInApplications(_ url: URL) -> Bool {
+        let path = url.standardizedFileURL.path
+        return [FileManager.SearchPathDomainMask.localDomainMask, .userDomainMask]
+            .compactMap { FileManager.default.urls(for: .applicationDirectory, in: $0).first?.standardizedFileURL.path }
+            .contains { path.hasPrefix($0 + "/") }
     }
 
     func exportTestLog() {

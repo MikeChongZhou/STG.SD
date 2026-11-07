@@ -3,6 +3,14 @@ import Darwin
 import SwiftUI
 import STGCore
 
+private struct LocalizedMacView<Content: View>: View {
+    @AppStorage("app_language") private var appLanguage = "system"
+    let content: Content
+    var body: some View {
+        content.environment(\.locale, appLanguage == "system" ? .autoupdatingCurrent : Locale(identifier: appLanguage))
+    }
+}
+
 @main
 @MainActor
 final class STGApplication: NSObject, NSApplicationDelegate, NSWindowDelegate {
@@ -163,7 +171,7 @@ final class STGApplication: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let requestedSize: NSSize = key == "report" ? .init(width: 1_180, height: 580) : key == "tracking" ? .init(width: 1_120, height: 720) : key == "settings" ? .init(width: 860, height: 700) : .init(width: 720, height: 500)
         let isNewWindow = windows[key] == nil
         let window = windows[key] ?? NSWindow(contentRect: NSRect(origin: .zero, size: requestedSize), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-        window.title = title; window.contentView = NSHostingView(rootView: root); window.isReleasedWhenClosed = false; window.delegate = self
+        window.title = title; window.contentView = NSHostingView(rootView: LocalizedMacView(content: root)); window.isReleasedWhenClosed = false; window.delegate = self
         if isNewWindow {
             if let visible = NSScreen.main?.visibleFrame {
                 window.setContentSize(.init(width: min(requestedSize.width, visible.width - 32), height: min(requestedSize.height, visible.height - 32)))

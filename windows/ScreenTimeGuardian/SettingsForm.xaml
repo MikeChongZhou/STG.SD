@@ -35,10 +35,13 @@
                         <Border Style="{StaticResource Card}" Margin="0">
                             <Grid>
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="120"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                                 <TextBlock Text="Daily Limit" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
                                 <StackPanel Grid.Column="1" Orientation="Horizontal"><ComboBox x:Name="PlanHourBox" Width="76"/><TextBlock Text="h" Margin="7,0,12,0" VerticalAlignment="Center"/><ComboBox x:Name="PlanMinuteBox" Width="76"/><TextBlock Text="m" Margin="7,0,0,0" VerticalAlignment="Center"/></StackPanel>
-                                <CheckBox x:Name="StartupBox" Grid.Row="1" Grid.ColumnSpan="2" Content="Launch at Windows sign-in" Margin="0,20,0,0"/>
+                                <TextBlock Grid.Row="1" Text="Language" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="0,14,0,0"/>
+                                <ComboBox x:Name="LanguageBox" Grid.Row="1" Grid.Column="1" Width="160" HorizontalAlignment="Left" Margin="0,14,0,0"/>
+                                <CheckBox x:Name="StartupBox" Grid.Row="2" Grid.ColumnSpan="2" Content="Launch at Windows sign-in" Margin="0,20,0,0"/>
+                                <TextBlock x:Name="StartupStatusLabel" Grid.Row="3" Grid.ColumnSpan="2" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,5,0,0"/>
                             </Grid>
                         </Border>
                     </StackPanel>
