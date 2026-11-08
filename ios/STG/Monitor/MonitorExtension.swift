@@ -132,9 +132,9 @@ final class MonitorExtension: DeviceActivityMonitor {
             let repository = try SharedEnvironment.repository()
             SharedEnvironment.diagnosticLog.record("threshold context; generation=\(generation); device=\(settings.deviceID.prefix(8)); timezone=\(TimeZone.current.identifier); database=\(SharedEnvironment.databaseURL.path)", category: "monitor")
 
-            // Design 3.1: every delivered threshold performs its own current-day
-            // quick bidirectional sync. Calls are serialized for database and
-            // credential safety, but no threshold events are merged or dropped.
+            // Every delivered threshold performs its own current-day quick
+            // bidirectional sync. Closely spaced callbacks are filtered only
+            // before bitmap marking and reminder delivery below.
             await ThresholdQuickSync.shared.bidirectional(settings: settings, repository: repository, threshold: threshold, now: now)
 
             guard STGMonitorRegistration.activeGeneration == generation else {
@@ -145,9 +145,9 @@ final class MonitorExtension: DeviceActivityMonitor {
                 return
             }
 
-            guard markingLimitMinutes > 0 else {
+            guard markingLimitMinutes >= 3 else {
                 SharedEnvironment.diagnosticLog.record(
-                    "threshold ignored before marking; generation=\(generation); event=\(threshold)m; reason=no_elapsed_minute_since_previous_callback; marking_limit=0m; bitmap_unchanged=true; notification_posted=false",
+                    "threshold ignored before marking; generation=\(generation); event=\(threshold)m; reason=clustered_callback_under_three_minutes; marking_limit=\(markingLimitMinutes)m; minimum_elapsed_minutes=3; bitmap_unchanged=true; notification_posted=false",
                     category: "monitor"
                 )
                 return

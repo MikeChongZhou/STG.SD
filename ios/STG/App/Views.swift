@@ -1221,12 +1221,12 @@ struct AboutView: View {
             VStack(alignment: .leading, spacing: 16) {
                 HStack { Spacer(); Image(systemName: "shield.lefthalf.filled").font(.system(size: 64)).foregroundStyle(.blue); Spacer() }
                 Text("Screen Time Guardian").font(.title.bold()).frame(maxWidth: .infinity)
-                Text("Version 1.2.25\nCopyright © 2026 Fairy Phoenix Foundation.")
-                Text("This app records minute-level estimates of screen use on this device or across all your devices, and reminds you to take breaks.")
-                Text("Privacy: Your screen-use data stays on this device and, if enabled, in the private cloud you choose. It is never sent to the app developer or any other service.")
-                Text("Accuracy: Apple does not make Screen Time data available to third-party apps. STG estimates usage from DeviceActivity data, so its totals may differ from those shown in Settings → Screen Time.")
+                Text("Version 1.2.26\nCopyright © 2026 Fairy Phoenix Foundation.")
+                Text("Track screen use across your devices and get break reminders.")
+                Text("Privacy: Data stays on your devices and, if you enable sync, in your own cloud account. It is not sent to the developer.")
+                Text("Accuracy: iPhone usage is estimated from DeviceActivity and may differ from your iPhone’s Screen Time statistics.")
                 Text("Third-Party Software Acknowledgments").bold()
-                Text("This app includes SQLite and open-source components from Apple’s Swift project. Their original copyright notices and license terms are preserved. All rights remain with their respective owners. STG claims no ownership of these components.")
+                Text("Uses SQLite and Apple Swift open-source components. See their licenses below.")
                 Link("Apple Swift License", destination: URL(string: "https://www.swift.org/LICENSE.txt")!)
                 Link("SQLite Copyright and Public-Domain Notice", destination: URL(string: "https://www.sqlite.org/copyright.html")!)
             }.padding()

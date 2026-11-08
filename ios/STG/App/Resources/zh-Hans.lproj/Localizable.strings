@@ -93,11 +93,11 @@
 "Prices are effective weighted averages per 1M tokens, including cache and provider discounts. Revenue is estimated and is not official OpenRouter financial data." = "价格为每百万 Token 的实际支付加权平均价，包含缓存和提供商折扣。收入为估算值，不代表 OpenRouter 官方财务数据。";
 "Includes app activity, Screen Time, database, and sync events. Cloud files and credentials are never included." = "包含 App 活动、屏幕使用时间、数据库和同步事件；绝不包含云端文件或凭据。";
 "Export App Data" = "导出 App 数据"; "Export Test Log" = "导出测试日志";
-"Version 1.2.25\nCopyright © 2026 Fairy Phoenix Foundation." = "版本 1.2.25\n版权所有 © 2026 Fairy Phoenix Foundation。";
-"This app records minute-level estimates of screen use on this device or across all your devices, and reminds you to take breaks." = "本 App 记录本设备或您的所有设备的分钟级屏幕用时估算值，并提醒您休息。";
-"Privacy: Your screen-use data stays on this device and, if enabled, in the private cloud you choose. It is never sent to the app developer or any other service." = "隐私：屏幕用时数据仅保存在本设备和您选择的私人云中，不会发送给 App 开发者或任何其他服务。";
-"Accuracy: Apple does not make Screen Time data available to third-party apps. STG estimates usage from DeviceActivity data, so its totals may differ from those shown in Settings → Screen Time." = "准确性：Apple 不向第三方 App 提供屏幕使用时间数据。STG 根据 DeviceActivity 数据估算用时，因此可能与“设置 → 屏幕使用时间”中的数据不同。";
-"This app includes SQLite and open-source components from Apple’s Swift project. Their original copyright notices and license terms are preserved. All rights remain with their respective owners. STG claims no ownership of these components." = "本 App 包含 SQLite 和 Apple Swift 项目的开源组件，并保留其原始版权与许可条款。所有权利归各自所有者，STG 不主张拥有这些组件。";
+"Version 1.2.26\nCopyright © 2026 Fairy Phoenix Foundation." = "版本 1.2.26\n版权所有 © 2026 Fairy Phoenix Foundation。";
+"Track screen use across your devices and get break reminders." = "记录各设备的屏幕用时，并按需提醒休息。";
+"Privacy: Data stays on your devices and, if you enable sync, in your own cloud account. It is not sent to the developer." = "隐私：数据保存在您的设备上；开启同步后，也保存在您自己的云端账户中。不会发送给开发者。";
+"Accuracy: iPhone usage is estimated from DeviceActivity and may differ from your iPhone’s Screen Time statistics." = "准确性：iPhone 用时由 DeviceActivity 估算，可能与您 iPhone 的“屏幕使用时间”统计不同。";
+"Uses SQLite and Apple Swift open-source components. See their licenses below." = "使用 SQLite 和 Apple Swift 开源组件。许可见下方链接。";
 "Checking…" = "正在检查…"; "Authorized" = "已授权"; "Not Authorized" = "未授权"; "Not Allowed" = "不允许"; "Not Requested" = "尚未请求"; "On" = "开启"; "Off" = "关闭"; "Persistent" = "持续显示"; "Temporary" = "临时横幅"; "Unknown" = "未知";
 "Sounds" = "声音"; "Banner Style" = "横幅样式"; "Screen Time Access" = "屏幕使用时间权限";
 "Monitoring Couldn’t Start" = "无法启动监控"; "Try again. Details are available in the test log." = "请重试；详情可在测试日志中查看。";

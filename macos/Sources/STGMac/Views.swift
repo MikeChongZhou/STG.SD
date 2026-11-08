@@ -16,7 +16,7 @@ struct DashboardView: View {
                     card("Report", "All Devices: \(duration(model.allMinutes))\nThis Mac: \(duration(model.localMinutes))", "chart.bar.fill") { open(.report) }
                     card("Tracking", "Latest week · Top models\n\(model.latestTrackingTopTwo)", "waveform.path.ecg") { open(.tracking) }
                     card("Settings", "Daily Limit: \(duration(model.settings.dailyPlanMinutes))\n\(meetingStatus)", "gearshape.fill") { open(.settings) }
-                    card("About", "Version 1.2.25\nLocal + private cloud", "info.circle.fill") { open(.about) }
+                    card("About", "Version 1.2.26\nLocal + private cloud", "info.circle.fill") { open(.about) }
                 }
                 HStack {
                     Circle().fill(model.isScreenAvailable ? .green : .gray).frame(width: 8)
@@ -537,12 +537,12 @@ struct AboutView: View {
             VStack(alignment: .leading, spacing: 14) {
                 HStack { Spacer(); Image(systemName: "shield.lefthalf.filled").font(.system(size: 56)).foregroundStyle(.blue); Spacer() }
                 Text("Screen Time Guardian").font(.title.bold()).frame(maxWidth: .infinity)
-                Text("Version 1.2.25\nCopyright © 2026 Fairy Phoenix Foundation.")
-                Text("This app records minute-level estimates of screen use, either on this Mac alone or across your devices, and reminds you to take breaks.")
-                Text("Privacy: Your screen-use data remains on this Mac and, if enabled, in your chosen private-cloud account. STG does not send it to the developer or anyone else.")
-                Text("Accuracy: STG estimates screen use from macOS activity signals, so its totals may differ from other system usage statistics.")
+                Text("Version 1.2.26\nCopyright © 2026 Fairy Phoenix Foundation.")
+                Text("Track screen use across your devices and get break reminders.")
+                Text("Privacy: Data stays on your devices and, if you enable sync, in your own cloud account. It is not sent to the developer.")
+                Text("Accuracy: Mac usage is estimated from activity signals and may differ from system statistics.")
                 Text("Third-Party Software Acknowledgments").bold()
-                Text("This app includes SQLite and open-source components from Apple’s Swift project. Their original copyright notices and license terms are preserved. All rights remain with their respective owners. STG claims no ownership of these components.")
+                Text("Uses SQLite and Apple Swift open-source components. See their licenses below.")
                 Link("Open-source licenses", destination: URL(string: "https://www.swift.org/LICENSE.txt")!)
             }.padding(30)
         }.frame(width: 580, height: 500)
