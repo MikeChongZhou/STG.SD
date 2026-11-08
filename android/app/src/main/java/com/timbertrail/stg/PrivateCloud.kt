@@ -23,8 +23,8 @@ internal object CloudConfiguration {
     const val microsoftClientID = "a4ff927c-e45a-413e-b5c3-45b026719171"
     const val microsoftCallbackScheme = "msauth.com.timbertrail.stg"
     const val microsoftRedirectURI = "$microsoftCallbackScheme://auth"
-    const val googleClientID = "552360735383-030pcr7mduhf1d20kjslobh5dhacsg2o.apps.googleusercontent.com"
-    const val googleCallbackScheme = "com.googleusercontent.apps.552360735383-030pcr7mduhf1d20kjslobh5dhacsg2o"
+    const val googleClientID = "552360735383-alblvd6inepkvg6cni453j1t6pl6gf0g.apps.googleusercontent.com"
+    const val googleCallbackScheme = "com.googleusercontent.apps.552360735383-alblvd6inepkvg6cni453j1t6pl6gf0g"
     const val googleRedirectURI = "$googleCallbackScheme:/oauth2redirect"
 }
 
@@ -46,7 +46,7 @@ internal data class CloudCredential(
 }
 
 internal object PrivateCloudCredentials {
-    private fun key(provider: String) = "private-cloud-$provider"
+    private fun key(provider: String) = if (provider == "google") "private-cloud-google-iosclient" else "private-cloud-$provider"
     fun load(context: Context, provider: String): CloudCredential? = CloudCredential.parse(SecureStore(context).get(key(provider)))
     fun save(context: Context, provider: String, credential: CloudCredential) = SecureStore(context).put(key(provider), credential.json())
     fun remove(context: Context, provider: String) = SecureStore(context).put(key(provider), "")
@@ -231,13 +231,11 @@ internal object GoogleAuthorization {
         check(callback.getQueryParameter("state") == request.state) { "Google sign-in state did not match" }
         val code = callback.getQueryParameter("code").orEmpty(); check(code.isNotBlank()) { "Google sign-in returned no authorization code" }
         val items = linkedMapOf("client_id" to CloudConfiguration.googleClientID, "code" to code, "code_verifier" to request.verifier, "grant_type" to "authorization_code", "redirect_uri" to request.redirectURI)
-        if (BuildConfig.GOOGLE_CLIENT_SECRET.isNotBlank()) items["client_secret"] = BuildConfig.GOOGLE_CLIENT_SECRET
         return tokenCredential(CloudHttp.form("https://oauth2.googleapis.com/token", items), "")
     }
 
     internal fun refresh(refreshToken: String): CloudCredential {
         val items = linkedMapOf("client_id" to CloudConfiguration.googleClientID, "refresh_token" to refreshToken, "grant_type" to "refresh_token")
-        if (BuildConfig.GOOGLE_CLIENT_SECRET.isNotBlank()) items["client_secret"] = BuildConfig.GOOGLE_CLIENT_SECRET
         return tokenCredential(CloudHttp.form("https://oauth2.googleapis.com/token", items), refreshToken)
     }
 

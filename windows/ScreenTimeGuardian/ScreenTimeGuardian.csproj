@@ -10,9 +10,9 @@
     <Nullable>enable</Nullable>
     <AssemblyName>ScreenTimeGuardian</AssemblyName>
     <RootNamespace>ScreenTimeGuardian</RootNamespace>
-    <Version>1.2.26</Version>
-    <AssemblyVersion>1.2.26</AssemblyVersion>
-    <FileVersion>1.2.26.3</FileVersion>
+    <Version>1.2.27</Version>
+    <AssemblyVersion>1.2.27</AssemblyVersion>
+    <FileVersion>1.2.27.4</FileVersion>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\stg.ico</ApplicationIcon>
   </PropertyGroup>
@@ -22,10 +22,5 @@
       <Link>Assets\stg.sqlite</Link>
     </EmbeddedResource>
   </ItemGroup>
-  <ItemGroup Condition="'$(STG_GOOGLE_CLIENT_SECRET)' != ''">
-    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
-      <_Parameter1>STGGoogleClientSecret</_Parameter1>
-      <_Parameter2>$(STG_GOOGLE_CLIENT_SECRET)</_Parameter2>
-    </AssemblyAttribute>
-  </ItemGroup>
+
 </Project>

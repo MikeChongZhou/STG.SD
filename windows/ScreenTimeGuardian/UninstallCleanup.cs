@@ -9,6 +9,7 @@ internal static class UninstallCleanup
         RemoveStartupRegistration();
         CredentialStore.Delete(CloudConfiguration.OneDriveCredential);
         CredentialStore.Delete(CloudConfiguration.GoogleDriveCredential);
+        CredentialStore.Delete(CloudConfiguration.LegacyGoogleDriveCredential);
         var dataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ScreenTimeGuardian");
         if (Directory.Exists(dataFolder)) Directory.Delete(dataFolder, true);
     }
@@ -17,5 +18,6 @@ internal static class UninstallCleanup
     {
         using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true);
         key?.DeleteValue("ScreenTimeGuardian", false);
+        GoogleOAuthProtocol.Unregister();
     }
 }

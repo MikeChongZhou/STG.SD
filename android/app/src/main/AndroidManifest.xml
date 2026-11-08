@@ -19,7 +19,7 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="com.googleusercontent.apps.552360735383-030pcr7mduhf1d20kjslobh5dhacsg2o" android:path="/oauth2redirect" />
+                <data android:scheme="com.googleusercontent.apps.552360735383-alblvd6inepkvg6cni453j1t6pl6gf0g" android:path="/oauth2redirect" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

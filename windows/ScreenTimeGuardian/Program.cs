@@ -7,6 +7,12 @@ internal static class Program
     {
         if (args.Any(value => value.Equals("--uninstall-cleanup", StringComparison.OrdinalIgnoreCase))) { UninstallCleanup.DeletePersonalData(); return; }
         if (args.Any(value => value.Equals("--uninstall-remove-startup", StringComparison.OrdinalIgnoreCase))) { UninstallCleanup.RemoveStartupRegistration(); return; }
+        if (args.Length > 0 && args[0].StartsWith(CloudConfiguration.GoogleCallbackScheme + ":", StringComparison.OrdinalIgnoreCase))
+        {
+            try { GoogleOAuthProtocol.RelayAsync(args[0]).GetAwaiter().GetResult(); }
+            catch { /* An expired or canceled browser callback must not launch a second app instance. */ }
+            return;
+        }
         System.Windows.Forms.Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         System.Windows.Forms.Application.EnableVisualStyles();
         var application = new System.Windows.Application { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown };

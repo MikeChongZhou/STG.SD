@@ -10,7 +10,7 @@ On Windows, install:
 - Inno Setup 6;
 - a code-signing certificate trusted by Windows, before production submission.
 
-Provide `STG_GOOGLE_CLIENT_SECRET` as an environment variable or in Git-ignored `android/local.properties`, then run:
+Build without a Google OAuth client secret:
 
 ```powershell
 ./scripts/build_windows_installer.ps1
@@ -23,6 +23,6 @@ The self-contained x64 installer is written to `dist/ScreenTimeGuardian-Setup-<v
 The Inno Setup uninstaller appears when the customer removes STG from Windows Settings or runs the uninstaller directly. It asks, in English and Chinese, whether to retain personal settings and screen-time data.
 
 - **Keep** retains `%AppData%\ScreenTimeGuardian` and stored cloud credentials. Reinstalling STG uses the data again. The startup entry is still removed because the app is no longer installed.
-- **Delete** removes that folder, diagnostics, startup registration, and stored OneDrive/Google Drive credentials.
+- **Delete** removes that folder, diagnostics, startup registration, and stored OneDrive/Google Drive credentials. Google Drive must be signed in again once after upgrading to the secretless OAuth client.
 
 The application files are removed in both cases.

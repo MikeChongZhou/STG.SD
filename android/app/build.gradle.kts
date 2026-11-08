@@ -1,13 +1,6 @@
-import java.util.Properties
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-}
-
-val localProperties = Properties().apply {
-    val file = rootProject.file("local.properties")
-    if (file.isFile) file.inputStream().use { load(it) }
 }
 
 android {
@@ -17,12 +10,9 @@ android {
         applicationId = "com.timbertrail.stg"
         minSdk = 28
         targetSdk = 36
-        versionCode = 28
-        versionName = "1.2.26"
-        val googleSecret = providers.environmentVariable("STG_GOOGLE_CLIENT_SECRET")
-            .orElse(localProperties.getProperty("STG_GOOGLE_CLIENT_SECRET", "")).get()
-            .replace("\\", "\\\\").replace("\"", "\\\"")
-        buildConfigField("String", "GOOGLE_CLIENT_SECRET", "\"$googleSecret\"")
+        versionCode = 29
+        versionName = "1.2.27"
+
     }
     buildFeatures { buildConfig = true }
     compileOptions {

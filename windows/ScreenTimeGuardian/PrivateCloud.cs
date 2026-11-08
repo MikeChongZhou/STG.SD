@@ -14,16 +14,12 @@ namespace ScreenTimeGuardian;
 internal static class CloudConfiguration
 {
     public const string MicrosoftClientID = "a4ff927c-e45a-413e-b5c3-45b026719171";
-    public const string GoogleClientID = "552360735383-030pcr7mduhf1d20kjslobh5dhacsg2o.apps.googleusercontent.com";
-    public static string GoogleClientSecret =>
-        Environment.GetEnvironmentVariable("STG_GOOGLE_CLIENT_SECRET") ??
-        System.Reflection.Assembly.GetExecutingAssembly()
-            .GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), false)
-            .OfType<System.Reflection.AssemblyMetadataAttribute>()
-            .FirstOrDefault(value => value.Key == "STGGoogleClientSecret")?.Value ??
-        string.Empty;
+    public const string GoogleClientID = "552360735383-alblvd6inepkvg6cni453j1t6pl6gf0g.apps.googleusercontent.com";
+    public const string GoogleCallbackScheme = "com.googleusercontent.apps.552360735383-alblvd6inepkvg6cni453j1t6pl6gf0g";
+    public const string GoogleRedirectURI = GoogleCallbackScheme + ":/oauth2redirect";
     public const string OneDriveCredential = "ScreenTimeGuardian.OneDrive";
-    public const string GoogleDriveCredential = "ScreenTimeGuardian.GoogleDrive";
+    public const string GoogleDriveCredential = "ScreenTimeGuardian.GoogleDrive.IOSClient";
+    public const string LegacyGoogleDriveCredential = "ScreenTimeGuardian.GoogleDrive";
 }
 
 internal sealed record CloudSyncResult(int Uploaded, int Downloaded, IReadOnlySet<string> Devices, IReadOnlyDictionary<string, string> DownloadCursors, string? UploadCursor, IReadOnlyList<string> Warnings);
@@ -850,13 +846,14 @@ internal sealed class GoogleDriveClient : IPrivateCloudDrive
 
     public static async Task<GoogleDriveClient> SignInAsync(CancellationToken token = default)
     {
+        GoogleOAuthProtocol.Register();
         var verifier = Base64Url(RandomNumberGenerator.GetBytes(48));
         var challenge = Base64Url(SHA256.HashData(Encoding.ASCII.GetBytes(verifier)));
-        var state = Base64Url(RandomNumberGenerator.GetBytes(24));
         var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        var redirect = $"http://127.0.0.1:{port}/";
+        var state = $"{port}.{Base64Url(RandomNumberGenerator.GetBytes(24))}";
+        var redirect = CloudConfiguration.GoogleRedirectURI;
         var url = "https://accounts.google.com/o/oauth2/v2/auth?" + Query(new()
         {
             ["client_id"] = CloudConfiguration.GoogleClientID, ["redirect_uri"] = redirect, ["response_type"] = "code",
@@ -872,7 +869,10 @@ internal sealed class GoogleDriveClient : IPrivateCloudDrive
             var requestLine = await reader.ReadLineAsync(token) ?? "";
             var target = requestLine.Split(' ').ElementAtOrDefault(1) ?? "/";
             while (!string.IsNullOrEmpty(await reader.ReadLineAsync(token))) { }
-            var callback = new Uri(new Uri(redirect), target);
+            var relay = new Uri(new Uri($"http://127.0.0.1:{port}/"), target);
+            var callbackValue = ParseQuery(relay.Query).GetValueOrDefault("callback");
+            if (!Uri.TryCreate(callbackValue, UriKind.Absolute, out var callback) || callback.Scheme != CloudConfiguration.GoogleCallbackScheme || callback.AbsolutePath != "/oauth2redirect")
+                throw new InvalidOperationException("Google sign-in callback was invalid");
             var values = ParseQuery(callback.Query);
             var valid = values.GetValueOrDefault("state") == state && !string.IsNullOrWhiteSpace(values.GetValueOrDefault("code"));
             var html = valid ? "<h2>Screen Time Guardian is connected.</h2><p>You may close this window.</p>" : "<h2>Screen Time Guardian could not connect.</h2><p>Return to the app and try again.</p>";
@@ -887,7 +887,6 @@ internal sealed class GoogleDriveClient : IPrivateCloudDrive
                 ["client_id"] = CloudConfiguration.GoogleClientID, ["code"] = values["code"],
                 ["code_verifier"] = verifier, ["grant_type"] = "authorization_code", ["redirect_uri"] = redirect
             };
-            if (!string.IsNullOrWhiteSpace(CloudConfiguration.GoogleClientSecret)) tokenItems["client_secret"] = CloudConfiguration.GoogleClientSecret;
             var response = await http.PostAsync("https://oauth2.googleapis.com/token", new FormUrlEncodedContent(tokenItems), token);
             var data = await response.Content.ReadAsByteArrayAsync(token);
             Ensure(response, data, "Google token request failed");
@@ -984,7 +983,6 @@ internal sealed class GoogleDriveClient : IPrivateCloudDrive
             ["client_id"] = CloudConfiguration.GoogleClientID,
             ["refresh_token"] = credential.RefreshToken, ["grant_type"] = "refresh_token"
         };
-        if (!string.IsNullOrWhiteSpace(CloudConfiguration.GoogleClientSecret)) tokenItems["client_secret"] = CloudConfiguration.GoogleClientSecret;
         var response = await http.PostAsync("https://oauth2.googleapis.com/token", new FormUrlEncodedContent(tokenItems), token);
         var data = await response.Content.ReadAsByteArrayAsync(token);
         Ensure(response, data, "Google session refresh failed; sign in again");
