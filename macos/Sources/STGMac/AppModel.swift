@@ -15,14 +15,16 @@ final class AppModel: ObservableObject {
     @Published var isScreenAvailable = true
     @Published var lastReminder: ReminderDecision?
     @Published var oneDriveAccountLabel = UserDefaults.standard.string(forKey: "oneDriveAccountLabel") ?? "Not signed in"
-    @Published var googleDriveAccountLabel = UserDefaults.standard.string(forKey: "googleDriveAccountLabel") ?? "Not signed in"
+    @Published var googleDriveAccountLabel = UserDefaults.standard.string(forKey: "googleDriveAccountLabelIOSClient") ?? "Not signed in"
     @Published var iCloudAccountLabel = FileManager.default.ubiquityIdentityToken == nil ? "Not signed in" : "System Apple Account"
     @Published var launchAtLoginStatus = "Checking login-item status…"
 
     let repository: BitmapRepository?
     let diagnosticLog: DiagnosticLog
     private let oneDriveCredentialService = "com.timbertrail.stg.macos.onedrive"
-    private let googleDriveCredentialService = "com.timbertrail.stg.macos.googledrive"
+    // Tokens issued to the former Desktop client cannot be refreshed with the
+    // iOS-type client. Preserve them separately and require one new sign-in.
+    private let googleDriveCredentialService = "com.timbertrail.stg.macos.googledrive.iosclient"
     private let iCloudContainer = "iCloud.com.timbertrail.screentimeguardian"
     private let webAuthentication = MacWebAuthenticationPresenter()
     private var syncInProgress = false
@@ -256,7 +258,7 @@ final class AppModel: ObservableObject {
             guard GoogleDriveCredentialStore.load(service: googleDriveCredentialService) != nil else { syncStatus = "Google Drive account sign-in required"; return }
             syncStatus = "Connecting to Google Drive…"; diagnosticLog.record("sync begin; provider=googleDrive; local_device=\(settings.deviceID.prefix(8))", category: "sync")
             do {
-                let result = try await GoogleDriveSync(repository: repository, deviceID: settings.deviceID, clientID: clientID, clientSecret: googleDriveClientSecret ?? "", credentialService: googleDriveCredentialService).synchronize(settings: settings, progress: progress)
+                let result = try await GoogleDriveSync(repository: repository, deviceID: settings.deviceID, clientID: clientID, credentialService: googleDriveCredentialService).synchronize(settings: settings, progress: progress)
                 diagnosticLog.record("Google Drive sync complete; uploaded=\(result.uploaded); downloaded=\(result.downloaded); upload_cursor=\(result.uploadCursor ?? "none"); discovered=[\(result.discoveredDeviceIDs.map { String($0.prefix(8)) }.sorted().joined(separator: ","))]; download_cursors=[\(result.downloadCursors.sorted { $0.key < $1.key }.map { "\($0.key.prefix(8))=\($0.value)" }.joined(separator: ","))]", category: "sync")
                 result.warnings.forEach { diagnosticLog.record($0, category: "sync-warning") }
                 await runWeeklyActionIfDue()
@@ -299,7 +301,7 @@ final class AppModel: ObservableObject {
                 result = try await OneDriveSync(repository: repository, deviceID: settings.deviceID, clientID: clientID, credentialService: oneDriveCredentialService).alignAllData(progress: progress)
             case .googleDrive:
                 guard let clientID = googleDriveClientID else { syncStatus = "Google Drive Client ID is unavailable"; return }
-                result = try await GoogleDriveSync(repository: repository, deviceID: settings.deviceID, clientID: clientID, clientSecret: googleDriveClientSecret ?? "", credentialService: googleDriveCredentialService).alignAllData(progress: progress)
+                result = try await GoogleDriveSync(repository: repository, deviceID: settings.deviceID, clientID: clientID, credentialService: googleDriveCredentialService).alignAllData(progress: progress)
             case .iCloudDrive:
                 guard let folder = await Task.detached(priority: .utility, operation: { Self.iCloudFolder(containerID: self.iCloudContainer) }).value else { syncStatus = "iCloud Drive unavailable"; return }
                 result = try await CloudFolderSync(repository: repository, deviceID: settings.deviceID).alignAllData(folder: folder, progress: progress)
@@ -338,7 +340,7 @@ final class AppModel: ObservableObject {
                 count = try await OneDriveSync(repository: repository, deviceID: settings.deviceID, clientID: clientID, credentialService: oneDriveCredentialService).quickUpload(utcDateKeys: keys)
             case .googleDrive:
                 guard let clientID = googleDriveClientID else { throw STGError.invalidDocument("Google Drive Client ID is missing") }
-                count = try await GoogleDriveSync(repository: repository, deviceID: settings.deviceID, clientID: clientID, clientSecret: googleDriveClientSecret ?? "", credentialService: googleDriveCredentialService).quickUpload(utcDateKeys: keys)
+                count = try await GoogleDriveSync(repository: repository, deviceID: settings.deviceID, clientID: clientID, credentialService: googleDriveCredentialService).quickUpload(utcDateKeys: keys)
             case .iCloudDrive:
                 guard let folder = Self.iCloudFolder(containerID: iCloudContainer) else { throw STGError.invalidDocument("iCloud Drive is unavailable") }
                 count = try await CloudFolderSync(repository: repository, deviceID: settings.deviceID).quickUpload(folder: folder, utcDates: keys)
@@ -508,7 +510,7 @@ final class AppModel: ObservableObject {
             return try await OneDriveSync(repository: repository, deviceID: settings.deviceID, clientID: clientID, credentialService: oneDriveCredentialService).weeklyMaintenance(currentWeekStart: currentWeekStart, previousWeekStart: previousWeekStart, previousWeekEnd: previousWeekEnd)
         case .googleDrive:
             guard let clientID = googleDriveClientID else { throw STGError.invalidDocument("Google Drive Client ID is missing") }
-            return try await GoogleDriveSync(repository: repository, deviceID: settings.deviceID, clientID: clientID, clientSecret: googleDriveClientSecret ?? "", credentialService: googleDriveCredentialService).weeklyMaintenance(currentWeekStart: currentWeekStart, previousWeekStart: previousWeekStart, previousWeekEnd: previousWeekEnd)
+            return try await GoogleDriveSync(repository: repository, deviceID: settings.deviceID, clientID: clientID, credentialService: googleDriveCredentialService).weeklyMaintenance(currentWeekStart: currentWeekStart, previousWeekStart: previousWeekStart, previousWeekEnd: previousWeekEnd)
         case .none:
             throw STGError.invalidDocument("private cloud is not configured")
         }
@@ -532,7 +534,7 @@ final class AppModel: ObservableObject {
                 result = try await OneDriveSync(repository: repository, deviceID: settings.deviceID, clientID: clientID, credentialService: oneDriveCredentialService).yearlyMaintenance(year: year, trackingCleanupYear: cleanupYear)
             case .googleDrive:
                 guard let clientID = googleDriveClientID else { throw STGError.invalidDocument("Google Drive Client ID is missing") }
-                result = try await GoogleDriveSync(repository: repository, deviceID: settings.deviceID, clientID: clientID, clientSecret: googleDriveClientSecret ?? "", credentialService: googleDriveCredentialService).yearlyMaintenance(year: year, trackingCleanupYear: cleanupYear)
+                result = try await GoogleDriveSync(repository: repository, deviceID: settings.deviceID, clientID: clientID, credentialService: googleDriveCredentialService).yearlyMaintenance(year: year, trackingCleanupYear: cleanupYear)
             case .none:
                 return
             }
@@ -725,22 +727,17 @@ final class AppModel: ObservableObject {
         guard let clientID = googleDriveClientID else {
             syncStatus = "Google Drive sign-in unavailable: OAuth Client ID is missing"; diagnosticLog.record("Google Drive sign-in blocked; missing_client_id", category: "sync"); return
         }
-        guard let clientSecret = googleDriveClientSecret else {
-            syncStatus = "Google Drive sign-in unavailable: this build is missing its OAuth client secret"
-            diagnosticLog.record("Google Drive sign-in blocked; missing_client_secret", category: "sync")
-            return
-        }
         syncStatus = "Opening Google account sign-in…"; diagnosticLog.record("Google Drive sign-in begin", category: "sync")
         Task {
             do {
-                let client = GoogleDriveClient(clientID: clientID, clientSecret: clientSecret)
+                let client = GoogleDriveClient(clientID: clientID)
                 let request = try await client.authorizationRequest(callbackScheme: googleCallbackScheme)
                 let callback = try await webAuthentication.authenticate(url: request.authorizationURL, callbackScheme: request.callbackScheme)
                 let credential = try await client.credential(callbackURL: callback, request: request)
                 let account = try await client.account(using: credential)
                 // Persist only after both token exchange and account validation succeed.
                 try GoogleDriveCredentialStore.save(credential, service: googleDriveCredentialService)
-                googleDriveAccountLabel = "\(account.displayName) (\(account.email))"; UserDefaults.standard.set(googleDriveAccountLabel, forKey: "googleDriveAccountLabel")
+                googleDriveAccountLabel = "\(account.displayName) (\(account.email))"; UserDefaults.standard.set(googleDriveAccountLabel, forKey: "googleDriveAccountLabelIOSClient")
                 syncStatus = "Google Drive signed in as \(googleDriveAccountLabel)"; diagnosticLog.record("Google Drive sign-in complete; account=authorized", category: "sync")
             } catch { syncStatus = error.localizedDescription; diagnosticLog.record("Google Drive sign-in failed: \(error.localizedDescription)", category: "sync") }
         }
@@ -749,7 +746,7 @@ final class AppModel: ObservableObject {
     func signOutGoogleDrive() {
         let credential = GoogleDriveCredentialStore.load(service: googleDriveCredentialService)
         GoogleDriveCredentialStore.remove(service: googleDriveCredentialService)
-        googleDriveAccountLabel = "Not signed in"; UserDefaults.standard.removeObject(forKey: "googleDriveAccountLabel")
+        googleDriveAccountLabel = "Not signed in"; UserDefaults.standard.removeObject(forKey: "googleDriveAccountLabelIOSClient")
         syncStatus = "Google Drive signed out"; diagnosticLog.record("Google Drive signed out", category: "sync")
         if let credential, let clientID = googleDriveClientID { Task { await GoogleDriveClient(clientID: clientID).revoke(credential) } }
     }
@@ -793,12 +790,6 @@ final class AppModel: ObservableObject {
         let suffix = ".apps.googleusercontent.com"
         let identifier = clientID.hasSuffix(suffix) ? String(clientID.dropLast(suffix.count)) : clientID
         return "com.googleusercontent.apps.\(identifier)"
-    }
-
-    private var googleDriveClientSecret: String? {
-        guard let value = Bundle.main.object(forInfoDictionaryKey: "STGGoogleClientSecret") as? String,
-              !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-        return value
     }
 
     nonisolated private static func iCloudFolder(containerID: String) -> URL? {

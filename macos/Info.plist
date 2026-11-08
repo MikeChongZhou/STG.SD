@@ -8,16 +8,15 @@
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
-<key>CFBundleShortVersionString</key><string>1.2.26</string>
-<key>CFBundleVersion</key><string>57</string>
+<key>CFBundleShortVersionString</key><string>1.2.27</string>
+<key>CFBundleVersion</key><string>58</string>
 <key>LSUIElement</key><true/>
 <key>NSHighResolutionCapable</key><true/>
 <key>NSAppleEventsUsageDescription</key><string>Screen Time Guardian uses Google Chrome only for the optional daily check-in that you enable in Settings.</string>
 <key>STGOneDriveClientID</key><string>a4ff927c-e45a-413e-b5c3-45b026719171</string>
-<key>STGGoogleClientID</key><string>552360735383-030pcr7mduhf1d20kjslobh5dhacsg2o.apps.googleusercontent.com</string>
-<key>STGGoogleClientSecret</key><string>$(STG_GOOGLE_CLIENT_SECRET)</string>
+<key>STGGoogleClientID</key><string>552360735383-alblvd6inepkvg6cni453j1t6pl6gf0g.apps.googleusercontent.com</string>
 <key>CFBundleURLTypes</key><array>
-<dict><key>CFBundleURLName</key><string>STG Google OAuth</string><key>CFBundleURLSchemes</key><array><string>com.googleusercontent.apps.552360735383-030pcr7mduhf1d20kjslobh5dhacsg2o</string></array></dict>
+<dict><key>CFBundleURLName</key><string>STG Google OAuth</string><key>CFBundleURLSchemes</key><array><string>com.googleusercontent.apps.552360735383-alblvd6inepkvg6cni453j1t6pl6gf0g</string></array></dict>
 <dict><key>CFBundleURLName</key><string>STG Microsoft OAuth</string><key>CFBundleURLSchemes</key><array><string>msauth.com.timbertrail.screentimeguardian.ios</string></array></dict>
 </array>
 <key>NSUbiquitousContainers</key><dict><key>iCloud.com.timbertrail.screentimeguardian</key><dict><key>NSUbiquitousContainerIsDocumentScopePublic</key><true/><key>NSUbiquitousContainerName</key><string>Screen Time Guardian</string><key>NSUbiquitousContainerSupportedFolderLevels</key><string>Any</string></dict></dict>
