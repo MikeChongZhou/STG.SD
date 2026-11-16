@@ -29,13 +29,26 @@ internal partial class SettingsForm : System.Windows.Window
         PostureNotificationsBox.IsChecked = app.Settings.PostureNotificationsEnabled;
         DailyNotificationsBox.IsChecked = app.Settings.DailyNotificationsEnabled;
         DailyCheckInBox.IsChecked = app.Settings.AutoDailyCheckInEnabled;
+        AdvancedFeaturesBox.IsChecked = app.Settings.AdvancedFeaturesEnabled;
+        LlmTrackingBox.IsChecked = app.Settings.LlmTrackingEnabled;
+        UpdateAdvancedVisibility();
         SetQuietControls(draftMode == "quiet");
         ReminderModeBox.SelectionChanged += ReminderMode_Changed;
         foreach (var box in new[] { EyeNotificationsBox, PostureNotificationsBox, DailyNotificationsBox }) { box.Checked += Draft_Changed; box.Unchecked += Draft_Changed; }
         DailyCheckInBox.Checked += Draft_Changed; DailyCheckInBox.Unchecked += Draft_Changed;
+        AdvancedFeaturesBox.Checked += Advanced_Changed; AdvancedFeaturesBox.Unchecked += Advanced_Changed;
+        LlmTrackingBox.Checked += Draft_Changed; LlmTrackingBox.Unchecked += Draft_Changed;
         UpdateCloud(); app.StateChanged += OnStateChanged; Closing += SettingsForm_Closing; Closed += (_, _) => app.StateChanged -= OnStateChanged;
     }
     private void Draft_Changed(object sender, System.Windows.RoutedEventArgs e) => SaveButton.IsEnabled = HasUnsavedChanges();
+    private void Advanced_Changed(object sender, System.Windows.RoutedEventArgs e) { UpdateAdvancedVisibility(); Draft_Changed(sender, e); }
+    private void UpdateAdvancedVisibility()
+    {
+        var visibility = AdvancedFeaturesBox.IsChecked == true ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+        LlmTrackingBox.Visibility = visibility;
+        DailyCheckInTitle.Visibility = visibility;
+        DailyCheckInCard.Visibility = visibility;
+    }
     private void ReminderMode_Changed(object sender, SelectionChangedEventArgs e)
     {
         var mode = ReminderModeBox.SelectedIndex == 0 ? "quiet" : ReminderModeBox.SelectedIndex == 1 ? "light" : "alert";
@@ -92,6 +105,8 @@ internal partial class SettingsForm : System.Windows.Window
             app.Settings.DailyNotificationsEnabled = DailyNotificationsBox.IsChecked == true;
         }
         app.Settings.AutoDailyCheckInEnabled = DailyCheckInBox.IsChecked == true;
+        app.Settings.AdvancedFeaturesEnabled = AdvancedFeaturesBox.IsChecked == true;
+        app.Settings.LlmTrackingEnabled = LlmTrackingBox.IsChecked == true;
         app.Settings.DailyPlanMinutes = plan; app.Settings.LaunchAtLogin = StartupBox.IsChecked == true;
         var language = new[] { "system", "en", "zh", "es" }[Math.Clamp(LanguageBox.SelectedIndex, 0, 3)];
         var languageChanged = app.Settings.Language != language;
@@ -109,6 +124,8 @@ internal partial class SettingsForm : System.Windows.Window
             || (PostureNotificationsBox.IsChecked == true) != app.Settings.PostureNotificationsEnabled
             || (DailyNotificationsBox.IsChecked == true) != app.Settings.DailyNotificationsEnabled
             || (DailyCheckInBox.IsChecked == true) != app.Settings.AutoDailyCheckInEnabled
+            || (AdvancedFeaturesBox.IsChecked == true) != app.Settings.AdvancedFeaturesEnabled
+            || (LlmTrackingBox.IsChecked == true) != app.Settings.LlmTrackingEnabled
             || StartupBox.IsChecked == true != app.Settings.LaunchAtLogin
             || new[] { "system", "en", "zh", "es" }[Math.Clamp(LanguageBox.SelectedIndex, 0, 3)] != app.Settings.Language
             || (EyeCountdownBox.SelectedItem as int? ?? 1) != app.Settings.EyeCountdown

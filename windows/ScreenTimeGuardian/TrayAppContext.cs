@@ -15,6 +15,11 @@ internal sealed class TrayAppContext : IDisposable
     private readonly DiagnosticLog log;
     private readonly WinForms.NotifyIcon tray;
     private readonly WinForms.Timer timer;
+    private readonly WinForms.Timer pauseTimer;
+    private WinForms.ToolStripMenuItem? pauseRecordingItem;
+    private WinForms.ToolStripMenuItem? trackingMenuItem;
+    private uint? inputTickAtPause;
+    private bool recordingPaused;
     private readonly List<WinForms.ToolStripMenuItem> reminderModeItems = [];
     private DashboardForm? dashboard;
     private bool screenAvailable = true;
@@ -58,7 +63,8 @@ internal sealed class TrayAppContext : IDisposable
         }
 
         var menu = new WinForms.ContextMenuStrip { Font = new Font("Segoe UI", 10) };
-        Add(menu, L.T("Screen Time Guardian"), ShowMain); Add(menu, L.T("Report"), ShowReport); Add(menu, L.T("Tracking"), ShowTracking);
+        Add(menu, L.T("Screen Time Guardian"), ShowMain); Add(menu, L.T("Report"), ShowReport);
+        trackingMenuItem = new WinForms.ToolStripMenuItem(L.T("Tracking")); trackingMenuItem.Click += (_, _) => ShowTracking(); menu.Items.Add(trackingMenuItem);
         menu.Items.Add(new WinForms.ToolStripSeparator()); Add(menu, L.T("Sync Now"), () => _ = SyncAsync()); Add(menu, L.T("Settings"), ShowSettings); Add(menu, L.T("About"), ShowAbout);
         menu.Items.Add(new WinForms.ToolStripSeparator());
         foreach (var mode in new[] { "quiet", "light", "alert" })
@@ -67,12 +73,16 @@ internal sealed class TrayAppContext : IDisposable
             item.Click += (_, _) => { Settings.SetNotificationMode(mode); SaveSettings(); };
             reminderModeItems.Add(item); menu.Items.Add(item);
         }
+        pauseRecordingItem = new WinForms.ToolStripMenuItem(L.T("Pause Recording Until Input"));
+        pauseRecordingItem.Click += (_, _) => PauseRecordingUntilInput();
+        menu.Items.Add(pauseRecordingItem);
         UpdateReminderModeMenu();
         menu.Items.Add(new WinForms.ToolStripSeparator()); Add(menu, "Quit", Exit);
         var applicationIcon = Icon.ExtractAssociatedIcon(Environment.ProcessPath ?? "") ?? SystemIcons.Shield;
         tray = new WinForms.NotifyIcon { Text = "Screen Time Guardian", Icon = applicationIcon, Visible = true, ContextMenuStrip = menu };
         tray.MouseDoubleClick += (_, eventArgs) => { if (eventArgs.Button == WinForms.MouseButtons.Left) { log.Record("lifecycle", "tray icon double-click; opening main window"); ShowMain(); } };
         timer = new() { Interval = 60_000, Enabled = true }; timer.Tick += (_, _) => Tick();
+        pauseTimer = new() { Interval = 500 }; pauseTimer.Tick += (_, _) => CheckInputResume();
         SystemEvents.SessionSwitch += OnSessionSwitch; SystemEvents.PowerModeChanged += OnPowerModeChanged;
         ConfigureStartup();
         RefreshSyncStatus(); RefreshTotals();
@@ -93,7 +103,7 @@ internal sealed class TrayAppContext : IDisposable
     public void ShowMain() { dashboard ??= new(this); if (!dashboard.IsVisible) dashboard.Show(); if (dashboard.WindowState == System.Windows.WindowState.Minimized) dashboard.WindowState = System.Windows.WindowState.Normal; dashboard.Activate(); }
     public void ShowReport() { var window = new ReportForm(this) { Owner = VisibleDashboard }; window.Show(); }
     public void ShowSettings() { var window = new SettingsForm(this) { Owner = VisibleDashboard }; window.ShowDialog(); }
-    public void ShowTracking() { var window = new TrackingForm(this) { Owner = VisibleDashboard }; window.Show(); }
+    public void ShowTracking() { if (!Settings.LlmTrackingActive) return; var window = new TrackingForm(this) { Owner = VisibleDashboard }; window.Show(); }
     public void ShowDailyCheckIn(bool submit)
     {
         var content = ChromeDailyCheckIn.ContentFor(DateOnly.FromDateTime(DateTime.Now));
@@ -220,6 +230,7 @@ internal sealed class TrayAppContext : IDisposable
     private void UpdateReminderModeMenu()
     {
         foreach (var item in reminderModeItems) item.Checked = (string)item.Tag! == Settings.NotificationMode;
+        if (trackingMenuItem is not null) trackingMenuItem.Visible = Settings.LlmTrackingActive;
     }
 
     public void ExportTestLog(System.Windows.Window? owner)
@@ -249,6 +260,32 @@ internal sealed class TrayAppContext : IDisposable
         finally { try { Directory.Delete(temporary, true); } catch { } }
     }
 
+    private void PauseRecordingUntilInput()
+    {
+        inputTickAtPause = null;
+        recordingPaused = true; continuous = 0; pauseTimer.Start();
+        // The menu click itself may finish after this callback. Arm detection after it closes.
+        _ = System.Windows.Application.Current.Dispatcher.InvokeAsync(async () =>
+        {
+            await Task.Delay(300);
+            if (recordingPaused) inputTickAtPause = InputPause.LastInputTick();
+        });
+        if (pauseRecordingItem is not null) pauseRecordingItem.Checked = true;
+        log.Record("record", $"recording paused until next mouse or keyboard input; mode={Settings.NotificationMode}");
+    }
+
+    private void CheckInputResume()
+    {
+        if (!recordingPaused) { pauseTimer.Stop(); return; }
+        if (inputTickAtPause is null) return;
+        var last = InputPause.LastInputTick();
+        if (last is null || last == inputTickAtPause) return;
+        recordingPaused = false; inputTickAtPause = null; pauseTimer.Stop();
+        if (pauseRecordingItem is not null) pauseRecordingItem.Checked = false;
+        log.Record("record", $"recording resumed after user input; mode={Settings.NotificationMode}");
+        Tick();
+    }
+
     private void Tick()
     {
         var now = DateTimeOffset.Now; var previous = now.AddMinutes(-1);
@@ -260,7 +297,7 @@ internal sealed class TrayAppContext : IDisposable
             log.Record("reminder", $"daily reminder slot reset; previous_date={previousDate:yyyy-MM-dd}; local_date={today:yyyy-MM-dd}; next_slot=posture");
         }
         var previousSet = repository.Bitmap(Settings.DeviceID, TimeModel.UtcDate(previous))[TimeModel.UtcMinute(previous)];
-        if (!screenAvailable) { continuous = 0; return; }
+        if (!screenAvailable || recordingPaused) { continuous = 0; return; }
         var newlyMarked = repository.Mark(Settings.DeviceID, now); repository.RebuildAll(TimeModel.UtcDate(now)); continuous = previousSet ? continuous + 1 : 1; RefreshTotals();
         log.Record("record", $"active minute sample; utc_date={TimeModel.UtcDate(now)}; utc_minute={TimeModel.UtcMinute(now)}; newly_marked={newlyMarked}; continuous={continuous}m; local={LocalMinutes}m; all={AllMinutes}m");
         if (continuous < 20) { Changed(); return; }
@@ -294,11 +331,15 @@ internal sealed class TrayAppContext : IDisposable
 
     private void RunDailyCheckInIfNeeded(DateOnly today)
     {
-        if (!Settings.AutoDailyCheckInEnabled) return;
+        if (!Settings.AdvancedFeaturesEnabled || !Settings.AutoDailyCheckInEnabled) return;
         var label = today.ToString("yyyy-MM-dd");
         if (Settings.LastDailyCheckInSuccessLocalDate == label) { log.Record("daily-checkin", $"skipped; reason=already_checked_in; local_date={label}"); return; }
+        if (Settings.LastDailyCheckInAttemptLocalDate == label) { log.Record("daily-checkin", $"skipped; reason=already_attempted_today; local_date={label}"); return; }
         if (dailyCheckInInFlight) return;
         dailyCheckInInFlight = true;
+        Settings.LastDailyCheckInAttemptLocalDate = label;
+        try { settingsStore.SaveLocal(Settings); }
+        catch (Exception error) { log.Record("daily-checkin", $"attempt date save failed; local_date={label}; {DiagnosticLog.Describe(error)}"); }
         var content = ChromeDailyCheckIn.ContentFor(today);
         log.Record("daily-checkin", $"started; local_date={label}; source=first_20m_block; mood={content.Mood}; note_length={content.Note.Length}");
         _ = CompleteDailyCheckInAsync(content, label);
@@ -382,7 +423,7 @@ internal sealed class TrayAppContext : IDisposable
         var cloudDue = repository.WeeklyCloudActionDue(now);
         var today = DateOnly.FromDateTime(now.UtcDateTime); var daysSinceMonday = ((int)today.DayOfWeek + 6) % 7; var previousSunday = today.AddDays(-daysSinceMonday - 1);
         var totalCursor = repository.LatestOpenRouterWeekEnd(); var start = DateOnly.TryParse(totalCursor, out var latestDate) ? latestDate.AddDays(1) : new DateOnly(2025, 1, 1);
-        var trackingDue = start <= previousSunday;
+        var trackingDue = Settings.LlmTrackingActive && start <= previousSunday;
         if (!cloudDue && !trackingDue) return;
         log.Record("sync", $"weekly action begin; cloud_due={cloudDue}; tracking_due={trackingDue}; openrouter_start={start:yyyy-MM-dd}; openrouter_end={previousSunday:yyyy-MM-dd}; latest_week_cursor={totalCursor ?? "none"}");
         IPrivateCloudDrive? drive = null;
@@ -422,7 +463,7 @@ internal sealed class TrayAppContext : IDisposable
         try
         {
             var start = new DateOnly(year, 1, 1); var end = new DateOnly(year, 12, 31);
-            var rows = await new OpenRouterClient().WeeklyHistoryAsync(start, end, cancellationToken); if (rows.Count > 0) repository.UpsertOpenRouterWeeks(rows);
+            if (Settings.LlmTrackingActive) { var rows = await new OpenRouterClient().WeeklyHistoryAsync(start, end, cancellationToken); if (rows.Count > 0) repository.UpsertOpenRouterWeeks(rows); }
             var result = await new PrivateCloudSync(repository, Settings, drive).YearlyMaintenanceAsync(year, cleanupYear, cancellationToken);
             repository.CompleteYearlyAction(Settings.DeviceID);
             log.Record("sync", $"yearly action complete; year={year}; uploaded={result.Uploaded}; deleted_bitmaps={result.DeletedBitmaps}; deleted_weekly={result.DeletedWeekly}");
@@ -472,6 +513,22 @@ internal sealed class TrayAppContext : IDisposable
         {
             using var key = Registry.CurrentUser.CreateSubKey(runKeyPath, true);
             if (key is null) throw new InvalidOperationException("The current user's startup registry key is unavailable.");
+            foreach (var name in key.GetValueNames())
+            {
+                if (name.Equals(valueName, StringComparison.OrdinalIgnoreCase)) continue;
+                var commandLine = key.GetValue(name) as string;
+                if (commandLine is null || !commandLine.Contains("ScreenTimeGuardian.exe", StringComparison.OrdinalIgnoreCase)) continue;
+                key.DeleteValue(name, false);
+                log.Record("lifecycle", $"removed legacy STG startup entry; name={name}");
+            }
+            var startupFolder = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
+            foreach (var filename in new[] { "Screen Time Guardian.lnk", "ScreenTimeGuardian.lnk" })
+            {
+                var link = Path.Combine(startupFolder, filename);
+                if (!File.Exists(link)) continue;
+                try { File.Delete(link); log.Record("lifecycle", $"removed legacy STG startup shortcut; name={filename}"); }
+                catch (Exception error) { log.Record("lifecycle", $"legacy STG startup shortcut could not be removed; name={filename}; {DiagnosticLog.Describe(error)}"); }
+            }
             var previous = key.GetValue(valueName) as string;
             if (!Settings.LaunchAtLogin)
             {
@@ -561,6 +618,6 @@ internal sealed class TrayAppContext : IDisposable
     public void Dispose() => DisposeCore(disposeRepository: true);
     private void DisposeCore(bool disposeRepository)
     {
-        if (disposed) return; disposed = true; log.Record("lifecycle", $"shutdown resources; repository_disposed={disposeRepository}"); tray.Visible = false; tray.Dispose(); timer.Stop(); timer.Dispose(); SystemEvents.SessionSwitch -= OnSessionSwitch; SystemEvents.PowerModeChanged -= OnPowerModeChanged; if (disposeRepository) repository.Dispose();
+        if (disposed) return; disposed = true; log.Record("lifecycle", $"shutdown resources; repository_disposed={disposeRepository}"); tray.Visible = false; tray.Dispose(); timer.Stop(); timer.Dispose(); pauseTimer.Stop(); pauseTimer.Dispose(); SystemEvents.SessionSwitch -= OnSessionSwitch; SystemEvents.PowerModeChanged -= OnPowerModeChanged; if (disposeRepository) repository.Dispose();
     }
 }

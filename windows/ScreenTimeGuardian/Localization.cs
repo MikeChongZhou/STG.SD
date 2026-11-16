@@ -19,7 +19,7 @@ internal static class L
         ["Align Local and Cloud Data"] = "AlignLocalCloudData",
         ["Minutes:"] = "Minutes", ["Cancel"] = "Cancel",
         ["Notification Options"] = "NotificationOptions", ["Eye Break Notifications"] = "EyeNotifications", ["Posture Notifications"] = "PostureNotifications", ["Daily Usage Notifications"] = "DailyNotifications", ["Usage is still recorded when all options are off."] = "NotificationsRecordingDetail",
-        ["Quiet"] = "ModeQuiet", ["Light"] = "ModeLight", ["Alert"] = "ModeAlert", ["Reminder Mode: "] = "ReminderModeLabel",
+        ["Pause Recording Until Input"] = "PauseRecordingUntilInput", ["ADVANCED FEATURES"] = "AdvancedFeatures", ["Enable Advanced Features"] = "EnableAdvancedFeatures", ["LLM Tracking"] = "LlmTracking", ["Quiet"] = "ModeQuiet", ["Light"] = "ModeLight", ["Alert"] = "ModeAlert", ["Reminder Mode: "] = "ReminderModeLabel",
         ["Automatically check in to 1Point3Acres after the first 20-minute use block each day"] = "DailyCheckInFirstBlock",
         ["Quiet keeps recording and syncing. Light shows a silent, compact 10-second reminder."] = "ModeDetail",
         ["Daily"] = "Daily", ["Daily report"] = "Daily", ["Multiple Days"] = "MultipleDays", ["Year by Week"] = "YearByWeek", ["Years by Month"] = "YearsByMonth",
@@ -41,7 +41,7 @@ internal static class L
         ["Data stays on your devices and, if you enable sync, in your own cloud account. It is not sent to the developer."] = "AboutPrivacy",
         ["PC usage is estimated from activity signals and may differ from system statistics."] = "AboutAccuracy",
         ["Uses SQLite and Microsoft .NET open-source components. See their licenses below."] = "AboutThirdPartyBody",
-        ["Privacy: "] = "Privacy", ["Accuracy: "] = "Accuracy", ["Version 1.2.27"] = "Version", ["Local + private cloud"] = "LocalPrivateCloud",
+        ["Privacy: "] = "Privacy", ["Accuracy: "] = "Accuracy", ["Version 1.2.28"] = "Version", ["Local + private cloud"] = "LocalPrivateCloud",
         ["Step {0} of {1}"] = "StepOf", ["Private-cloud sync combines screen-use records from your own devices. You can skip this and configure it later."] = "CloudOnboardingDetail", ["Automatic startup keeps minute recording and reminders available after you sign in."] = "StartupOnboardingDetail",
         ["Eye Break"] = "EyeBreak", ["Posture Break"] = "PostureBreak", ["Daily Limit Reached"] = "DailyLimitReached", ["Look 20 feet away for 20 seconds."] = "EyeBreakBody", ["Stand or walk for 4 minutes and rest your eyes."] = "PostureBreakBody", ["You've used your screen for {0}. Take a 5-minute walk."] = "DailyLimitBody", ["Meeting mode: this reminder can be closed immediately."] = "MeetingClose", ["Close available in {0}s"] = "CloseAvailable", ["You can close this reminder now."] = "CanCloseNow"
         ,["On"] = "On", ["Off"] = "Off", ["Single-device mode"] = "SingleDeviceMode", ["Off — single device"] = "OffSingleDevice", ["Not signed in"] = "NotSignedIn", ["Connected through {0}"] = "ConnectedThrough", ["No account — this PC only"] = "NoAccountThisPC", ["Open iCloud for Windows, sign in, and turn on iCloud Drive"] = "OpenICloud", ["Check iCloud Drive…"] = "CheckICloud", ["Reconnect account…"] = "ReconnectAccount"

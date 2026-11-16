@@ -10,8 +10,8 @@ android {
         applicationId = "com.timbertrail.stg"
         minSdk = 28
         targetSdk = 36
-        versionCode = 29
-        versionName = "1.2.27"
+        versionCode = 30
+        versionName = "1.2.28"
 
     }
     buildFeatures { buildConfig = true }

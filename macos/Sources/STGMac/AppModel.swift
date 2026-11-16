@@ -13,6 +13,7 @@ final class AppModel: ObservableObject {
     @Published var statisticsSummary = UsageStatisticsSummary()
     @Published var syncStatus = "Sync off — choose a provider in Settings"
     @Published var isScreenAvailable = true
+    @Published private(set) var recordingPaused = false
     @Published var lastReminder: ReminderDecision?
     @Published var oneDriveAccountLabel = UserDefaults.standard.string(forKey: "oneDriveAccountLabel") ?? "Not signed in"
     @Published var googleDriveAccountLabel = UserDefaults.standard.string(forKey: "googleDriveAccountLabelIOSClient") ?? "Not signed in"
@@ -37,6 +38,8 @@ final class AppModel: ObservableObject {
     private lazy var dailyCheckIn = DailyCheckInCoordinator(diagnosticLog: diagnosticLog)
     private var dailyCheckInInFlight = false
     private var timer: Timer?
+    private var pauseTimer: Timer?
+    private var pausedAt: Date?
     private var observers: [NSObjectProtocol] = []
     private let sessionID: String
     private var terminationRecorded = false
@@ -104,6 +107,30 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func pauseRecordingUntilInput() {
+        recordingPaused = true
+        pausedAt = .now
+        reminderState.continuousMinutes = 0
+        pauseTimer?.invalidate()
+        pauseTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.resumeAfterInputIfNeeded() }
+        }
+        diagnosticLog.record("recording paused until next mouse movement or key press; mode=\(settings.notificationMode)", category: "record")
+    }
+
+    private func resumeAfterInputIfNeeded() {
+        guard recordingPaused, let pausedAt else { return }
+        let elapsed = Date().timeIntervalSince(pausedAt)
+        let mouseAge = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .mouseMoved)
+        let keyAge = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown)
+        guard min(mouseAge, keyAge) < elapsed else { return }
+        recordingPaused = false
+        self.pausedAt = nil
+        pauseTimer?.invalidate(); pauseTimer = nil
+        diagnosticLog.record("recording resumed after user input; mode=\(settings.notificationMode)", category: "record")
+        Task { await tick() }
+    }
+
     func start() {
         diagnosticLog.record("minute recorder started; session=\(sessionID); screen_available=\(isScreenAvailable)", category: "lifecycle")
         installMinuteTimer()
@@ -114,6 +141,7 @@ final class AppModel: ObservableObject {
         guard !terminationRecorded else { return }
         terminationRecorded = true
         timer?.invalidate(); timer = nil
+        pauseTimer?.invalidate(); pauseTimer = nil
         let stoppedAt = Date()
         diagnosticLog.record("minute recorder stopped; session=\(sessionID); reason=\(reason); clean_shutdown=true", category: "lifecycle")
         let runtimeDefaults = UserDefaults.standard
@@ -149,36 +177,29 @@ final class AppModel: ObservableObject {
         let service = SMAppService.mainApp
         let currentPath = Bundle.main.bundleURL.standardizedFileURL.path
         let previousPath = UserDefaults.standard.string(forKey: Self.loginItemBundlePathKey)
-        let currentIsInstalled = Self.isInApplications(Bundle.main.bundleURL)
-        let keepInstalledCopy = previousPath.map { $0 != currentPath && Self.isInApplications(URL(fileURLWithPath: $0)) && !currentIsInstalled } ?? false
         var registeredThisRun = false
         do {
             if settings.launchAtLogin {
-                if let previousPath, previousPath != currentPath, !keepInstalledCopy,
+                if previousPath != currentPath,
                    (service.status == .enabled || service.status == .requiresApproval) {
-                    // Migrate only this app's known registration when its bundle has moved.
                     try service.unregister()
-                    diagnosticLog.record("login item unregistered from previous app copy; previous_path=\(previousPath); current_path=\(currentPath)", category: "lifecycle")
+                    diagnosticLog.record("login item unregistered from previous app copy; previous_path=\(previousPath ?? "unknown"); current_path=\(currentPath)", category: "lifecycle")
                 }
-                if !keepInstalledCopy && (service.status == .notRegistered || service.status == .notFound) {
+                if service.status == .notRegistered || service.status == .notFound {
                     try service.register()
                     registeredThisRun = true
                 }
             } else if service.status == .enabled || service.status == .requiresApproval {
                 try service.unregister()
             }
-            if settings.launchAtLogin && !keepInstalledCopy && (currentIsInstalled || previousPath != nil || registeredThisRun)
+            if settings.launchAtLogin && (previousPath != nil || registeredThisRun)
                 && (service.status == .enabled || service.status == .requiresApproval) {
                 UserDefaults.standard.set(currentPath, forKey: Self.loginItemBundlePathKey)
             } else if !settings.launchAtLogin {
                 UserDefaults.standard.removeObject(forKey: Self.loginItemBundlePathKey)
             }
-            launchAtLoginStatus = keepInstalledCopy && settings.launchAtLogin
-                ? service.status == .enabled
-                    ? "Login starts the installed copy in Applications; this copy is outside Applications"
-                    : "Open the installed copy in Applications to restore login startup"
-                : Self.loginItemDescription(service.status, requested: settings.launchAtLogin)
-            diagnosticLog.record("login item reconciled; trigger=\(trigger); requested=\(settings.launchAtLogin); status=\(service.status.rawValue); current_path=\(currentPath); previous_path=\(previousPath ?? "none"); kept_installed_copy=\(keepInstalledCopy)", category: "lifecycle")
+            launchAtLoginStatus = Self.loginItemDescription(service.status, requested: settings.launchAtLogin)
+            diagnosticLog.record("login item reconciled; trigger=\(trigger); requested=\(settings.launchAtLogin); status=\(service.status.rawValue); current_path=\(currentPath); previous_path=\(previousPath ?? "none")", category: "lifecycle")
         } catch {
             launchAtLoginStatus = "Login-item update failed: \(error.localizedDescription)"
             diagnosticLog.record("login item reconciliation failed; trigger=\(trigger); requested=\(settings.launchAtLogin); status=\(service.status.rawValue); error_type=\(String(reflecting: type(of: error))); error=\(error.localizedDescription)", category: "lifecycle")
@@ -203,15 +224,21 @@ final class AppModel: ObservableObject {
     }
 
     private func runDailyCheckInIfNeeded(now: Date) {
-        guard settings.autoDailyCheckInEnabled else { return }
+        guard settings.advancedFeaturesEnabled && settings.autoDailyCheckInEnabled else { return }
         let key = "dailyCheckInLastSuccessLocalDate"
+        let attemptKey = "dailyCheckInLastAttemptLocalDate"
         let date = Self.dateLabel(now, zone: TimeZone.current.identifier)
         guard UserDefaults.standard.string(forKey: key) != date else {
             diagnosticLog.record("skipped; reason=already_checked_in; local_date=\(date)", category: "daily-checkin")
             return
         }
+        guard UserDefaults.standard.string(forKey: attemptKey) != date else {
+            diagnosticLog.record("skipped; reason=already_attempted_today; local_date=\(date)", category: "daily-checkin")
+            return
+        }
         guard !dailyCheckInInFlight else { return }
         dailyCheckInInFlight = true
+        UserDefaults.standard.set(date, forKey: attemptKey)
         let content = Self.dailyCheckInContent(for: now)
         diagnosticLog.record("started; local_date=\(date); source=first_20m_block; mood=\(content.mood)", category: "daily-checkin")
         dailyCheckIn.checkIn(mood: content.mood, note: content.note, trigger: "first_20m_block") { [weak self] confirmed in
@@ -463,7 +490,7 @@ final class AppModel: ObservableObject {
         let cloudDue: Bool
         do { cloudDue = try repository.weeklyCloudActionDue() }
         catch { diagnosticLog.record("weekly cloud due check failed; \(DiagnosticLog.describe(error))", category: "sync"); return }
-        let trackingDue = start <= lastSunday
+        let trackingDue = settings.llmTrackingActive && start <= lastSunday
         guard cloudDue || trackingDue else { return }
         diagnosticLog.record("weekly action begin; cloud_due=\(cloudDue); tracking_due=\(trackingDue); openrouter_start=\(formatter.string(from: start)); openrouter_end=\(formatter.string(from: lastSunday)); latest_week_cursor=\(totalCursorText ?? "none")", category: "sync")
         var cloudCompleted = false
@@ -522,8 +549,10 @@ final class AppModel: ObservableObject {
         let year = currentYear - 1, cleanupYear = currentYear - 2
         let start = String(format: "%04d-01-01", year), end = String(format: "%04d-12-31", year)
         do {
-            let rows = try await OpenRouterTrackingService.shared.weeklyHistory(startDate: start, endDate: end)
-            if !rows.isEmpty { try repository.upsertOpenRouterWeeks(rows) }
+            if settings.llmTrackingActive {
+                let rows = try await OpenRouterTrackingService.shared.weeklyHistory(startDate: start, endDate: end)
+                if !rows.isEmpty { try repository.upsertOpenRouterWeeks(rows) }
+            }
             let result: (uploaded: Int, deletedBitmaps: Int, deletedWeekly: Int)
             switch settings.syncProvider ?? .none {
             case .iCloudDrive:
@@ -572,7 +601,7 @@ final class AppModel: ObservableObject {
         do {
             let previous = now.addingTimeInterval(-60)
             previousWasUsed = try repository.bitmap(deviceID: settings.deviceID, utcDate: STGTime.utcDateKey(for: previous))[STGTime.utcMinute(for: previous)]
-            if isScreenAvailable {
+            if isScreenAvailable && !recordingPaused {
                 let changed = try repository.mark(deviceID: settings.deviceID, instant: now)
                 diagnosticLog.record("active minute sample; utc_date=\(STGTime.utcDateKey(for: now)); utc_minute=\(STGTime.utcMinute(for: now)); newly_marked=\(changed)", category: "record")
             }
@@ -581,8 +610,8 @@ final class AppModel: ObservableObject {
             let priorLastPosture = reminderState.lastPostureAt
             let priorLastReminder = reminderState.lastReminder
             let priorContinuousMinutes = reminderState.continuousMinutes
-            let decision = reminderEngine.evaluate(active: isScreenAvailable, now: now, localMinuteIsSet: previousWasUsed, allDeviceDailyMinutes: allMinutes, settings: settings, state: &reminderState)
-            let completedBlock = isScreenAvailable && (previousWasUsed ? priorContinuousMinutes + 1 : 1) >= 20
+            let decision = reminderEngine.evaluate(active: isScreenAvailable && !recordingPaused, now: now, localMinuteIsSet: previousWasUsed, allDeviceDailyMinutes: allMinutes, settings: settings, state: &reminderState)
+            let completedBlock = isScreenAvailable && !recordingPaused && (previousWasUsed ? priorContinuousMinutes + 1 : 1) >= 20
             if reminderState.lastEyeAt != priorLastEye || reminderState.lastPostureAt != priorLastPosture || reminderState.lastReminder != priorLastReminder {
                 try repository.saveReminderState(deviceID: settings.deviceID, state: reminderState, updatedAt: now)
             }
@@ -617,6 +646,7 @@ final class AppModel: ObservableObject {
         let wasRunning = timer != nil
         isScreenAvailable = false
         timer?.invalidate(); timer = nil
+        pauseTimer?.invalidate(); pauseTimer = nil
         markSessionHeartbeat(at: Date(), flush: true)
         diagnosticLog.record("screen unavailable; notification=\(notificationName); minute_timer_paused=\(wasRunning)", category: "lifecycle")
         if notificationName == NSWorkspace.sessionDidResignActiveNotification.rawValue {
@@ -635,6 +665,12 @@ final class AppModel: ObservableObject {
             return
         }
         installMinuteTimer()
+        if recordingPaused {
+            pausedAt = .now
+            pauseTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+                Task { @MainActor in self?.resumeAfterInputIfNeeded() }
+            }
+        }
         diagnosticLog.record("screen available; notification=\(notificationName); minute_timer_resumed=true; immediate_tick=true; immediate_sync=true", category: "lifecycle")
         Task {
             await tick()

@@ -16,7 +16,9 @@ struct RootView: View {
         TabView(selection: $selectedTab) {
             NavigationStack { TodayView(model: model) }.tabItem { Label("Today", systemImage: "shield.fill") }.tag(0)
             NavigationStack { ReportView(model: model) }.tabItem { Label("Report", systemImage: "chart.bar") }.tag(1)
-            NavigationStack { TrackingView(model: model) }.tabItem { Label("Tracking", systemImage: "waveform.path.ecg") }.tag(2)
+            if model.settings.llmTrackingActive {
+                NavigationStack { TrackingView(model: model) }.tabItem { Label("Tracking", systemImage: "waveform.path.ecg") }.tag(2)
+            }
             NavigationStack { SettingsView(model: model, activity: activity) { selectedTab = 0 } }.tabItem { Label("Settings", systemImage: "gear") }.tag(3)
             NavigationStack { AboutView() }.tabItem { Label("About", systemImage: "info.circle") }.tag(4)
         }.environment(\.locale, appLanguage == "system" ? .autoupdatingCurrent : Locale(identifier: appLanguage)).task {
@@ -237,7 +239,7 @@ private struct PermissionOnboardingView: View {
 
 struct TodayView: View {
     @ObservedObject var model: AppModel
-    var body: some View { ScrollView { VStack(spacing: 16) { Image(systemName: "shield.lefthalf.filled").font(.system(size: 58)).foregroundStyle(.blue); Text("Screen Time Guardian").font(.largeTitle.bold()); metric("All Devices", model.allMinutes); metric("This Device", model.localMinutes); metric("Daily Limit", model.settings.dailyPlanMinutes); GroupBox("Latest Week · Top Models") { Text(model.latestTrackingTopTwo).frame(maxWidth: .infinity, alignment: .leading) }; Text("Screen use is estimated from DeviceActivity and may differ from Settings → Screen Time.").font(.footnote).foregroundStyle(.secondary); Button("Sync Now") { Task { await model.sync() } }.buttonStyle(.borderedProminent); Text(model.syncStatus).font(.caption) }.padding() }.navigationTitle("Today") }
+    var body: some View { ScrollView { VStack(spacing: 16) { Image(systemName: "shield.lefthalf.filled").font(.system(size: 58)).foregroundStyle(.blue); Text("Screen Time Guardian").font(.largeTitle.bold()); metric("All Devices", model.allMinutes); metric("This Device", model.localMinutes); metric("Daily Limit", model.settings.dailyPlanMinutes); if model.settings.llmTrackingActive { GroupBox("Latest Week · Top Models") { Text(model.latestTrackingTopTwo).frame(maxWidth: .infinity, alignment: .leading) } }; Text("Screen use is estimated from DeviceActivity and may differ from Settings → Screen Time.").font(.footnote).foregroundStyle(.secondary); Button("Sync Now") { Task { await model.sync() } }.buttonStyle(.borderedProminent); Text(model.syncStatus).font(.caption) }.padding() }.navigationTitle("Today") }
     private func metric(_ name: String, _ minutes: Int) -> some View { HStack { Text(name); Spacer(); Text(duration(minutes)).bold().monospacedDigit() }.padding().background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14)) }
 }
 
@@ -688,6 +690,10 @@ struct SettingsView: View {
                 Toggle("Posture Notifications", isOn: $draft.postureNotificationsEnabled).disabled(draft.notificationMode == "quiet")
                 Toggle("Daily Usage Notifications", isOn: $draft.dailyNotificationsEnabled).disabled(draft.notificationMode == "quiet")
                 Text("Quiet keeps recording and syncing. Light delivers silent reminders.").font(.footnote).foregroundStyle(.secondary)
+            }
+            Section("Advanced Features") {
+                Toggle("Enable Advanced Features", isOn: $draft.advancedFeaturesEnabled)
+                if draft.advancedFeaturesEnabled { Toggle("LLM Tracking", isOn: $draft.llmTrackingEnabled) }
             }
             Section("Display") {
                 Picker("Language", selection: $appLanguage) {
@@ -1221,7 +1227,7 @@ struct AboutView: View {
             VStack(alignment: .leading, spacing: 16) {
                 HStack { Spacer(); Image(systemName: "shield.lefthalf.filled").font(.system(size: 64)).foregroundStyle(.blue); Spacer() }
                 Text("Screen Time Guardian").font(.title.bold()).frame(maxWidth: .infinity)
-                Text("Version 1.2.26\nCopyright © 2026 Fairy Phoenix Foundation.")
+                Text("Version 1.2.27\nCopyright © 2026 Fairy Phoenix Foundation.")
                 Text("Track screen use across your devices and get break reminders.")
                 Text("Privacy: Data stays on your devices and, if you enable sync, in your own cloud account. It is not sent to the developer.")
                 Text("Accuracy: iPhone usage is estimated from DeviceActivity and may differ from your iPhone’s Screen Time statistics.")

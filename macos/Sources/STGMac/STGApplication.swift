@@ -50,6 +50,7 @@ final class STGApplication: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let item = NSMenuItem(title: NSLocalizedString(title, comment: "Reminder mode"), action: action, keyEquivalent: "")
             item.tag = tag; item.target = self; menu.addItem(item)
         }
+        add(NSLocalizedString("Pause Recording Until Input", comment: ""), #selector(pauseRecording), to: menu)
         menu.addItem(.separator())
         add(NSLocalizedString("Tracking", comment: ""), #selector(showTracking), to: menu)
         add(NSLocalizedString("About", comment: ""), #selector(showAbout), to: menu)
@@ -88,7 +89,7 @@ final class STGApplication: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     @objc private func showSettings() { guard !terminationPreparationInProgress else { return }; show("settings", title: "STG Settings", root: SettingsView(model: model) { [weak self] in self?.windows["settings"]?.close() }) }
     @objc private func showAbout() { guard !terminationPreparationInProgress else { return }; show("about", title: "About STG", root: AboutView()) }
-    @objc private func showTracking() { guard !terminationPreparationInProgress else { return }; show("tracking", title: "STG Tracking", root: TrackingView(model: model)) }
+    @objc private func showTracking() { guard !terminationPreparationInProgress && model.settings.llmTrackingActive else { return }; show("tracking", title: "STG Tracking", root: TrackingView(model: model)) }
     @objc private func quit() {
         guard !terminationPreparationInProgress else { return }
         userRequestedQuit = true
@@ -113,6 +114,8 @@ final class STGApplication: NSObject, NSApplicationDelegate, NSWindowDelegate {
         pendingStatusClick = nil
         guard !terminationPreparationInProgress else { return }
         guard let button = statusItem.button, let window = button.window else { return }
+        statusMenu.items.first { $0.action == #selector(pauseRecording) }?.state = model.recordingPaused ? .on : .off
+        statusMenu.items.first { $0.action == #selector(showTracking) }?.isHidden = !model.settings.llmTrackingActive
         let selected = model.settings.notificationMode
         for item in statusMenu.items where (1...3).contains(item.tag) {
             item.state = item.tag == (selected == "quiet" ? 1 : selected == "light" ? 2 : 3) ? .on : .off
@@ -122,6 +125,7 @@ final class STGApplication: NSObject, NSApplicationDelegate, NSWindowDelegate {
         statusMenu.popUp(positioning: statusMenu.items.first, at: menuAnchor, in: nil)
     }
 
+    @objc private func pauseRecording() { model.pauseRecordingUntilInput() }
     @objc private func selectQuiet() { setReminderMode("quiet") }
     @objc private func selectLight() { setReminderMode("light") }
     @objc private func selectAlert() { setReminderMode("alert") }

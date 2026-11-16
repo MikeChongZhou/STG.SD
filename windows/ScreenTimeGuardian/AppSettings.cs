@@ -37,9 +37,13 @@ internal sealed class AppSettings
     [JsonPropertyName("eye_notifications_enabled")] public bool EyeNotificationsEnabled { get; set; } = true;
     [JsonPropertyName("posture_notifications_enabled")] public bool PostureNotificationsEnabled { get; set; } = true;
     [JsonPropertyName("daily_notifications_enabled")] public bool DailyNotificationsEnabled { get; set; } = true;
+    [JsonPropertyName("advanced_features_enabled")] public bool AdvancedFeaturesEnabled { get; set; }
+    [JsonPropertyName("llm_tracking_enabled")] public bool LlmTrackingEnabled { get; set; }
+    [JsonIgnore] public bool LlmTrackingActive => AdvancedFeaturesEnabled && LlmTrackingEnabled;
     [JsonPropertyName("auto_daily_check_in_enabled")] public bool AutoDailyCheckInEnabled { get; set; }
     [JsonPropertyName("daily_check_in_text")] public string DailyCheckInText { get; set; } = "";
     [JsonPropertyName("last_daily_check_in_success_local_date")] public string? LastDailyCheckInSuccessLocalDate { get; set; }
+    [JsonIgnore] public string? LastDailyCheckInAttemptLocalDate { get; set; }
     [JsonIgnore] public SyncProvider SyncProvider { get; set; } = SyncProvider.None;
     [JsonIgnore] public bool OnboardingComplete { get; set; }
     [JsonIgnore] public string Language { get; set; } = "system";
@@ -51,9 +55,10 @@ internal sealed class SettingsStore
 {
     private readonly string path; private readonly string localPath;
     public SettingsStore(string folder) { path = Path.Combine(folder, "settings.json"); localPath = Path.Combine(folder, "local-settings.json"); }
-    public AppSettings Load() { AppSettings value; try { value = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path), JsonOptions.Default) ?? new(); } catch { value = new(); } try { var local = JsonSerializer.Deserialize<LocalSettings>(File.ReadAllText(localPath), JsonOptions.Default); value.SyncProvider = local?.SyncProvider ?? SyncProvider.None; value.OnboardingComplete = local?.OnboardingComplete ?? false; value.Language = local?.Language is "en" or "zh" or "es" ? local.Language : "system"; } catch { } return value; }
-    public void Save(AppSettings value) { Directory.CreateDirectory(Path.GetDirectoryName(path)!); value.UpdatedAt = DateTimeOffset.UtcNow; File.WriteAllText(path, JsonSerializer.Serialize(value, JsonOptions.Default)); File.WriteAllText(localPath, JsonSerializer.Serialize(new LocalSettings(value.SyncProvider, value.OnboardingComplete, value.Language), JsonOptions.Default)); }
-    private sealed record LocalSettings(SyncProvider SyncProvider, bool OnboardingComplete = false, string Language = "system");
+    public AppSettings Load() { AppSettings value; try { value = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path), JsonOptions.Default) ?? new(); } catch { value = new(); } try { var local = JsonSerializer.Deserialize<LocalSettings>(File.ReadAllText(localPath), JsonOptions.Default); value.SyncProvider = local?.SyncProvider ?? SyncProvider.None; value.OnboardingComplete = local?.OnboardingComplete ?? false; value.Language = local?.Language is "en" or "zh" or "es" ? local.Language : "system"; value.LastDailyCheckInAttemptLocalDate = local?.LastDailyCheckInAttemptLocalDate; } catch { } return value; }
+    public void Save(AppSettings value) { Directory.CreateDirectory(Path.GetDirectoryName(path)!); value.UpdatedAt = DateTimeOffset.UtcNow; File.WriteAllText(path, JsonSerializer.Serialize(value, JsonOptions.Default)); SaveLocal(value); }
+    public void SaveLocal(AppSettings value) { Directory.CreateDirectory(Path.GetDirectoryName(localPath)!); File.WriteAllText(localPath, JsonSerializer.Serialize(new LocalSettings(value.SyncProvider, value.OnboardingComplete, value.Language, value.LastDailyCheckInAttemptLocalDate), JsonOptions.Default)); }
+    private sealed record LocalSettings(SyncProvider SyncProvider, bool OnboardingComplete = false, string Language = "system", string? LastDailyCheckInAttemptLocalDate = null);
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]

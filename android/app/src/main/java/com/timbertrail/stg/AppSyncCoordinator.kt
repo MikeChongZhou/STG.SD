@@ -75,7 +75,7 @@ object AppSyncCoordinator {
         val lastSunday = monday.minusDays(1); val period = lastSunday.toString()
         val start = database.latestOpenRouterWeekEnd()?.let(LocalDate::parse)?.plusDays(1) ?: LocalDate.of(2025, 1, 1)
         val cloudDue = database.weeklyActionCompletedPeriod() != period
-        val trackingDue = !start.isAfter(lastSunday)
+        val trackingDue = settings.advancedFeaturesEnabled && settings.llmTrackingEnabled && !start.isAfter(lastSunday)
         if (!cloudDue && !trackingDue) return null
         log.record("sync", "weekly action begin; cloud_due=$cloudDue; tracking_due=$trackingDue; openrouter_start=$start; openrouter_end=$lastSunday")
         val warnings = mutableListOf<String>(); var cloudCompleted = false
@@ -109,7 +109,7 @@ object AppSyncCoordinator {
     private fun runYearlyActionIfDue(context: Context, database: BitmapDatabase, settings: AppSettings, log: DiagnosticLog) {
         if (!database.yearlyActionDue(settings.deviceID)) return
         val year = LocalDate.now(ZoneOffset.UTC).year - 1; val cleanupYear = year - 1
-        val rows = OpenRouterClient().weeklyHistory(LocalDate.of(year, 1, 1), LocalDate.of(year, 12, 31)); if (rows.isNotEmpty()) database.saveOpenRouterWeeks(rows)
+        if (settings.advancedFeaturesEnabled && settings.llmTrackingEnabled) { val rows = OpenRouterClient().weeklyHistory(LocalDate.of(year, 1, 1), LocalDate.of(year, 12, 31)); if (rows.isNotEmpty()) database.saveOpenRouterWeeks(rows) }
         val result = RemoteCloudSync(database, settings, PrivateCloudDriveFactory.fromStore(context, settings.cloudProvider)).yearlyMaintenance(year, cleanupYear); database.completeYearlyAction(settings.deviceID)
         log.record("sync", "yearly action complete; year=$year; uploaded=${result.uploaded}; deleted_bitmaps=${result.deletedBitmaps}; deleted_weekly=${result.deletedWeekly}")
     }

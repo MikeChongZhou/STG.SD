@@ -14,9 +14,9 @@ struct DashboardView: View {
                 Text("Screen Time Guardian").font(.largeTitle.bold())
                 LazyVGrid(columns: [.init(.flexible()), .init(.flexible())], spacing: 14) {
                     card("Report", "All Devices: \(duration(model.allMinutes))\nThis Mac: \(duration(model.localMinutes))", "chart.bar.fill") { open(.report) }
-                    card("Tracking", "Latest week · Top models\n\(model.latestTrackingTopTwo)", "waveform.path.ecg") { open(.tracking) }
+                    if model.settings.llmTrackingActive { card("Tracking", "Latest week · Top models\n\(model.latestTrackingTopTwo)", "waveform.path.ecg") { open(.tracking) } }
                     card("Settings", "Daily Limit: \(duration(model.settings.dailyPlanMinutes))\n\(meetingStatus)", "gearshape.fill") { open(.settings) }
-                    card("About", "Version 1.2.27\nLocal + private cloud", "info.circle.fill") { open(.about) }
+                    card("About", "Version 1.2.28\nLocal + private cloud", "info.circle.fill") { open(.about) }
                 }
                 HStack {
                     Circle().fill(model.isScreenAvailable ? .green : .gray).frame(width: 8)
@@ -93,12 +93,19 @@ struct SettingsView: View {
                             Text(model.launchAtLoginStatus).font(.caption).foregroundStyle(.secondary)
                         }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
                     }
-                    GroupBox("Daily check-in") {
+                    GroupBox("Advanced Features") {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Toggle("Enable Advanced Features", isOn: $draft.advancedFeaturesEnabled)
+                            if draft.advancedFeaturesEnabled { Toggle("LLM Tracking", isOn: $draft.llmTrackingEnabled) }
+                        }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
+                    }
+                    if draft.advancedFeaturesEnabled { GroupBox("Daily check-in") {
                         VStack(alignment: .leading, spacing: 10) {
                             Toggle("Automatically check in to 1Point3Acres after the first 20-minute use block each day", isOn: $draft.autoDailyCheckInEnabled)
                             Text("STG uses the Google Chrome already installed on this Mac, including its existing sign-in session. It generates a mood and note automatically. Preview fills both fields without submitting. In Chrome, enable View › Developer › Allow JavaScript from Apple Events once.").font(.caption).foregroundStyle(.secondary)
-                            Button("Preview automatic check-in") { model.testDailyCheckIn() }
+                            Button("Preview automatic check-in") { model.testDailyCheckIn() }.disabled(!draft.autoDailyCheckInEnabled)
                         }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
+                    }
                     }
                     GroupBox("Private cloud") {
                         HStack {
@@ -537,7 +544,7 @@ struct AboutView: View {
             VStack(alignment: .leading, spacing: 14) {
                 HStack { Spacer(); Image(systemName: "shield.lefthalf.filled").font(.system(size: 56)).foregroundStyle(.blue); Spacer() }
                 Text("Screen Time Guardian").font(.title.bold()).frame(maxWidth: .infinity)
-                Text("Version 1.2.27\nCopyright © 2026 Fairy Phoenix Foundation.")
+                Text("Version 1.2.28\nCopyright © 2026 Fairy Phoenix Foundation.")
                 Text("Track screen use across your devices and get break reminders.")
                 Text("Privacy: Data stays on your devices and, if you enable sync, in your own cloud account. It is not sent to the developer.")
                 Text("Accuracy: Mac usage is estimated from activity signals and may differ from system statistics.")

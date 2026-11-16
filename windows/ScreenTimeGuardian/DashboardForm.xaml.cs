@@ -13,6 +13,7 @@ internal partial class DashboardForm : System.Windows.Window
     private void OnStateChanged(object? sender, EventArgs e) => Dispatcher.InvokeAsync(RefreshView);
     private void RefreshView()
     {
+        TrackingButton.Visibility = app.Settings.LlmTrackingActive ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
         AllValue.Text = Duration(app.AllMinutes); LocalValue.Text = Duration(app.LocalMinutes); PlanValue.Text = Duration(app.Settings.DailyPlanMinutes);
         MeetingModeLabel.Text = L.T("Reminder Mode: ");
         MeetingModeValue.Text = L.T(char.ToUpperInvariant(app.Settings.NotificationMode[0]) + app.Settings.NotificationMode[1..]); SyncStatusLabel.Text = app.SyncStatus; TrackingSummary.Text = app.LatestTrackingTopTwo;

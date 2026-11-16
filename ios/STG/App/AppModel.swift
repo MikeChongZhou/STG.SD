@@ -429,7 +429,7 @@ final class AppModel: ObservableObject {
         let cloudDue: Bool
         do { cloudDue = try repository.weeklyCloudActionDue() }
         catch { SharedEnvironment.diagnosticLog.record("weekly cloud due check failed; \(DiagnosticLog.describe(error))", category: "sync"); return }
-        let trackingDue = start <= lastSunday
+        let trackingDue = settings.llmTrackingActive && start <= lastSunday
         guard cloudDue || trackingDue else { return }
         SharedEnvironment.diagnosticLog.record("weekly action begin; cloud_due=\(cloudDue); tracking_due=\(trackingDue); openrouter_start=\(formatter.string(from: start)); openrouter_end=\(formatter.string(from: lastSunday)); latest_week_cursor=\(totalCursorText ?? "none")", category: "sync")
         var cloudCompleted = false
@@ -486,7 +486,7 @@ final class AppModel: ObservableObject {
         let currentYear = Calendar(identifier: .gregorian).component(.year, from: .now), year = currentYear - 1, cleanupYear = currentYear - 2
         let start = String(format: "%04d-01-01", year), end = String(format: "%04d-12-31", year)
         do {
-            let rows = try await OpenRouterTrackingService.shared.weeklyHistory(startDate: start, endDate: end); if !rows.isEmpty { try repository.upsertOpenRouterWeeks(rows) }
+            if settings.llmTrackingActive { let rows = try await OpenRouterTrackingService.shared.weeklyHistory(startDate: start, endDate: end); if !rows.isEmpty { try repository.upsertOpenRouterWeeks(rows) } }
             let result: (uploaded: Int, deletedBitmaps: Int, deletedWeekly: Int)
             switch settings.syncProvider ?? .none {
             case .iCloudDrive:

@@ -123,6 +123,18 @@ public struct STGSettings: Codable, Equatable, Sendable {
         notificationModeValue = mode
         meetingMode = false
     }
+    /// Local advanced-feature preferences; omitted from SettingDocument.
+    private var advancedFeatures: Bool?
+    private var llmTracking: Bool?
+    public var advancedFeaturesEnabled: Bool {
+        get { advancedFeatures ?? false }
+        set { advancedFeatures = newValue }
+    }
+    public var llmTrackingEnabled: Bool {
+        get { llmTracking ?? false }
+        set { llmTracking = newValue }
+    }
+    public var llmTrackingActive: Bool { advancedFeaturesEnabled && llmTrackingEnabled }
     /// Desktop-local automation preferences. They are deliberately omitted from SettingDocument.
     public var autoDailyCheckInEnabled = false
     public var dailyCheckInText = ""

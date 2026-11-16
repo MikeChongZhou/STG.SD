@@ -8,7 +8,7 @@ Use the repository build scripts below so SDK, JDK, cache, and output paths stay
 
 ## macOS
 
-Current Android release: 1.2.27 (29); Windows release: 1.2.27 (file version 1.2.27.4); macOS release: 1.2.27 (58); iOS remains at 1.2.26.
+Current Android release: 1.2.28 (30); Windows release: 1.2.28 (file version 1.2.28.5); macOS release: 1.2.28 (59); iOS release: 1.2.27 (51).
 
 Run `bash scripts/build_macos.sh`. The locally ad-hoc-signed bundle (`com.timbertrail.screentimeguardian.ios`) is written to `dist/Screen Time Guardian.app`. The Mac build does not require or embed a Google OAuth client secret; Google sign-in uses the same iOS-type OAuth client ID as the iPhone app and PKCE. Mac users previously signed in through the Desktop-type client need to sign in again so their refresh token matches the new client ID. Local and distribution builds both retain the app sandbox entitlement, so they use the same macOS app container and database. The local build omits only the provisioned iCloud capabilities; OneDrive and Google Drive remain available. A working iCloud release requires an Apple Development/Developer ID signature and provisioning profile that authorizes this bundle ID and `iCloud.com.timbertrail.screentimeguardian`; a release should also be notarized.
 
@@ -40,7 +40,7 @@ Google Drive uses the existing iOS-type Google OAuth client ID, the reversed-cli
 
 ## Android
 
-Use the installed Android Studio and its bundled JDK, then run `bash scripts/build_android.sh`. The debug APK is written to `dist/android/ScreenTimeGuardian-1.2.27-debug.apk` and supports Android 9 (API 28) or later.
+Use the installed Android Studio and its bundled JDK, then run `bash scripts/build_android.sh`. The debug APK is written to `dist/android/ScreenTimeGuardian-1.2.28-debug.apk` and supports Android 9 (API 28) or later.
 
 On first use grant notifications, overlay/full-screen reminder access, and Usage Access, then optionally complete private-cloud setup. Android does not use a folder picker: OneDrive uses OAuth/PKCE with `Files.ReadWrite.AppFolder` and Microsoft Graph App Folder; Google Drive uses OAuth/PKCE with the shared iOS-type client registration and the hidden `appDataFolder`. The app verifies the account and completes an initial sync before saving the provider. Access and refresh tokens are encrypted with Android Keystore; Google OAuth client secrets are not bundled.
 

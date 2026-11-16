@@ -69,8 +69,15 @@
                         <TextBlock Text="Quiet keeps recording and syncing. Light shows a silent, compact 10-second reminder." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
                     </StackPanel>
                 </Border>
-                <TextBlock Text="DAILY CHECK-IN" Style="{StaticResource SectionTitle}" Margin="2,18,0,8"/>
+                <TextBlock Text="ADVANCED FEATURES" Style="{StaticResource SectionTitle}" Margin="2,18,0,8"/>
                 <Border Style="{StaticResource Card}">
+                    <StackPanel>
+                        <CheckBox x:Name="AdvancedFeaturesBox" Content="Enable Advanced Features" Margin="0,0,0,10"/>
+                        <CheckBox x:Name="LlmTrackingBox" Content="LLM Tracking"/>
+                    </StackPanel>
+                </Border>
+                <TextBlock x:Name="DailyCheckInTitle" Text="DAILY CHECK-IN" Style="{StaticResource SectionTitle}" Margin="2,18,0,8"/>
+                <Border x:Name="DailyCheckInCard" Style="{StaticResource Card}">
                     <StackPanel>
                         <CheckBox x:Name="DailyCheckInBox" Content="Automatically check in to 1Point3Acres after the first 20-minute use block each day" Margin="0,0,0,10"/>
                         <TextBlock Text="STG opens installed Chrome and uses its existing signed-in session. It chooses today's mood and note automatically. Preview fills both fields without submitting." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,0"/>
